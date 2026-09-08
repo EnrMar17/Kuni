@@ -8,7 +8,7 @@ export type Row<T extends keyof Database["public"]["Tables"]> = Database["public
 type NonresponseRow = Database["public"]["Views"]["patient_nonresponse_counts"]["Row"];
 type ConsentRow = Database["public"]["Views"]["patient_consent_status"]["Row"];
 export type PrescriptionRow = Row<"prescriptions"> & {
-  medications: Pick<Row<"medications">, "name" | "strength"> | null;
+  medications: Pick<Row<"medications">, "name" | "strength" | "therapeutic_class"> | null;
   prescription_schedules: Pick<Row<"prescription_schedules">, "local_time" | "weekdays">[];
 };
 
@@ -29,7 +29,7 @@ export type DashboardAlert = {
 export type DashboardComplication = { id: string; code: string; diagnosedOn: string | null; notes: string | null; updatedAt: string };
 export type DashboardPrescription = {
   id: string; medicationName: string; doseText: string; route: string | null; instructions: string | null;
-  medicationId: string; version: number; updatedAt: string;
+  medicationId: string; therapeuticClass: "antidiabetic" | "antihypertensive" | "other" | null; version: number; updatedAt: string;
   startDate: string; endDate: string | null; schedules: { localTime: string; weekdays: number[] }[]; adherence: AdherenceResult;
 };
 export type DashboardInteraction = {
@@ -156,6 +156,10 @@ function grouped<T extends { patient_id: string | null }>(items: T[]): Map<strin
   return result;
 }
 
+function therapeuticClass(value: string | null | undefined): DashboardPrescription["therapeuticClass"] {
+  return value === "antidiabetic" || value === "antihypertensive" || value === "other" ? value : null;
+}
+
 /** Pure SQL-to-domain adapter, shared by real queries and deterministic tests. */
 export function buildDashboardData(rows: DashboardRows, scope: { unitId: string; roomId: string; timezone: string }, now: Date, hasMorePatients = false): DashboardData {
   const { unitId, roomId, timezone } = scope;
@@ -243,7 +247,9 @@ export function buildDashboardData(rows: DashboardRows, scope: { unitId: string;
       nonresponse: { historical: counts.get(patient.id)?.ever_timed_out ?? 0, pending: counts.get(patient.id)?.currently_unanswered ?? 0 },
       measurements: patientMeasurements, latestGlucose: patientMeasurements.find((m) => m.kind === "glucose") ?? null,
       latestBloodPressure: patientMeasurements.find((m) => m.kind === "blood_pressure") ?? null,
-      prescriptions: (prescriptions.get(patient.id) ?? []).map((p) => ({ id: p.id, medicationId: p.medication_id, version: p.version, updatedAt: p.updated_at, medicationName: p.medications?.name ?? "Medicamento sin nombre disponible", doseText: p.dose_text,
+      prescriptions: (prescriptions.get(patient.id) ?? []).map((p) => ({ id: p.id, medicationId: p.medication_id,
+        therapeuticClass: therapeuticClass(p.medications?.therapeutic_class),
+        version: p.version, updatedAt: p.updated_at, medicationName: p.medications?.name ?? "Medicamento sin nombre disponible", doseText: p.dose_text,
         route: p.route, instructions: p.instructions, startDate: p.start_date, endDate: p.end_date,
         schedules: p.prescription_schedules.map((s) => ({ localTime: s.local_time, weekdays: s.weekdays })),
         adherence: computeAdherence(toAdherenceInput(patientInteractions.filter((i) => i.prescription_id === p.id), patientResponses, now)) })),

@@ -17,6 +17,7 @@ import {
   correctMeasurement,
   correctMedicationResponse,
   adjustPrescription,
+  setMedicationTherapeuticClass,
   addPatientComplication,
   deactivatePatientComplication,
   type ResolveAlertRpcInput,
@@ -25,6 +26,7 @@ import {
   type AdjustPrescriptionInput,
   type ComplicationInput,
   type DeactivateComplicationInput,
+  type MedicationTherapeuticClassInput,
 } from "@/actions/clinical";
 import type { MedicationResponseCorrectionInput } from "@/contracts/clinical";
 
@@ -82,18 +84,25 @@ function makeSupabase(options: {
   patientFound?: boolean;
   rpc?: { data?: unknown; error?: unknown };
   complicationsResult?: { data: unknown; error: unknown };
+  medicationResult?: { data: unknown; error: unknown };
 } = {}) {
   const patientFound = options.patientFound ?? true;
   const rpcResult = options.rpc ?? { data: null, error: null };
   const complicationsResult = options.complicationsResult ?? { data: { id: complicationId }, error: null };
+  const medicationResult = options.medicationResult ?? { data: { id: medicationId }, error: null };
 
   return {
     from: vi.fn((table: string) => {
       if (table === "patients") return chain({ data: patientFound ? { id: patientId } : null, error: null });
       if (table === "patient_complications") return chain(complicationsResult);
+      if (table === "prescriptions") return chain({ data: { id: prescriptionId }, error: null });
+      if (table === "medications") return chain(medicationResult);
       throw new Error(`tabla inesperada en el mock: ${table}`);
     }),
-    rpc: vi.fn(async (_fn: string, _args: Record<string, unknown>) => rpcResult),
+    rpc: vi.fn(async (...args: [string, Record<string, unknown>]) => {
+      void args;
+      return rpcResult;
+    }),
   };
 }
 
@@ -362,5 +371,38 @@ describe("deactivatePatientComplication", () => {
   it("exige un motivo no vacío", async () => {
     const result = await deactivatePatientComplication({ ...input, reason: "" });
     expect(result.error?.code).toBe("VALIDATION");
+  });
+});
+
+describe("setMedicationTherapeuticClass", () => {
+  const input: MedicationTherapeuticClassInput = {
+    patientId,
+    prescriptionId,
+    medicationId,
+    therapeuticClass: "antidiabetic",
+  };
+
+  it("valida la receta activa y actualiza solo el medicamento de la unidad", async () => {
+    const supabase = makeSupabase();
+    createClient.mockResolvedValue(supabase);
+
+    const result = await setMedicationTherapeuticClass(input);
+
+    expect(result).toEqual({ data: { id: medicationId }, error: null });
+    const prescriptionBuilder = supabase.from.mock.results[1]?.value;
+    expect(prescriptionBuilder.eq).toHaveBeenCalledWith("patient_id", patientId);
+    expect(prescriptionBuilder.eq).toHaveBeenCalledWith("status", "active");
+    const medicationBuilder = supabase.from.mock.results[2]?.value;
+    expect(medicationBuilder.update).toHaveBeenCalledWith({ therapeutic_class: "antidiabetic" });
+    expect(medicationBuilder.eq).toHaveBeenCalledWith("unit_id", unitId);
+  });
+
+  it("devuelve CONFLICT cuando el medicamento ya no se puede actualizar", async () => {
+    const supabase = makeSupabase({ medicationResult: { data: null, error: null } });
+    createClient.mockResolvedValue(supabase);
+
+    const result = await setMedicationTherapeuticClass(input);
+
+    expect(result.error?.code).toBe("CONFLICT");
   });
 });
