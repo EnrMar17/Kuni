@@ -14,7 +14,7 @@ function SubmitButton() {
       disabled={pending}
       type="submit"
     >
-      {pending ? "Verificando…" : "Entrar a la unidad"}
+      {pending ? "Verificando…" : "Iniciar sesión"}
       {!pending ? <span aria-hidden="true">→</span> : null}
     </button>
   );
@@ -59,9 +59,6 @@ export function LoginForm({ redirectTo = "/dashboard", initialError = null }: {
         </p>
       ) : null}
       <SubmitButton />
-      <p className="text-center text-[11px] leading-5 text-slate-400">
-        Para recuperar tu acceso, contacta a quien administra las cuentas de tu unidad.
-      </p>
     </form>
   );
 }

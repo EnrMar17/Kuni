@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import { logout } from "@/actions/auth";
+import { ClinicalHeader } from "@/components/clinical-header";
 import type { DashboardData, DashboardPatient } from "@/lib/domain/dashboard";
 import { dateTime, filterPatients, initials, measurementChart, measurementDescription, percent, riskLabels } from "./presentation";
 
@@ -58,7 +58,7 @@ function SectionArrow({ label, onClick }: { label: string; onClick: () => void }
 type Room = { name: string; doctor: { fullName: string } };
 
 function scrollToSection(id: string) {
-  document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  document.getElementById(id)?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
 }
 
 function presentPatient(patient: DashboardPatient | null, timezone: string) {
@@ -128,33 +128,7 @@ export function ClinicalDashboard({ room, unitName, data }: { room: Room; unitNa
 
   return (
     <div className="relative w-full max-w-[1480px] overflow-hidden rounded-[36px] border border-slate-200/70 bg-[#f7f8fc] p-4 shadow-2xl md:p-8">
-      <header className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4 border-b border-slate-200/50 pb-6">
-        <Link aria-label="Ir al dashboard" className="grid size-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-600 text-white shadow-md shadow-indigo-200" href="/dashboard"><Icon name="heart" className="size-7" /></Link>
-          <nav aria-label="Navegación principal" className="flex w-fit max-w-full justify-self-center items-center gap-1.5 overflow-x-auto rounded-full border border-slate-100 bg-white p-1.5 shadow-sm">
-            <Link className="flex shrink-0 items-center gap-2 rounded-full bg-[#001d39] px-4 py-2.5 text-xs font-semibold text-white shadow-sm 2xl:px-5 2xl:text-sm" href="/dashboard"><Icon name="grid" />Dashboard</Link>
-            <button className="flex shrink-0 items-center gap-2 rounded-full px-3 py-2.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50 2xl:px-4 2xl:text-sm" onClick={selectCensus} type="button"><Icon name="users" className="size-4 text-slate-400" /><span className="2xl:hidden">Pacientes</span><span className="hidden 2xl:inline">Pacientes / Censo</span></button>
-            <button className="flex shrink-0 items-center gap-2 rounded-full px-3 py-2.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50 2xl:px-4 2xl:text-sm" onClick={() => { setPriority("high"); scrollToSection("pacientes"); }} type="button"><Icon name="alert" className="size-4 text-slate-400" /><span className="2xl:hidden">Triaje</span><span className="hidden 2xl:inline">Triaje crítico</span><span className="font-mono-data rounded-full border border-rose-200 bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold text-rose-700">{data.metrics.highRiskPatients}</span></button>
-            <button className="flex shrink-0 items-center gap-2 rounded-full px-3 py-2.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50 2xl:px-4 2xl:text-sm" onClick={() => scrollToSection("citas")} type="button"><Icon name="calendar" className="size-4 text-slate-400" /><span className="2xl:hidden">Citas</span><span className="hidden 2xl:inline">Próximas citas</span><span className="font-mono-data rounded-full border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700">{data.appointments.length}</span></button>
-          </nav>
-        <div className="flex shrink-0 items-center gap-3">
-          <button onClick={() => { const first = data.alerts[0]; if (first) setSelectedId(first.patientId); scrollToSection("ficha"); }} disabled={!data.alerts.length} aria-label="Revisar alertas del paciente" className="relative grid size-11 place-items-center rounded-full border border-slate-200/70 bg-white text-slate-600 shadow-sm" type="button"><Icon name="bell" className="size-5" />{data.alerts.length > 0 ? <span className="absolute right-2 top-2 size-2.5 animate-pulse rounded-full bg-[#e2525c] ring-2 ring-white" /> : null}</button>
-          <button onClick={() => scrollToSection("interacciones")} aria-label="Historial de interacciones" className="grid size-11 place-items-center rounded-full border border-slate-200/70 bg-white text-emerald-600 shadow-sm" type="button"><Icon name="chat" className="size-5" /></button>
-          <Link href="/consultorios" title="Cambiar consultorio" className="hidden items-center gap-3 rounded-full border border-slate-200/80 bg-white py-1.5 pl-2 pr-4 shadow-sm sm:flex">
-            <div className="grid size-9 place-items-center rounded-full bg-slate-200 text-xs font-bold text-slate-700">{room.doctor.fullName.split(" ").filter((part) => !part.includes(".")).slice(0, 2).map((part) => part[0]).join("")}</div>
-            <div className="leading-tight"><p className="text-xs font-bold text-slate-800">{room.doctor.fullName}</p><p className="text-[10px] font-medium text-slate-400">{room.name}</p></div>
-          </Link>
-          <form action={logout}><button className="rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 shadow-sm hover:bg-slate-50" type="submit">Salir</button></form>
-        </div>
-      </header>
-
-      <div className="mt-3 flex justify-center">
-        <button className="flex items-center gap-2 rounded-full border border-indigo-100 bg-white px-4 py-2 text-xs font-bold text-indigo-700 shadow-sm transition hover:border-indigo-200 hover:bg-indigo-50" onClick={() => scrollToSection("metricas")} type="button">
-          <Icon name="chart" className="size-4" />
-          Indicadores
-          <span className="hidden border-l border-indigo-100 pl-2 font-medium text-slate-400 sm:inline">Indicadores del consultorio</span>
-          <span aria-hidden="true" className="text-sm leading-none">→</span>
-        </button>
-      </div>
+      <ClinicalHeader context={{ unitName, roomName: room.name, doctorName: room.doctor.fullName }} data={data} />
 
       <section className="mb-6 mt-5 flex flex-col justify-between gap-5 lg:flex-row lg:items-center">
         <div><h1 className="text-3xl font-extrabold tracking-tight text-slate-900 lg:text-4xl">Hola, {doctorFirstName}</h1><p className="mt-1 text-base font-medium text-slate-500">Tienes <span className="font-mono-data text-lg font-bold text-[#e2525c]">{data.metrics.highRiskPatients} pacientes</span> con prioridad alta</p></div>
@@ -171,7 +145,7 @@ export function ClinicalDashboard({ room, unitName, data }: { room: Room; unitNa
             <article className="dashboard-shadow-soft flex min-h-[140px] flex-col justify-between rounded-3xl border border-slate-100 bg-white p-5"><div className="flex items-center justify-between"><span className="text-xs font-bold text-slate-500">Glucosa en ayuno</span><span className="grid size-8 place-items-center rounded-full bg-indigo-50 text-indigo-600"><Icon name="heart" /></span></div><svg aria-hidden="true" className="my-2.5 h-10 w-full" preserveAspectRatio="none" viewBox="0 0 200 40"></svg><div><p><span className="font-mono-data text-2xl font-extrabold text-slate-900">{data.metrics.meanFastingGlucoseMgDl?.toLocaleString("es-MX", { maximumFractionDigits: 1 }) ?? "Sin datos"}</span> <span className="text-[11px] font-bold text-slate-400">mg/dL</span></p><p className="mt-0.5 text-[10px] font-semibold text-emerald-600">Promedio <span className="text-slate-400">de {data.metrics.fastingGlucoseCount} lecturas en 30 días</span></p></div></article>
             <article className="dashboard-shadow-soft flex min-h-[140px] flex-col justify-between rounded-3xl border border-slate-100 bg-white p-5"><div className="flex items-center justify-between"><span className="text-xs font-bold text-slate-500">Alertas críticas</span><span className="grid size-8 place-items-center rounded-full bg-red-50 text-[#e2525c]"><Icon name="alert" /></span></div><div className="my-2.5 flex h-10 items-end justify-between gap-1.5 px-1"></div><div><p><span className="font-mono-data text-2xl font-extrabold text-[#e2525c]">{data.metrics.criticalAlerts}</span> <span className="text-[11px] font-bold text-slate-400">alertas</span></p><p className="mt-0.5 truncate text-[10px] font-medium text-slate-400">{data.metrics.activeAlerts} alertas activas registradas</p></div></article>
             <article className="dashboard-shadow-soft flex min-h-[140px] flex-col justify-between rounded-3xl border border-slate-100 bg-white p-5"><div className="flex items-center justify-between"><span className="text-xs font-bold text-slate-500">Adherencia confirmada</span><span className="grid size-8 place-items-center rounded-full bg-sky-50 text-sky-500"><Icon name="chat" /></span></div><div className="my-3 h-5 overflow-hidden rounded-full bg-slate-100 p-0.5"><div className="h-full rounded-full bg-sky-400" style={{ width: `${data.metrics.adherence.confirmedAdherencePct ?? 0}%` }} /></div><div><p className="font-mono-data text-2xl font-extrabold text-slate-900">{percent(data.metrics.adherence.confirmedAdherencePct)}</p><p className="font-mono-data mt-0.5 text-[10px] font-semibold text-slate-500">Cobertura {percent(data.metrics.adherence.responseCoveragePct)} · {data.metrics.adherence.u} desconocidos</p></div></article>
-            <button disabled title="El alta de pacientes estará disponible al completar el formulario clínico." className="group flex min-h-[140px] flex-col items-center justify-center gap-2 rounded-3xl border-2 border-dashed border-slate-300 p-5 text-center transition hover:border-indigo-400 hover:bg-indigo-50/30" type="button"><span className="grid size-10 place-items-center rounded-full bg-[#001d39] text-white shadow-sm transition group-hover:scale-110"><Icon name="plus" className="size-5" /></span><span className="text-xs font-bold text-slate-700">Nuevo paciente</span><span className="text-[10px] font-medium text-slate-400">Alta aún no disponible</span></button>
+            <Link className="group flex min-h-[140px] flex-col items-center justify-center gap-2 rounded-3xl border-2 border-dashed border-slate-300 p-5 text-center transition hover:-translate-y-0.5 hover:border-indigo-400 hover:bg-indigo-50/30" href="/pacientes/nuevo"><span className="grid size-10 place-items-center rounded-full bg-[#001d39] text-white shadow-sm transition group-hover:scale-110"><Icon name="plus" className="size-5" /></span><span className="text-xs font-bold text-slate-700">Nuevo paciente</span><span className="text-[10px] font-medium text-slate-400">Preparar alta clínica</span></Link>
           </section>
 
           <div className="grid grid-cols-1 gap-6 md:grid-cols-12">
