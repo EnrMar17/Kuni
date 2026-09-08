@@ -20,7 +20,8 @@ export async function savePatient(input: SavePatientInput): Promise<ApiResult<{ 
       p_doctor_id: context.consultingRoom.doctorId, p_input: value.input };
     const response = value.revision
       ? await supabase.rpc("update_patient_registration", { ...args, p_revision: value.revision, p_reason: value.reason })
-      : await supabase.rpc("register_patient", args);
+      : await supabase.rpc("register_patient", { ...args,
+          p_prescription: value.initialCare?.prescription ?? null, p_plans: value.initialCare?.plans ?? null });
     if (response.error) {
       const failure = mapClinicalRpcFailure(response.error);
       const messages = {

@@ -25,11 +25,20 @@ beforeEach(() => {
   // sin esto, un WHATSAPP_PROVIDER real en el entorno filtraría entre tests.
   for (const key of [
     "WHATSAPP_PROVIDER",
+    "MESSAGE_PROVIDER",
     "TWILIO_ACCOUNT_SID",
     "TWILIO_AUTH_TOKEN",
     "TWILIO_WHATSAPP_FROM",
     "TWILIO_APPOINTMENT_CONTENT_SID",
     "APP_PUBLIC_URL",
+    "SMS_GATEWAY_BASE_URL",
+    "SMS_GATEWAY_USERNAME",
+    "SMS_GATEWAY_PASSWORD",
+    "SMS_GATEWAY_TOKEN",
+    "SMS_GATEWAY_DEVICE_ID",
+    "SMS_GATEWAY_SIM_NUMBER",
+    "SMS_GATEWAY_TTL_SECONDS",
+    "SMS_GATEWAY_TIMEOUT_MS",
     "CRON_SECRET",
   ]) {
     delete process.env[key];
@@ -87,5 +96,33 @@ describe("serverEnv — CRON_SECRET", () => {
   it("rechaza un valor demasiado corto (protección débil no sirve como protección)", async () => {
     setEnv({ CRON_SECRET: "corto" });
     await expect(loadServerEnv()).rejects.toThrow(/CRON_SECRET/);
+  });
+});
+
+describe("serverEnv — SMSGate", () => {
+  it("exige URL y credenciales cuando MESSAGE_PROVIDER=smsgate", async () => {
+    setEnv({ MESSAGE_PROVIDER: "smsgate" });
+    await expect(loadServerEnv()).rejects.toThrow(/SMS_GATEWAY_BASE_URL/);
+  });
+
+  it("acepta JWT y conserva mock como fallback histórico", async () => {
+    setEnv({
+      MESSAGE_PROVIDER: "smsgate",
+      SMS_GATEWAY_BASE_URL: "https://api.sms-gate.app/3rdparty/v1",
+      SMS_GATEWAY_TOKEN: "token-con-scope-messages-send",
+    });
+    const { serverEnv } = await loadServerEnv();
+    expect(serverEnv.WHATSAPP_PROVIDER).toBe("mock");
+    expect(serverEnv.MESSAGE_PROVIDER).toBe("smsgate");
+    expect(serverEnv.SMS_GATEWAY_TTL_SECONDS).toBe(3600);
+  });
+
+  it("requiere usuario y contraseña juntos para Basic Auth", async () => {
+    setEnv({
+      MESSAGE_PROVIDER: "smsgate",
+      SMS_GATEWAY_BASE_URL: "https://gateway.example.test/api",
+      SMS_GATEWAY_USERNAME: "kuni",
+    });
+    await expect(loadServerEnv()).rejects.toThrow(/SMS_GATEWAY_PASSWORD/);
   });
 });

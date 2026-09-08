@@ -21,7 +21,9 @@ import { serverEnv } from "@/lib/env/server";
  * / `webhook_events.provider` (constraint SQL: 'twilio' | 'meta' | 'demo').
  */
 export interface WhatsAppProvider {
-  readonly dbProviderValue: "twilio" | "meta" | "demo";
+  readonly dbProviderValue: "twilio" | "meta" | "demo" | "smsgate";
+  /** SMS no está sujeto a la ventana/plantillas de WhatsApp. */
+  readonly channel: "whatsapp" | "sms";
 
   sendTemplateMessage(input: SendTemplateMessageInput): Promise<WhatsAppSendResult>;
 
@@ -115,6 +117,7 @@ export class WhatsAppProviderError extends Error {
  */
 class DemoWhatsAppProvider implements WhatsAppProvider {
   readonly dbProviderValue = "demo" as const;
+  readonly channel = "whatsapp" as const;
 
   async sendTemplateMessage(input: SendTemplateMessageInput): Promise<WhatsAppSendResult> {
     return this.fakeAccept(input.toE164);
@@ -147,7 +150,8 @@ let cachedProvider: WhatsAppProvider | null = null;
 export async function getWhatsAppProvider(): Promise<WhatsAppProvider> {
   if (cachedProvider) return cachedProvider;
 
-  switch (serverEnv.WHATSAPP_PROVIDER) {
+  const selectedProvider = serverEnv.MESSAGE_PROVIDER ?? serverEnv.WHATSAPP_PROVIDER;
+  switch (selectedProvider) {
     case "mock":
       cachedProvider = new DemoWhatsAppProvider();
       return cachedProvider;
@@ -160,5 +164,10 @@ export async function getWhatsAppProvider(): Promise<WhatsAppProvider> {
       throw new Error(
         "WHATSAPP_PROVIDER=meta no tiene adaptador implementado todavía (alternativa del plan, sección 6).",
       );
+    case "smsgate": {
+      const { createSmsGateProvider } = await import("./smsgate");
+      cachedProvider = createSmsGateProvider();
+      return cachedProvider;
+    }
   }
 }

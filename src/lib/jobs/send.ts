@@ -102,6 +102,19 @@ async function sendOne(
     return markFailed("patient_not_found", "El paciente de esta interacción ya no existe o no tiene teléfono.");
   }
 
+  // SMS tradicional usa la red del operador y no tiene la ventana de 24 h
+  // ni plantillas aprobadas de WhatsApp. El contenido clínico y la
+  // revalidación de consentimiento permanecen exactamente en el mismo flujo.
+  if (ctx.provider.channel === "sms") {
+    const body = renderMessageBody(interaction);
+    if (!body) {
+      return markFailed("unsupported_kind", `No hay redacción de SMS para kind='${interaction.kind}'.`);
+    }
+    return sendAndRecord(ctx, interaction, () =>
+      ctx.provider.sendFreeformMessage({ toE164: ctx.phoneE164!, body }),
+    );
+  }
+
   if (!ctx.recentSession) {
     const template = templateFor(interaction);
     if (!template) {

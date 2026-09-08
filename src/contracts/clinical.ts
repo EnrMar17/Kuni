@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+// Opción del picker de medicamentos para la receta inicial del alta (U08
+// fase 2). Vive aquí (no en lib/queries, que es server-only) porque un
+// Client Component necesita importar el tipo sin arrastrar el pragma.
+export type MedicationOption = { id: string; name: string; strength: string | null };
+
 export const riskLevelSchema = z.enum(["low", "medium", "high", "unknown"]);
 export const appointmentStatusSchema = z.enum(["scheduled", "completed", "missed", "cancelled"]);
 export const alertStatusSchema = z.enum(["open", "acknowledged", "resolved", "dismissed"]);
@@ -171,6 +176,64 @@ export type MedicationResponseCorrectionInput = z.infer<typeof medicationRespons
 export type PrescriptionScheduleEntry = z.infer<typeof prescriptionScheduleEntrySchema>;
 export type PrescriptionAdjustmentInput = z.infer<typeof prescriptionAdjustmentInputSchema>;
 export type UrgentMarkInput = z.infer<typeof urgentMarkInputSchema>;
+
+// U08 fase 2 — receta y planes de monitoreo iniciales, exclusivos del alta
+// (register_patient en 0009_patient_initial_care.sql; nunca en la edición,
+// cuya firma pública ni siquiera los expone). Reutiliza el mismo shape de
+// horario que prescriptionAdjustmentInputSchema para no duplicar reglas.
+export const initialPrescriptionSchema = z.object({
+  medicationId: z.uuid(),
+  doseText: z.string().trim().min(1),
+  instructions: z.string().trim(),
+  endsAt: z.iso.date().nullable(),
+  schedules: z.array(prescriptionScheduleEntrySchema).min(1).max(168),
+}).strict();
+
+// Los ocho umbrales de cada variable van nulos por default a propósito — NULL
+// significa "sin configurar todavía", igual que en monitoring_plans (0001).
+// El servidor (CHECK constraints + private.save_patient) es la última
+// palabra sobre coherencia de rangos; aquí solo se valida forma y que un plan
+// de una variable no traiga umbrales de la otra.
+const monitoringPlanThresholdsSchema = z.object({
+  measurementContext: z.enum(["fasting", "before_meal", "after_meal", "random", "resting", "unspecified"]).nullable(),
+  glucoseMinMgDl: z.number().positive().nullable(),
+  glucoseMaxMgDl: z.number().positive().nullable(),
+  criticalGlucoseMinMgDl: z.number().positive().nullable(),
+  criticalGlucoseMaxMgDl: z.number().positive().nullable(),
+  systolicMinMmHg: z.number().int().positive().nullable(),
+  systolicMaxMmHg: z.number().int().positive().nullable(),
+  diastolicMinMmHg: z.number().int().positive().nullable(),
+  diastolicMaxMmHg: z.number().int().positive().nullable(),
+  criticalSystolicMinMmHg: z.number().int().positive().nullable(),
+  criticalSystolicMaxMmHg: z.number().int().positive().nullable(),
+  criticalDiastolicMinMmHg: z.number().int().positive().nullable(),
+  criticalDiastolicMaxMmHg: z.number().int().positive().nullable(),
+});
+export const initialMonitoringPlanSchema = z.discriminatedUnion("kind", [
+  monitoringPlanThresholdsSchema.extend({
+    kind: z.literal("glucose"),
+    localTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Formato HH:MM."),
+    weekdays: z.array(z.number().int().min(1).max(7)).min(1).max(7).refine(d => new Set(d).size === d.length),
+    systolicMinMmHg: z.null(), systolicMaxMmHg: z.null(), diastolicMinMmHg: z.null(), diastolicMaxMmHg: z.null(),
+    criticalSystolicMinMmHg: z.null(), criticalSystolicMaxMmHg: z.null(), criticalDiastolicMinMmHg: z.null(), criticalDiastolicMaxMmHg: z.null(),
+  }).strict(),
+  monitoringPlanThresholdsSchema.extend({
+    kind: z.literal("blood_pressure"),
+    localTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Formato HH:MM."),
+    weekdays: z.array(z.number().int().min(1).max(7)).min(1).max(7).refine(d => new Set(d).size === d.length),
+    measurementContext: z.null(), glucoseMinMgDl: z.null(), glucoseMaxMgDl: z.null(),
+    criticalGlucoseMinMgDl: z.null(), criticalGlucoseMaxMgDl: z.null(),
+  }).strict(),
+]);
+export const initialCareSchema = z.object({
+  prescription: initialPrescriptionSchema.nullable(),
+  plans: z.array(initialMonitoringPlanSchema).max(2)
+    .refine(plans => new Set(plans.map(p => p.kind)).size === plans.length, "Un solo plan inicial por variable."),
+}).strict();
+
+export type InitialPrescription = z.infer<typeof initialPrescriptionSchema>;
+export type InitialMonitoringPlan = z.infer<typeof initialMonitoringPlanSchema>;
+export type InitialCare = z.infer<typeof initialCareSchema>;
 
 export type ActionError = {
   code: string;

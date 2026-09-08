@@ -46,23 +46,25 @@ export function ClinicalHeader({ context, data }: { context: ClinicalTopBarConte
  const room = { name: context.roomName, doctor: { fullName: context.doctorName } };
  const active = (path: string) => pathname === path || pathname.startsWith(path + "/");
  const navClass = (path: string) => "clinical-nav-link " + (active(path) ? "clinical-nav-active" : "");
- return (      <header className="clinical-header">
+ const doctorInitials = room.doctor.fullName.split(" ").filter((part) => !part.includes(".")).slice(0, 2).map((part) => part[0]).join("");
+ return (
+      <header className="clinical-header">
         <Link aria-label="Ir al dashboard" className="grid size-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-600 text-white shadow-md shadow-indigo-200" href="/dashboard"><Icon name="heart" className="size-7" /></Link>
           <nav aria-label="Navegación principal" className="flex w-fit max-w-full justify-self-center items-center gap-1.5 overflow-x-auto rounded-full border border-slate-100 bg-white p-1.5 shadow-sm">
             <Link className={navClass("/dashboard")} aria-current={active("/dashboard") ? "page" : undefined} href="/dashboard"><Icon name="grid" />Dashboard</Link>
             <Link className={navClass("/pacientes")} aria-current={active("/pacientes") ? "page" : undefined} href="/pacientes"><Icon name="users" className="size-4 text-slate-400" /><span className="2xl:hidden">Pacientes</span><span className="hidden 2xl:inline">Pacientes / Censo</span></Link>
-            <Link className={navClass("/alertas")} aria-current={active("/alertas") ? "page" : undefined} href="/alertas"><Icon name="alert" className="size-4 text-slate-400" /><span className="2xl:hidden">Triaje</span><span className="hidden 2xl:inline">Triaje crítico</span><span className="font-mono-data rounded-full border border-rose-200 bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold text-rose-700">{data.metrics.highRiskPatients}</span></Link>
-            <Link className={navClass("/citas")} aria-current={active("/citas") ? "page" : undefined} href="/citas"><Icon name="calendar" className="size-4 text-slate-400" /><span className="2xl:hidden">Citas</span><span className="hidden 2xl:inline">Próximas citas</span><span className="font-mono-data rounded-full border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700">{data.appointments.length}</span></Link>
+            <Link className={navClass("/alertas")} aria-current={active("/alertas") ? "page" : undefined} href="/alertas" aria-label={`Triaje crítico, ${data.metrics.highRiskPatients} con prioridad alta`}><Icon name="alert" className="size-4 text-slate-400" /><span className="2xl:hidden">Triaje</span><span className="hidden 2xl:inline">Triaje crítico</span><span aria-hidden="true" className="font-mono-data rounded-full border border-rose-200 bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold text-rose-800">{data.metrics.highRiskPatients}</span></Link>
+            <Link className={navClass("/citas")} aria-current={active("/citas") ? "page" : undefined} href="/citas" aria-label={`Citas, ${data.appointments.length} programadas`}><Icon name="calendar" className="size-4 text-slate-400" /><span className="2xl:hidden">Citas</span><span className="hidden 2xl:inline">Próximas citas</span><span aria-hidden="true" className="font-mono-data rounded-full border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-800">{data.appointments.length}</span></Link>
             <Link className={navClass("/estadisticas")} aria-current={active("/estadisticas") ? "page" : undefined} href="/estadisticas"><Icon name="chart" />Estadísticas</Link>
           </nav>
-        <div className="flex shrink-0 items-center gap-3">
-          <button onClick={() => router.push("/alertas")} aria-label="Revisar alertas del paciente" className="relative grid size-11 place-items-center rounded-full border border-slate-200/70 bg-white text-slate-600 shadow-sm" type="button"><Icon name="bell" className="size-5" />{data.alerts.length > 0 ? <span className="absolute right-2 top-2 size-2.5 animate-pulse rounded-full bg-[#e2525c] ring-2 ring-white" /> : null}</button>
-          <button onClick={() => router.push("/dashboard#interacciones")} aria-label="Historial de interacciones" className="grid size-11 place-items-center rounded-full border border-slate-200/70 bg-white text-emerald-600 shadow-sm" type="button"><Icon name="chat" className="size-5" /></button>
-          <Link href="/consultorios" title="Cambiar consultorio" className="hidden items-center gap-3 rounded-full border border-slate-200/80 bg-white py-1.5 pl-2 pr-4 shadow-sm sm:flex">
-            <div className="grid size-9 place-items-center rounded-full bg-slate-200 text-xs font-bold text-slate-700">{room.doctor.fullName.split(" ").filter((part) => !part.includes(".")).slice(0, 2).map((part) => part[0]).join("")}</div>
-            <div className="leading-tight"><p className="text-xs font-bold text-slate-800">{room.doctor.fullName}</p><p className="text-[10px] font-medium text-slate-400">{room.name}</p></div>
+        <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+          <button onClick={() => router.push("/alertas")} aria-label={data.alerts.length > 0 ? `Revisar alertas, ${data.alerts.length} abiertas` : "Revisar alertas del consultorio"} className="relative grid size-11 place-items-center rounded-full border border-slate-200/70 bg-white text-slate-600 shadow-sm" type="button"><Icon name="bell" className="size-5" />{data.alerts.length > 0 ? <span aria-hidden="true" className="absolute right-2 top-2 size-2.5 rounded-full bg-[#e2525c] ring-2 ring-white motion-safe:animate-pulse" /> : null}</button>
+          <button onClick={() => router.push("/dashboard#interacciones")} aria-label="Historial de interacciones" className="grid size-11 place-items-center rounded-full border border-slate-200/70 bg-white text-emerald-700 shadow-sm" type="button"><Icon name="chat" className="size-5" /></button>
+          <Link href="/consultorios" aria-label={`Cambiar consultorio. Actual: ${room.name}, ${room.doctor.fullName}`} title="Cambiar consultorio" className="flex items-center gap-2 rounded-full border border-slate-200/80 bg-white py-1.5 pl-2 pr-2 shadow-sm sm:gap-3 sm:pr-4">
+            <div className="grid size-9 place-items-center rounded-full bg-slate-200 text-xs font-bold text-slate-800">{doctorInitials}</div>
+            <div className="hidden leading-tight sm:block"><p className="text-xs font-bold text-slate-800">{room.doctor.fullName}</p><p className="text-[10px] font-medium text-slate-500">{room.name}</p></div>
           </Link>
-          <form action={logout}><button className="rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 shadow-sm hover:bg-slate-50" type="submit">Salir</button></form>
+          <form action={logout}><button className="rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50" type="submit">Salir</button></form>
         </div>
       </header>);
 }

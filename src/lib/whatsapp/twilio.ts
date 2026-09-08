@@ -23,6 +23,7 @@ import {
  */
 class TwilioWhatsAppProvider implements WhatsAppProvider {
   readonly dbProviderValue = "twilio" as const;
+  readonly channel = "whatsapp" as const;
 
   private readonly client: ReturnType<typeof twilio>;
   private readonly authToken: string;

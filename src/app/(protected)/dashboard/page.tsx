@@ -20,7 +20,7 @@ export default async function DashboardPage() {
   const data = await getDashboardData();
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#e8ebf2] p-3 text-slate-800 md:p-6 lg:p-8">
+    <main id="contenido-principal" className="flex min-h-screen items-center justify-center bg-[#e8ebf2] p-3 text-slate-800 md:p-6 lg:p-8">
       <ClinicalDashboard
         key={room.id}
         room={{ name: room.name, doctor: { fullName: room.doctorName } }}

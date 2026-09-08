@@ -2,10 +2,13 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
-import { useForm, useWatch } from "react-hook-form";
+import { useEffect, useId, useRef, useState } from "react";
+import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import { savePatient } from "@/actions/patients";
 import { savePatientSchema, type PatientEditData } from "@/contracts/patient-registration";
+import type { InitialCare, MedicationOption } from "@/contracts/clinical";
+
+type ScheduleRow = { weekday: string; localTime: string };
 
 type PatientDraft = {
   fullName: string;
@@ -23,7 +26,42 @@ type PatientDraft = {
   consentMethod: string;
   evidenceNote: string;
   reason: string;
+  // U08 fase 2 — alta únicamente; "sin capturar" en el picker/inputs queda
+  // como "" y se traduce a null al enviar, nunca a un valor por defecto.
+  prescriptionEnabled: boolean;
+  prescriptionMedicationId: string;
+  prescriptionDoseText: string;
+  prescriptionInstructions: string;
+  prescriptionEndsAt: string;
+  prescriptionSchedules: ScheduleRow[];
+  glucosePlanEnabled: boolean;
+  glucoseLocalTime: string;
+  glucoseWeekdays: string[];
+  glucoseContext: string;
+  glucoseMin: string;
+  glucoseMax: string;
+  glucoseCriticalMin: string;
+  glucoseCriticalMax: string;
+  bpPlanEnabled: boolean;
+  bpLocalTime: string;
+  bpWeekdays: string[];
+  systolicMin: string;
+  systolicMax: string;
+  diastolicMin: string;
+  diastolicMax: string;
+  systolicCriticalMin: string;
+  systolicCriticalMax: string;
+  diastolicCriticalMin: string;
+  diastolicCriticalMax: string;
 };
+
+const weekdayLabels = [["1", "Lun"], ["2", "Mar"], ["3", "Mié"], ["4", "Jue"], ["5", "Vie"], ["6", "Sáb"], ["7", "Dom"]] as const;
+
+/** "" (sin capturar) -> null; un número tal cual. Nunca inventa un cero. */
+function numberOrNull(value: string): number | null {
+  const trimmed = value.trim();
+  return trimmed === "" ? null : Number(trimmed);
+}
 
 const diagnoses = [
   ["diabetes_type_1", "Diabetes tipo 1"],
@@ -42,16 +80,18 @@ function validateBirthDate(value: string) {
   );
 }
 
-export function PatientCreateForm({ initial }: { initial?: PatientEditData }) {
+export function PatientCreateForm({ initial, medications = [] }: { initial?: PatientEditData; medications?: MedicationOption[] }) {
   const router = useRouter();
   const patientId = useRef(initial?.patientId);
   const saving = useRef(false);
+  const saveErrorRef = useRef<HTMLParagraphElement>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const {
     register,
     handleSubmit,
     control,
     setError,
+    setFocus,
     formState: { errors, isSubmitting },
   } = useForm<PatientDraft>({
     mode: "onTouched",
@@ -62,18 +102,65 @@ export function PatientCreateForm({ initial }: { initial?: PatientEditData }) {
       diagnoses: [],
       consentGranted: false,
       consentMethod: "in_person",
+      prescriptionEnabled: false, prescriptionMedicationId: "", prescriptionDoseText: "", prescriptionInstructions: "",
+      prescriptionEndsAt: "", prescriptionSchedules: [{ weekday: "1", localTime: "08:00" }],
+      glucosePlanEnabled: false, glucoseLocalTime: "07:00", glucoseWeekdays: [], glucoseContext: "fasting",
+      glucoseMin: "", glucoseMax: "", glucoseCriticalMin: "", glucoseCriticalMax: "",
+      bpPlanEnabled: false, bpLocalTime: "09:00", bpWeekdays: [],
+      systolicMin: "", systolicMax: "", diastolicMin: "", diastolicMax: "",
+      systolicCriticalMin: "", systolicCriticalMax: "", diastolicCriticalMin: "", diastolicCriticalMax: "",
       ...(initial ? { ...initial.input, curp: initial.input.curp ?? "", bloodType: initial.input.bloodType ?? "",
         consentGranted: initial.consentGranted } : {}),
     },
   });
   const consent = useWatch({ control, name: "consentGranted" });
   const consentChanged = initial ? consent !== initial.consentGranted : consent;
+  const prescriptionEnabled = useWatch({ control, name: "prescriptionEnabled" });
+  const glucosePlanEnabled = useWatch({ control, name: "glucosePlanEnabled" });
+  const bpPlanEnabled = useWatch({ control, name: "bpPlanEnabled" });
+  const { fields: scheduleFields, append: appendSchedule, remove: removeSchedule } = useFieldArray({ control, name: "prescriptionSchedules" });
+  const medicationFieldId = useId();
+
+  useEffect(() => {
+    if (!saveError) return;
+    saveErrorRef.current?.focus();
+  }, [saveError]);
+
+  function buildInitialCare(draft: PatientDraft): InitialCare | null {
+    if (initial || (!draft.prescriptionEnabled && !draft.glucosePlanEnabled && !draft.bpPlanEnabled)) return null;
+    const plans: InitialCare["plans"] = [];
+    if (draft.glucosePlanEnabled) {
+      plans.push({ kind: "glucose", localTime: draft.glucoseLocalTime, weekdays: draft.glucoseWeekdays.map(Number),
+        measurementContext: (draft.glucoseContext || null) as InitialCare["plans"][number]["measurementContext"],
+        glucoseMinMgDl: numberOrNull(draft.glucoseMin), glucoseMaxMgDl: numberOrNull(draft.glucoseMax),
+        criticalGlucoseMinMgDl: numberOrNull(draft.glucoseCriticalMin), criticalGlucoseMaxMgDl: numberOrNull(draft.glucoseCriticalMax),
+        systolicMinMmHg: null, systolicMaxMmHg: null, diastolicMinMmHg: null, diastolicMaxMmHg: null,
+        criticalSystolicMinMmHg: null, criticalSystolicMaxMmHg: null, criticalDiastolicMinMmHg: null, criticalDiastolicMaxMmHg: null });
+    }
+    if (draft.bpPlanEnabled) {
+      plans.push({ kind: "blood_pressure", localTime: draft.bpLocalTime, weekdays: draft.bpWeekdays.map(Number),
+        measurementContext: null, glucoseMinMgDl: null, glucoseMaxMgDl: null, criticalGlucoseMinMgDl: null, criticalGlucoseMaxMgDl: null,
+        systolicMinMmHg: numberOrNull(draft.systolicMin), systolicMaxMmHg: numberOrNull(draft.systolicMax),
+        diastolicMinMmHg: numberOrNull(draft.diastolicMin), diastolicMaxMmHg: numberOrNull(draft.diastolicMax),
+        criticalSystolicMinMmHg: numberOrNull(draft.systolicCriticalMin), criticalSystolicMaxMmHg: numberOrNull(draft.systolicCriticalMax),
+        criticalDiastolicMinMmHg: numberOrNull(draft.diastolicCriticalMin), criticalDiastolicMaxMmHg: numberOrNull(draft.diastolicCriticalMax) });
+    }
+    return {
+      prescription: draft.prescriptionEnabled ? {
+        medicationId: draft.prescriptionMedicationId, doseText: draft.prescriptionDoseText,
+        instructions: draft.prescriptionInstructions, endsAt: draft.prescriptionEndsAt || null,
+        schedules: draft.prescriptionSchedules.map(row => ({ weekday: Number(row.weekday), localTime: row.localTime })),
+      } : null,
+      plans,
+    };
+  }
+
   async function submit(draft: PatientDraft) {
     if (saving.current) return;
     setSaveError(null);
     patientId.current ??= crypto.randomUUID();
     const parsed = savePatientSchema.safeParse({ patientId: patientId.current, revision: initial?.revision ?? null,
-      reason: initial ? draft.reason : "Alta de paciente", input: {
+      reason: initial ? draft.reason : "Alta de paciente", initialCare: buildInitialCare(draft), input: {
         fullName: draft.fullName, birthDate: draft.birthDate, sex: draft.sex, clinicalRecord: draft.clinicalRecord,
         curp: draft.curp?.trim().toUpperCase() || null, whatsappE164: draft.whatsappE164,
         bloodType: draft.bloodType || null, diagnoses: draft.diagnoses, initialRisk: draft.initialRisk,
@@ -83,11 +170,24 @@ export function PatientCreateForm({ initial }: { initial?: PatientEditData }) {
         } : null,
       } });
     if (!parsed.success) {
+      let firstField: keyof PatientDraft | null = null;
       for (const issue of parsed.error.issues) {
         const name = (issue.path[0] === "input" ? issue.path[1] : issue.path[0]) as keyof PatientDraft;
-        if (name in draft) setError(name, { message: "Revisa este campo." });
+        if (name in draft) {
+          setError(name, { message: "Revisa este campo." });
+          firstField ??= name;
+        }
       }
       setSaveError("Revisa los datos antes de guardar.");
+      if (firstField && firstField !== "diagnoses") {
+        queueMicrotask(() => {
+          try {
+            setFocus(firstField!);
+          } catch {
+            /* ignore missing field ref */
+          }
+        });
+      }
       return;
     }
     try {
@@ -115,7 +215,7 @@ export function PatientCreateForm({ initial }: { initial?: PatientEditData }) {
     ) : null;
   }
   const a11y = (name: keyof PatientDraft) => ({
-    "aria-invalid": Boolean(errors[name]),
+    "aria-invalid": Boolean(errors[name]) || undefined,
     "aria-describedby": errors[name] ? `${name}-error` : undefined,
   });
 
@@ -238,7 +338,11 @@ export function PatientCreateForm({ initial }: { initial?: PatientEditData }) {
             <p>Diagnósticos y prioridad indicada por el equipo médico.</p>
           </div>
         </div>
-        <fieldset className="mb-6">
+        <fieldset
+          aria-describedby={errors.diagnoses ? "diagnoses-error" : undefined}
+          aria-invalid={Boolean(errors.diagnoses) || undefined}
+          className="mb-6"
+        >
           <legend className="mb-3 text-sm font-bold text-slate-700">
             Diagnósticos
           </legend>
@@ -253,7 +357,6 @@ export function PatientCreateForm({ initial }: { initial?: PatientEditData }) {
                       values.length > 0 ||
                       "Selecciona al menos un diagnóstico.",
                   })}
-                  {...a11y("diagnoses")}
                 />
                 <span>{label}</span>
               </label>
@@ -344,14 +447,163 @@ export function PatientCreateForm({ initial }: { initial?: PatientEditData }) {
           </div>
         ) : null}
       </section>
+      {!initial ? (
+        <section className="form-section">
+          <div className="form-section-heading">
+            <span className="section-number">04</span>
+            <div>
+              <h2>Receta y monitoreo iniciales</h2>
+              <p>Opcional. Se guarda en la misma operación que el alta; se puede omitir y configurar después.</p>
+            </div>
+          </div>
+          <label className="diagnosis-option">
+            <input type="checkbox" disabled={medications.length === 0} {...register("prescriptionEnabled")} />
+            <span>
+              Agregar receta inicial
+              {medications.length === 0 ? <span className="field-hint"> — no hay medicamentos activos en la unidad</span> : null}
+            </span>
+          </label>
+          {prescriptionEnabled ? (
+            <div className="form-fields mt-3 clinical-page-content">
+              <label htmlFor={medicationFieldId}>
+                Medicamento
+                <select id={medicationFieldId} {...register("prescriptionMedicationId", {
+                  validate: value => (!prescriptionEnabled || Boolean(value)) || "Selecciona un medicamento.",
+                })} {...a11y("prescriptionMedicationId")}>
+                  <option value="">Selecciona…</option>
+                  {medications.map(medication => (
+                    <option key={medication.id} value={medication.id}>
+                      {medication.name}{medication.strength ? ` (${medication.strength})` : ""}
+                    </option>
+                  ))}
+                </select>
+                {error("prescriptionMedicationId")}
+              </label>
+              <label>
+                Dosis
+                <input {...register("prescriptionDoseText", {
+                  validate: value => (!prescriptionEnabled || Boolean(value?.trim())) || "Escribe la dosis.",
+                })} {...a11y("prescriptionDoseText")} />
+                {error("prescriptionDoseText")}
+              </label>
+              <label className="sm:col-span-2">
+                Indicaciones
+                <textarea rows={2} {...register("prescriptionInstructions")} />
+              </label>
+              <label>
+                Fecha final <span className="field-hint">Opcional</span>
+                <input type="date" {...register("prescriptionEndsAt")} />
+              </label>
+              <fieldset className="sm:col-span-2">
+                <legend className="mb-2 text-sm font-bold text-slate-700">Horarios</legend>
+                {scheduleFields.map((field, index) => (
+                  <div className="mb-2 flex items-center gap-2" key={field.id}>
+                    <select {...register(`prescriptionSchedules.${index}.weekday` as const)}>
+                      {weekdayLabels.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                    </select>
+                    <input type="time" {...register(`prescriptionSchedules.${index}.localTime` as const)} />
+                    <button className="text-xs font-bold text-rose-700 underline-offset-2 hover:underline disabled:opacity-40"
+                      disabled={scheduleFields.length <= 1} onClick={() => removeSchedule(index)} type="button">
+                      Quitar
+                    </button>
+                  </div>
+                ))}
+                <button className="text-xs font-bold text-indigo-800 underline-offset-2 hover:underline"
+                  onClick={() => appendSchedule({ weekday: "1", localTime: "08:00" })} type="button">
+                  + Agregar horario
+                </button>
+              </fieldset>
+            </div>
+          ) : null}
+          <label className="diagnosis-option mt-4">
+            <input type="checkbox" {...register("glucosePlanEnabled")} />
+            <span>Agregar plan de monitoreo de glucosa</span>
+          </label>
+          {glucosePlanEnabled ? (
+            <div className="form-fields mt-3 clinical-page-content">
+              <label>
+                Hora
+                <input type="time" {...register("glucoseLocalTime")} />
+              </label>
+              <label>
+                Contexto
+                <select {...register("glucoseContext")}>
+                  <option value="fasting">Ayuno</option>
+                  <option value="before_meal">Antes de comer</option>
+                  <option value="after_meal">Después de comer</option>
+                  <option value="random">Aleatorio</option>
+                  <option value="unspecified">Sin especificar</option>
+                </select>
+              </label>
+              <fieldset className="sm:col-span-2">
+                <legend className="mb-2 text-sm font-bold text-slate-700">Días</legend>
+                <div className="flex flex-wrap gap-3">
+                  {weekdayLabels.map(([value, label]) => (
+                    <label className="diagnosis-option" key={value}>
+                      <input type="checkbox" value={value} {...register("glucoseWeekdays")} />
+                      <span>{label}</span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+              <label>Objetivo mínimo (mg/dL) <span className="field-hint">Opcional</span><input type="number" {...register("glucoseMin")} /></label>
+              <label>Objetivo máximo (mg/dL) <span className="field-hint">Opcional</span><input type="number" {...register("glucoseMax")} /></label>
+              <label>Crítico mínimo (mg/dL) <span className="field-hint">Opcional</span><input type="number" {...register("glucoseCriticalMin")} /></label>
+              <label>Crítico máximo (mg/dL) <span className="field-hint">Opcional</span><input type="number" {...register("glucoseCriticalMax")} /></label>
+            </div>
+          ) : null}
+          <label className="diagnosis-option mt-4">
+            <input type="checkbox" {...register("bpPlanEnabled")} />
+            <span>Agregar plan de monitoreo de presión arterial</span>
+          </label>
+          {bpPlanEnabled ? (
+            <div className="form-fields mt-3 clinical-page-content">
+              <label>
+                Hora
+                <input type="time" {...register("bpLocalTime")} />
+              </label>
+              <fieldset className="sm:col-span-2">
+                <legend className="mb-2 text-sm font-bold text-slate-700">Días</legend>
+                <div className="flex flex-wrap gap-3">
+                  {weekdayLabels.map(([value, label]) => (
+                    <label className="diagnosis-option" key={value}>
+                      <input type="checkbox" value={value} {...register("bpWeekdays")} />
+                      <span>{label}</span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+              <label>Sistólica mínima <span className="field-hint">Opcional</span><input type="number" {...register("systolicMin")} /></label>
+              <label>Sistólica máxima <span className="field-hint">Opcional</span><input type="number" {...register("systolicMax")} /></label>
+              <label>Diastólica mínima <span className="field-hint">Opcional</span><input type="number" {...register("diastolicMin")} /></label>
+              <label>Diastólica máxima <span className="field-hint">Opcional</span><input type="number" {...register("diastolicMax")} /></label>
+              <label>Sistólica crítica mín. <span className="field-hint">Opcional</span><input type="number" {...register("systolicCriticalMin")} /></label>
+              <label>Sistólica crítica máx. <span className="field-hint">Opcional</span><input type="number" {...register("systolicCriticalMax")} /></label>
+              <label>Diastólica crítica mín. <span className="field-hint">Opcional</span><input type="number" {...register("diastolicCriticalMin")} /></label>
+              <label>Diastólica crítica máx. <span className="field-hint">Opcional</span><input type="number" {...register("diastolicCriticalMax")} /></label>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
       {initial ? <div className="form-fields"><label>
         Motivo de la edición
         <textarea rows={3} {...register("reason", { validate: value => Boolean(value?.trim()) || "Describe el motivo de la edición." })} {...a11y("reason")} />
         {error("reason")}
       </label></div> : null}
       {saveError ? (
-        <p role="alert" className="field-error">{saveError}</p>
-      ) : null}
+        <p
+          ref={saveErrorRef}
+          role="alert"
+          tabIndex={-1}
+          className="field-error rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 outline-none"
+        >
+          {saveError}
+        </p>
+      ) : (
+        <p aria-live="polite" className="sr-only">
+          {isSubmitting ? "Guardando expediente…" : ""}
+        </p>
+      )}
       <footer className="form-actions">
         <span className="text-xs text-slate-500">
           {initial ? "Edición del expediente" : "Alta de paciente"}
@@ -362,6 +614,7 @@ export function PatientCreateForm({ initial }: { initial?: PatientEditData }) {
           </Link>
           <button
             className="clinical-button clinical-button-primary"
+            disabled={isSubmitting}
             type="submit"
           >
             {isSubmitting ? "Guardando…" : initial ? "Guardar cambios" : "Registrar paciente"}

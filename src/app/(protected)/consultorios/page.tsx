@@ -28,17 +28,17 @@ export default async function ConsultingRoomsPage({ searchParams }: PageProps) {
   const destination = postLoginRedirect(typeof redirectTo === "string" ? redirectTo : null);
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#e8ebf2] p-3 text-slate-800 md:p-6 lg:p-8">
+    <main id="contenido-principal" className="flex min-h-screen items-center justify-center bg-[#e8ebf2] p-3 text-slate-800 md:p-6 lg:p-8">
       <div className="dashboard-shadow-floating w-full max-w-[1180px] overflow-hidden rounded-[36px] border border-slate-200/70 bg-[#f7f8fc] p-5 sm:p-8 lg:p-10">
         <header className="flex items-center justify-between border-b border-slate-200/60 pb-6">
           <KuniMark />
           <div className="flex items-center gap-3">
-            <div className="hidden text-right sm:block">
+            <div className="text-right">
               <p className="text-xs font-bold text-slate-800">{context.unitName}</p>
-              <p className="text-[10px] font-medium text-slate-400">{context.unitCode ?? "Unidad de salud"} · {context.role === "viewer" ? "Solo lectura" : "Acceso clínico"}</p>
+              <p className="text-[10px] font-medium text-slate-500">{context.unitCode ?? "Unidad de salud"} · {context.role === "viewer" ? "Solo lectura" : "Acceso clínico"}</p>
             </div>
             <form action={logout}>
-              <button className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50" type="submit">
+              <button className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50" type="submit">
                 Salir
               </button>
             </form>
@@ -59,7 +59,7 @@ export default async function ConsultingRoomsPage({ searchParams }: PageProps) {
           </div>
 
           {error || loadError ? (
-            <p className="mx-auto mt-6 max-w-2xl rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-center text-sm font-medium text-rose-700" role="alert">
+            <p className="mx-auto mt-6 max-w-2xl rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-center text-sm font-medium text-rose-800" role="alert">
               {loadError || error === "conexion" ? "No pudimos cargar los consultorios. Actualiza la página para intentar nuevamente." : "No pudimos seleccionar ese consultorio. Elige uno habilitado para tu unidad."}
             </p>
           ) : null}
@@ -74,7 +74,7 @@ export default async function ConsultingRoomsPage({ searchParams }: PageProps) {
                 .join("");
 
               return (
-                <article className="dashboard-shadow-soft group relative overflow-hidden rounded-[28px] border border-slate-100 bg-white p-6 transition hover:-translate-y-1 hover:border-indigo-200 hover:shadow-xl" key={room.id}>
+                <article className="dashboard-shadow-soft group relative overflow-hidden rounded-[28px] border border-slate-100 bg-white p-6 transition hover:border-indigo-200 hover:shadow-xl motion-safe:hover:-translate-y-1" key={room.id}>
                   <div aria-hidden="true" className={`absolute right-0 top-0 size-28 rounded-bl-full ${index === 0 ? "bg-indigo-50" : "bg-sky-50"}`} />
                   <div className="relative flex items-start justify-between gap-5">
                     <div>
