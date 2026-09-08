@@ -1,0 +1,200 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({
+  // Igual que los adaptadores reales (demo y Twilio): sin header, siempre false.
+  verifyWebhookSignature: vi.fn((input: { signatureHeader: string | null }) => input.signatureHeader !== null),
+  from: vi.fn(),
+}));
+
+vi.mock("@/lib/env/server", () => ({ serverEnv: { APP_PUBLIC_URL: "https://kuni.example.com" } }));
+vi.mock("@/lib/whatsapp/provider", () => ({
+  getWhatsAppProvider: async () => ({
+    dbProviderValue: "twilio",
+    verifyWebhookSignature: mocks.verifyWebhookSignature,
+  }),
+}));
+vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({ from: mocks.from }) }));
+
+import { POST } from "@/app/api/webhooks/whatsapp/status/route";
+
+// Chain "thenable": encadena insert/select/update/eq indefinidamente y
+// resuelve con `result` tanto si el test hace `await chain` directo (insert,
+// update().eq()) como si llama `.maybeSingle()` explícito (select).
+function makeChain(result: { data?: unknown; error?: unknown } = { data: null, error: null }) {
+  const chain = {
+    insert: vi.fn(() => chain),
+    select: vi.fn(() => chain),
+    update: vi.fn(() => chain),
+    eq: vi.fn(() => chain),
+    maybeSingle: vi.fn(() => Promise.resolve(result)),
+    then: <TResult1 = typeof result>(
+      onfulfilled?: ((value: typeof result) => TResult1 | PromiseLike<TResult1>) | null,
+    ) => Promise.resolve(result).then(onfulfilled),
+  };
+  return chain;
+}
+
+function queueFrom(queues: Record<string, ReturnType<typeof makeChain>[]>) {
+  mocks.from.mockImplementation((table: string) => {
+    const next = queues[table]?.shift();
+    if (!next) throw new Error(`Llamada inesperada a .from("${table}") sin chain en cola`);
+    return next;
+  });
+}
+
+function twilioForm(fields: Record<string, string>) {
+  return new URLSearchParams(fields).toString();
+}
+
+function request(body: string, signature: string | null = "sig") {
+  const headers = new Headers();
+  if (signature !== null) headers.set("x-twilio-signature", signature);
+  return new Request("https://kuni.example.com/api/webhooks/whatsapp/status", {
+    method: "POST",
+    headers,
+    body,
+  });
+}
+
+beforeEach(() => {
+  mocks.verifyWebhookSignature.mockClear();
+  mocks.verifyWebhookSignature.mockImplementation((input: { signatureHeader: string | null }) => input.signatureHeader !== null);
+  mocks.from.mockReset();
+});
+
+describe("POST /api/webhooks/whatsapp/status — firma y payload", () => {
+  it("firma inválida → 403, nunca toca la base", async () => {
+    mocks.verifyWebhookSignature.mockReturnValue(false);
+    const res = await POST(request(twilioForm({ MessageSid: "SM1", MessageStatus: "delivered" })));
+    expect(res.status).toBe(403);
+    expect(mocks.from).not.toHaveBeenCalled();
+  });
+
+  it("sin header de firma → 403, nunca toca la base", async () => {
+    const res = await POST(request(twilioForm({ MessageSid: "SM1", MessageStatus: "delivered" }), null));
+    expect(res.status).toBe(403);
+    expect(mocks.from).not.toHaveBeenCalled();
+  });
+
+  it("MessageStatus desconocido/ausente → 400, nunca toca la base", async () => {
+    const res = await POST(request(twilioForm({ MessageSid: "SM1", MessageStatus: "algo-raro" })));
+    expect(res.status).toBe(400);
+    expect(mocks.from).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/webhooks/whatsapp/status — deduplicación", () => {
+  it("un (sid,status) repetido (violación de unicidad) → ack 200 sin reprocesar", async () => {
+    queueFrom({ webhook_events: [makeChain({ error: { code: "23505" } })] });
+    const res = await POST(request(twilioForm({ MessageSid: "SM1", MessageStatus: "delivered" })));
+    expect(res.status).toBe(200);
+    expect(mocks.from).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("POST /api/webhooks/whatsapp/status — sin bot_interaction correspondiente", () => {
+  it("SID desconocido → se marca 'ignored' y se ACK 200 igual (no le pide a Twilio reintentar)", async () => {
+    const markIgnored = makeChain({ error: null });
+    queueFrom({
+      webhook_events: [makeChain({ error: null }), markIgnored],
+      bot_interactions: [makeChain({ data: null, error: null })],
+    });
+    const res = await POST(request(twilioForm({ MessageSid: "SM-desconocido", MessageStatus: "delivered" })));
+    expect(res.status).toBe(200);
+    expect(markIgnored.update).toHaveBeenCalledWith(
+      expect.objectContaining({ processing_status: "ignored" }),
+    );
+  });
+});
+
+describe("POST /api/webhooks/whatsapp/status — progresión aplicada", () => {
+  it("delivered con expects_response=true: consulta el timeout del paciente y aplica el patch", async () => {
+    const updateInteraction = makeChain({ error: null });
+    const markProcessed = makeChain({ error: null });
+    queueFrom({
+      webhook_events: [makeChain({ error: null }), markProcessed],
+      bot_interactions: [
+        makeChain({
+          data: {
+            id: "interaction-1",
+            unit_id: "unit-1",
+            patient_id: "patient-1",
+            delivery_status: "accepted",
+            expects_response: true,
+            delivered_at: null,
+            response_deadline_at: null,
+          },
+          error: null,
+        }),
+        updateInteraction,
+      ],
+      patients: [makeChain({ data: { bot_response_timeout_minutes: 45 }, error: null })],
+    });
+
+    const res = await POST(request(twilioForm({ MessageSid: "SM-ok", MessageStatus: "delivered" })));
+
+    expect(res.status).toBe(200);
+    expect(updateInteraction.update).toHaveBeenCalledWith(
+      expect.objectContaining({ delivery_status: "delivered", delivered_at: expect.any(String), response_deadline_at: expect.any(String) }),
+    );
+    expect(markProcessed.update).toHaveBeenCalledWith(
+      expect.objectContaining({ processing_status: "processed" }),
+    );
+  });
+
+  it("evento sin patch (fuera de orden) no llama a update de bot_interactions, pero sí marca el evento procesado", async () => {
+    const markProcessed = makeChain({ error: null });
+    queueFrom({
+      webhook_events: [makeChain({ error: null }), markProcessed],
+      bot_interactions: [
+        makeChain({
+          data: {
+            id: "interaction-1",
+            unit_id: "unit-1",
+            patient_id: "patient-1",
+            delivery_status: "delivered",
+            expects_response: true,
+            delivered_at: "2026-09-08T11:00:00.000Z",
+            response_deadline_at: "2026-09-08T12:00:00.000Z",
+          },
+          error: null,
+        }),
+      ],
+    });
+
+    const res = await POST(request(twilioForm({ MessageSid: "SM-tarde", MessageStatus: "sent" })));
+
+    expect(res.status).toBe(200);
+    // Solo se llamó a .from("bot_interactions") para el select, nunca para update.
+    expect(mocks.from).toHaveBeenCalledTimes(3);
+    expect(markProcessed.update).toHaveBeenCalledWith(
+      expect.objectContaining({ processing_status: "processed" }),
+    );
+  });
+
+  it("delivery_status ya 'read' no vuelve a pedir el timeout del paciente (delivered_at ya está fijo)", async () => {
+    const markProcessed = makeChain({ error: null });
+    queueFrom({
+      webhook_events: [makeChain({ error: null }), markProcessed],
+      bot_interactions: [
+        makeChain({
+          data: {
+            id: "interaction-1",
+            unit_id: "unit-1",
+            patient_id: "patient-1",
+            delivery_status: "read",
+            expects_response: true,
+            delivered_at: "2026-09-08T11:00:00.000Z",
+            response_deadline_at: "2026-09-08T12:00:00.000Z",
+          },
+          error: null,
+        }),
+      ],
+    });
+
+    const res = await POST(request(twilioForm({ MessageSid: "SM-read", MessageStatus: "delivered" })));
+
+    expect(res.status).toBe(200);
+    expect(mocks.from).not.toHaveBeenCalledWith("patients");
+  });
+});

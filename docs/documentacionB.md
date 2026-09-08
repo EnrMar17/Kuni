@@ -31,8 +31,12 @@ La prueba previa de Twilio fue una recepción del comando de ingreso al Sandbox 
 
 - `src/lib/queries/dashboard.ts`: lectura por sesión y unidad, filtros y paginación.
 - `src/lib/domain/dashboard.ts`: DTO del tablero y adaptadores SQL al dominio canónico.
+- `src/lib/whatsapp/provider.ts` / `twilio.ts`: interfaz y adaptador real del canal (envío, verificación de firma).
+- `src/lib/whatsapp/status.ts`: progresión pura del callback de entrega (sin I/O, testeable sin base de datos).
+- `src/app/api/webhooks/whatsapp/route.ts` / `status/route.ts`: webhooks entrante y de estado — firma, deduplicación, wiring a Supabase.
 - `tests/unit/dashboard-adapters.test.ts`: regresiones de cohortes, riesgo, horarios e información faltante.
 - `tests/unit/dashboard-queries.test.ts`: límites, paginación, errores y filtros de autorización en las consultas.
+- `tests/unit/whatsapp-*.test.ts`: proveedor/adaptador/estado/webhooks del canal WhatsApp.
 - `docs/bitacora-canal-b.md`: detalle operativo histórico y registro de esta entrega.
 
 Los archivos de base ya existentes siguen siendo `supabase/migrations/0001_kuni.sql`, `src/types/database.types.ts`, `src/lib/supabase/*`, `src/lib/auth/context.ts` y `scripts/seed-*.ts`. La migración base se conserva; esta entrega no ejecutó migraciones, semillas ni modificaciones remotas.
@@ -63,9 +67,9 @@ B es responsable del esquema, migraciones incrementales, RLS, tipos, datos de pr
 ## Qué falta de B
 
 1. Migración incremental de complicaciones DM, estados de tratamiento y trazabilidad; regenerar tipos y probar RLS/constraints. No modificar la migración base ya aplicada.
-2. Interfaz de proveedor y adaptador Twilio, validación de firma, webhooks entrante y de estado, deduplicación y procesamiento transaccional con C.
-3. Materialización y envío, endpoint `api/jobs/tick`, programación de Cron y prueba real de ida y vuelta desde la app.
-4. Integrar BAJA, ventana/plantillas, callbacks desordenados, respuestas tardías e incidencias técnicas con la cola existente.
+2. ~~Interfaz de proveedor y adaptador Twilio, validación de firma, webhooks entrante y de estado, deduplicación~~ — hecho (`src/lib/whatsapp/{provider,twilio,status}.ts`, `src/app/api/webhooks/whatsapp/{route,status/route}.ts`, ver `bitacora-canal-b.md` 2026-09-08). Falta el **procesamiento transaccional con C**: el webhook entrante guarda el mensaje ya interpretado pero no escribe el efecto clínico (medición, confirmación de toma) — eso exige las RPC de registro de C.
+3. Materialización y envío, endpoint `api/jobs/tick`, programación de Cron y prueba real de ida y vuelta desde la app. Ya existe el provider que estos van a usar para enviar.
+4. Integrar BAJA, ventana/plantillas, respuestas tardías e incidencias técnicas con la cola existente (los callbacks desordenados de entrega ya están cubiertos por `status.ts`).
 5. Completar con C las RPC de corrección, ajustes, urgencia y resolución con auditoría y recálculo coherente; las dos RPC actuales de cola no realizan esas acciones.
 6. Probar aislamiento real entre dos unidades y roles, concurrencia de workers y consentimiento revocado durante un envío.
 7. Medir rendimiento con datos reales del tamaño de la demo; para mayor escala, consultar agregados/snapshot mediante RPC y paginar el censo desde servidor.
