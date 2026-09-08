@@ -207,6 +207,13 @@ export async function requestMlPrediction(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        // El servicio puede quedar detrás de un túnel gratuito de ngrok
+        // durante el hackatón (plan free): sin este header, ngrok responde
+        // con una página HTML de advertencia en vez de reenviar la
+        // petición, y esta función la trataría como una respuesta inválida
+        // (UNAVAILABLE) sin que nadie note por qué. Un servidor real que no
+        // sea ngrok simplemente ignora un header que no reconoce.
+        'ngrok-skip-browser-warning': 'true',
         ...(config.apiKey ? { 'X-API-Key': config.apiKey } : {}),
       },
       body: JSON.stringify(features),
