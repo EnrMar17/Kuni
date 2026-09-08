@@ -1,5 +1,7 @@
 import { defineConfig } from 'vitest/config';
 
+process.env.TZ = 'UTC';
+
 export default defineConfig({
   // Sin esto, Vite busca una configuración de PostCSS hacia arriba y encuentra
   // el `postcss.config.mjs` de la app Next.js en la raíz, que carga Tailwind y

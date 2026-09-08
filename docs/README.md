@@ -4,6 +4,11 @@ Esta carpeta concentra la documentación viva de Kuni: lo que no está en el có
 
 ## Contenido
 
+- [`continuidad-unificada.md`](continuidad-unificada.md) — **Punto de continuidad vigente:** backlog único, entrega realizada, pruebas y pendientes. Sustituye la organización del trabajo por integrante.
+- [`u06-inbound-y-baja.md`](u06-inbound-y-baja.md) — Ingesta atómica, BAJA, pruebas y migración 0006; distingue implementación local de operación alojada.
+
+- [`auditoria-estado-actual.md`](auditoria-estado-actual.md) — Auditoría sobre `2d4a06d`, anterior al backlog unificado: correcciones, rendimiento medido y rúbrica original por integrante.
+
 - [`documentacionA.md`](documentacionA.md) — A: acceso Supabase, dashboard conectado, formularios y acciones pendientes.
 - [`documentacionB.md`](documentacionB.md) — B: persistencia, consultas reales, transporte y migraciones pendientes.
 - [`documentacionC.md`](documentacionC.md) — C: dominio, contratos, pruebas, RPC e integración predictiva pendientes.

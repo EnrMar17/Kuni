@@ -17,12 +17,13 @@ import { buildPatientMlFeatureInput } from "./patient-features";
 
 export interface PatientPrediction {
   prediction: MlPrediction;
-  /** Variables enviadas con relleno porque Kuni todavía no las captura (B3/B4). Vacío = sin brechas. */
+  asOf: string;
+  /** Brechas reales del expediente en este corte. Vacío = sin brechas declaradas. */
   gaps: MlFeatureBuild["gaps"];
 }
 
 /** Una llamada por paciente seleccionado — nunca en lote para todo el censo. */
-export async function getPatientPrediction(patient: DashboardPatient, now: Date = new Date()): Promise<PatientPrediction> {
+export async function getPatientPrediction(patient: DashboardPatient, now: Date): Promise<PatientPrediction> {
   const input = buildPatientMlFeatureInput(patient);
   const { vector, gaps } = buildMlFeatureVector(input, { now });
 
@@ -32,5 +33,10 @@ export async function getPatientPrediction(patient: DashboardPatient, now: Date 
     timeoutMs: serverEnv.ML_TIMEOUT_MS,
   });
 
-  return { prediction, gaps };
+  // El cliente puro admite versiones null en pruebas; el panel del modelo real
+  // exige procedencia identificable (plan-integracion RF30).
+  const publishable = prediction.status !== "unavailable" && !prediction.modelVersion
+    ? { status: "unavailable" as const }
+    : prediction;
+  return { prediction: publishable, gaps, asOf: now.toISOString() };
 }

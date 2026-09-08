@@ -2,6 +2,12 @@
 
 Registro cronológico de decisiones técnicas y de alcance. Formato: fecha, decisión, motivo, quién la tomó.
 
+## 2026-09-08 — Continuidad unificada
+
+- **Decisión del usuario:** trabajar como una sola persona y atacar la rúbrica común, dejando al final evidencia de lo realizado y de lo pendiente. Se conserva la autoría histórica, pero el backlog activo deja de dividirse en A/B/C.
+- **Ejecución:** primera entrega centrada en paginación/corte efectivo, revalidación y persistencia de envío, callbacks durables, paridad de expiración, entorno común de pruebas y corte/procedencia RF30. No se aprobaron por inferencia políticas nuevas de agenda o TTL del modelo.
+- **Seguimiento:** [continuidad-unificada.md](continuidad-unificada.md) es el punto vigente. Mantiene abiertos ingesta/BAJA, captura, citas, recuperación con proveedor y validación alojada.
+
 ---
 
 ## 2026-09-07 — Estructura inicial del repositorio

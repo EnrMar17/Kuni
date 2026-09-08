@@ -2017,6 +2017,10 @@ export type Database = {
       }
     }
     Functions: {
+      process_inbound_event: {
+        Args: { p_event_id: string; p_phone_candidates: string[]; p_parsed: Json }
+        Returns: Json
+      }
       adjust_prescription: {
         Args: {
           p_doctor_id: string

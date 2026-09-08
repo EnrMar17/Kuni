@@ -4,6 +4,8 @@ import { serverEnv } from "@/lib/env/server";
 import { expireDueInteractions } from "@/lib/jobs/expire";
 import { materializeDueInteractions } from "@/lib/jobs/materialize";
 import { sendDueInteractions } from "@/lib/jobs/send";
+import { reconcileStatusEvents } from "@/lib/jobs/reconcile-status";
+import { reconcileInboundEvents } from "@/lib/jobs/reconcile-inbound";
 
 export const runtime = "nodejs";
 // Nunca cachear/prerenderizar un endpoint que muta datos y depende del reloj.
@@ -21,13 +23,11 @@ function isAuthorized(request: Request): boolean {
  * Supabase Cron (`pg_cron` + `pg_net`, o un cron externo) lo llame cada
  * pocos minutos con `Authorization: Bearer <CRON_SECRET>`.
  *
- * Vence primero, materializa después y envía al final, en la misma
- * invocación. El orden importa: el silencio del paciente debe convertirse en
- * alerta ANTES de que salgan los mensajes nuevos del mismo tick, y una
- * ocurrencia que acaba de nacer puede salir sin esperar al siguiente tick.
- * Los tres pasos son idempotentes por su cuenta (`timeout_at is null` /
- * dedup por clave / `claim_due_interactions` con `skip locked`), así que
- * llamadas superpuestas o reintentos del cron no duplican nada.
+ * Reconcilia callbacks, vence, materializa, envía y vuelve a reconciliar.
+ * Una entrega recibida previamente debe fijar su plazo antes de expirar;
+ * un callback adelantado al guardado del SID puede resolverse tras enviar.
+ * Las escrituras locales usan deduplicación/CAS. Eso no convierte al
+ * proveedor externo en una transacción ni permite reenvíos ciegos de unknown.
  */
 export async function POST(request: Request) {
   if (!isAuthorized(request)) {
@@ -35,10 +35,13 @@ export async function POST(request: Request) {
   }
 
   try {
+    const callbacksBefore = await reconcileStatusEvents();
+    const inbound = await reconcileInboundEvents();
     const expire = await expireDueInteractions();
     const materialize = await materializeDueInteractions();
     const send = await sendDueInteractions();
-    return NextResponse.json({ expire, materialize, send });
+    const callbacksAfter = await reconcileStatusEvents();
+    return NextResponse.json({ callbacksBefore, inbound, expire, materialize, send, callbacksAfter });
   } catch (error) {
     console.error("[jobs/tick] error inesperado:", error);
     return new NextResponse(null, { status: 500 });

@@ -4,7 +4,9 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { evaluateRisk, type EvaluableMeasurement, type PatientRiskInput, type PendingTimeout } from '../../src/lib/domain/risk';
 import type { RiskResult } from '../../src/contracts/dto';
 import type { AdherenceResult } from '../../src/lib/domain/adherence';
+import { evaluateExpirations, type DueInteractionCandidate } from '../../src/lib/jobs/expire';
 import { validateBloodPressureValue, validateGlucoseValue } from '../../src/lib/domain/validation';
+import { parseIncomingMessage } from '../../src/lib/whatsapp/parser';
 import { buildDashboardData, lastExpectedAt, type DashboardRows, type Row } from '../../../src/lib/domain/dashboard';
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -84,7 +86,7 @@ async function assertDatabaseParity(cutoff = now, timezone = 'America/Mexico_Cit
   const [patients, diagnoses, plans, measurements, interactions, responses, alerts] = await Promise.all(tables.map(table =>
     query(`select coalesce(jsonb_agg(to_jsonb(t) order by t.id),'[]'::jsonb) as value from public.${table} t`)));
   const rows = { patients, diagnoses, plans, measurements, interactions, responses, alerts,
-    appointments: [], prescriptions: [], nonresponse: [], consent: [] } as DashboardRows;
+    appointments: [], prescriptions: [], nonresponse: [], consent: [], complications: [] } as DashboardRows;
   const expected = buildDashboardData(rows, { unitId: unit, roomId: room, timezone }, new Date(cutoff)).patients[0];
   expect({ ...sqlRisk, evaluatedAt: new Date(sqlRisk.evaluatedAt).toISOString() }).toEqual(expected.risk);
   expect(await query('select private.clinical_adherence($1,$2,$3) as value', [unit, patient, cutoff])).toEqual(expected.adherence);
@@ -104,7 +106,7 @@ beforeAll(async () => {
     grant execute on function auth.uid() to anon,authenticated,service_role;
     set timezone = 'UTC';
   `);
-  for (const file of ['0001_kuni.sql', '0002_clinical_derivations.sql', '0003_clinical_commands.sql']) {
+  for (const file of ['0001_kuni.sql', '0002_clinical_derivations.sql', '0003_clinical_commands.sql', '0004_patient_complications.sql', '0005_medication_therapeutic_class.sql', '0006_inbound_commands.sql']) {
     await db.exec(await readFile(new URL(`../../../supabase/migrations/${file}`, import.meta.url), 'utf8'));
   }
 }, 30_000);
@@ -148,6 +150,201 @@ beforeEach(async () => {
 });
 afterEach(async () => { await db.exec('rollback; reset role;'); });
 afterAll(async () => { await db?.close(); });
+
+describe('U06 durable inbound SQL', () => {
+  const eventId = id(600), target = id(601);
+  async function prepare(text: string, kind = 'medication', status = 'accepted') {
+    await owner();
+    await db.query(`insert into public.bot_interactions(id,unit_id,patient_id,kind,prescription_id,monitoring_plan_id,
+      deduplication_key,reply_code,scheduled_at,expects_response,provider,delivery_status)
+      values($1,$2,$3,$4,$5,$6,'inbound-test','ABCD1234',now()-interval '1 hour',true,'demo',$7)`,
+      [target, unit, patient, kind, kind === 'medication' ? prescription : null, kind === 'measurement' ? plan : null, status]);
+    await db.query(`insert into public.webhook_events(id,provider,event_key,event_type,normalized_payload,received_at)
+      values($1,'demo','test-inbound','inbound',$2,now())`, [eventId, { raw: { From: 'whatsapp:+525500000001', Body: text } }]);
+    await login(null, 'service_role');
+  }
+  async function process(text: string, phones = ['+525500000001']) {
+    return attempt(() => query<{ outcome: string; duplicate: boolean }>(
+      'select public.process_inbound_event($1,$2,$3) as value', [eventId, phones, parseIncomingMessage(text)]));
+  }
+  it.each(['SI ABCD1234', 'NO ABCD1234', 'SI'])('records %s once with receipt, delivery evidence, audit and derived metrics', async (text) => {
+    await prepare(text);
+    expect((await process(text)).outcome).toBe('recorded');
+    expect((await process(text)).duplicate).toBe(true);
+    expect(await query('select count(*)::integer as value from medication_responses where interaction_id=$1',[target])).toBe(1);
+    const result = await row('bot_interactions',target);
+    expect(result.response_at).not.toBeNull();
+    expect(result.delivery_status).toBe('delivered');
+    expect(await query('select taken as value from medication_responses where interaction_id=$1',[target])).toBe(!text.startsWith('NO'));
+    expect(await query('select count(*)::integer as value from risk_assessments where patient_id=$1',[patient])).toBe(1);
+    expect(await query("select count(*)::integer as value from audit_log where entity_table='medication_responses' and actor_user_id is null")).toBe(2);
+    await assertDatabaseParity();
+  });
+  it('preserves a late timeout and resolves only its no-response alert', async () => {
+    await prepare('SI ABCD1234');
+    await owner();
+    await db.query(`update bot_interactions set delivery_status='read',delivered_at=now()-interval '1 hour',
+      response_deadline_at=now()-interval '30 minutes',timeout_at=now()-interval '30 minutes' where id=$1`,[target]);
+    await db.query(`insert into alerts(unit_id,patient_id,kind,severity,interaction_id,deduplication_key,title)
+      values($1,$2,'no_response','warning',$3,'late-test','Test')`,[unit,patient,target]);
+    const before = await row('bot_interactions',target);
+    await login(null,'service_role');
+    await process('SI ABCD1234');
+    const after = await row('bot_interactions',target);
+    expect(after.timeout_at).toBe(before.timeout_at);
+    expect(after.delivery_status).toBe('read');
+    expect(await query("select status as value from alerts where deduplication_key='late-test'")).toBe('resolved');
+    expect((await row('alerts',initialAlert)).status).toBe('open');
+  });
+  it('records the historical timeout even when expiration has not run yet', async () => {
+    await prepare('SI ABCD1234');
+    await owner();
+    await db.query(`update bot_interactions set delivered_at=now()-interval '1 hour',
+      response_deadline_at=now()-interval '30 minutes' where id=$1`,[target]);
+    await login(null,'service_role');
+    await process('SI ABCD1234');
+    const result = await row('bot_interactions',target);
+    expect(result.timeout_at).toBe(result.response_deadline_at);
+    expect(await query("select status as value from alerts where interaction_id=$1",[target])).toBe('resolved');
+  });
+  it.each(['queued','cancelled','failed','blocked_template','blocked_window'])('does not attribute a reply to %s work', async (status) => {
+    await prepare('SI ABCD1234','medication',status);
+    expect((await process('SI ABCD1234')).outcome).toBe('help');
+    expect((await row('bot_interactions',target)).response_at).toBeNull();
+  });
+  it('rejects an ambiguous code-less reply and a reference belonging to another patient', async () => {
+    await prepare('SI');
+    await owner();
+    await db.query(`insert into bot_interactions(unit_id,patient_id,kind,prescription_id,deduplication_key,scheduled_at,expects_response,provider,delivery_status)
+      values($1,$2,'medication',$3,'second',now()-interval '1 hour',true,'demo','accepted')`,[unit,patient,prescription]);
+    await login(null,'service_role');
+    expect((await process('SI')).outcome).toBe('help');
+    await owner();
+    await db.exec("update webhook_events set processing_status='received',normalized_payload=normalized_payload-'parsed'");
+    await login(null,'service_role');
+    await expect(process('SI ABCD1234',['+525500000002'])).rejects.toThrow('INBOUND_IDENTITY_CHANGED');
+    expect((await row('bot_interactions',target)).response_at).toBeNull();
+  });
+  it('rejects an ambiguous sender without updating session or clinical records', async () => {
+    await prepare('SI ABCD1234');
+    expect((await process('SI ABCD1234',['+525500000001','+525500000002'])).outcome).toBe('ignored');
+    expect(await query('select count(*)::integer as value from patient_messaging_state')).toBe(0);
+  });
+  it('does not attribute another patients reference to a recognized sender', async () => {
+    await prepare('SI ABCD1234');
+    expect((await process('SI ABCD1234',['+525500000002'])).outcome).toBe('help');
+    expect((await row('bot_interactions',target)).response_at).toBeNull();
+  });
+  it('records glucose using the requested plan context and creates its risk alert', async () => {
+    await prepare('GLUCOSA ABCD1234 300','measurement');
+    expect((await process('GLUCOSA ABCD1234 300')).outcome).toBe('recorded');
+    expect(await query('select measurement_context as value from measurements where interaction_id=$1',[target])).toBe('fasting');
+    expect(await query(`select count(*)::integer as value from alerts a join measurements m on m.id=a.measurement_id
+      where m.interaction_id=$1 and a.kind='measurement_out_of_range'`,[target])).toBe(1);
+    await assertDatabaseParity();
+  });
+  it.each(['GLUCOSA ABCD1234 19','GLUCOSA ABCD1234 701','GLUCOSA ABCD1234 120 POSPRANDIAL','PRESION ABCD1234 120/80'])('does not store incompatible measurement %s', async (text) => {
+    await prepare(text,'measurement');
+    expect((await process(text)).outcome).toBe('help');
+    expect(await query('select count(*)::integer as value from measurements where interaction_id=$1',[target])).toBe(0);
+  });
+  it.each(['PRESION ABCD1234 120/80','PRESION 120/80'])('records both pressure components: %s', async (text) => {
+    await prepare(text,'measurement');
+    await owner();
+    await db.query(`update monitoring_plans set kind='blood_pressure',measurement_context='resting',
+      glucose_min_mg_dl=null,glucose_max_mg_dl=null,critical_glucose_max_mg_dl=null where id=$1`,[plan]);
+    await login(null,'service_role');
+    expect((await process(text)).outcome).toBe('recorded');
+    expect(await query('select systolic_mm_hg=120 and diastolic_mm_hg=80 as value from measurements where interaction_id=$1',[target])).toBe(true);
+  });
+  it('BAJA revokes consent once, cancels queued work and does not create a clinical report', async () => {
+    await prepare('BAJA','medication','queued');
+    await owner();
+    await db.query(`insert into consent_events(unit_id,patient_id,event,notice_version,method,evidence_note)
+      values($1,$2,'granted','existing-notice-v1','in_person','Fixture')`,[unit,patient]);
+    await login(null,'service_role');
+    expect((await process('BAJA')).outcome).toBe('opt_out');
+    await process('BAJA');
+    expect((await row('bot_interactions',target)).delivery_status).toBe('cancelled');
+    expect(await query("select count(*)::integer as value from consent_events where event='revoked'")).toBe(1);
+    expect(await query("select notice_version as value from consent_events where event='revoked'")).toBe('existing-notice-v1');
+    expect(await query('select count(*)::integer as value from risk_assessments')).toBe(0);
+    expect((await row('bot_interactions',target)).response_at).toBeNull();
+  });
+  it('BAJA without a prior notice remains reviewable without inventing a version', async () => {
+    await prepare('BAJA');
+    expect((await process('BAJA')).outcome).toBe('review');
+    expect(await query('select count(*)::integer as value from consent_events')).toBe(0);
+  });
+  it('rolls back BAJA and queue cancellation if closing the durable receipt fails', async () => {
+    await prepare('BAJA','medication','queued');
+    await owner();
+    await db.query(`insert into consent_events(unit_id,patient_id,event,notice_version,method,evidence_note)
+      values($1,$2,'granted','existing-v1','in_person','Fixture')`,[unit,patient]);
+    await db.exec(`create function public.test_receipt_failure() returns trigger language plpgsql as $$ begin raise exception 'receipt failed'; end $$;
+      create trigger test_receipt_failure before update on webhook_events for each row execute function public.test_receipt_failure();`);
+    await login(null,'service_role');
+    await expect(process('BAJA')).rejects.toThrow('receipt failed');
+    expect((await row('bot_interactions',target)).delivery_status).toBe('queued');
+    expect(await query("select count(*)::integer as value from consent_events where event='revoked'")).toBe(0);
+    expect(await query('select count(*)::integer as value from patient_messaging_state')).toBe(0);
+  });
+  it.each(['PRESION ABCD1234 80/120','PRESION ABCD1234 59/40','PRESION ABCD1234 120/29'])('validates pressure before recording %s', async (text) => {
+    await prepare(text,'measurement');
+    await owner();
+    await db.query(`update monitoring_plans set kind='blood_pressure',measurement_context='resting',
+      glucose_min_mg_dl=null,glucose_max_mg_dl=null,critical_glucose_max_mg_dl=null where id=$1`,[plan]);
+    await login(null,'service_role');
+    expect((await process(text)).outcome).toBe('help');
+    expect((await row('bot_interactions',target)).response_at).toBeNull();
+  });
+  it('does not correlate a reprocessed receipt with a later send', async () => {
+    await prepare('SI');
+    await owner();
+    await db.query("update bot_interactions set accepted_at=now()+interval '1 second' where id=$1",[target]);
+    await login(null,'service_role');
+    expect((await process('SI')).outcome).toBe('help');
+  });
+  it('upgrades legacy unrecognized BAJA and preserves other previously parsed data', async () => {
+    await prepare('BAJA');
+    await owner();
+    await db.query(`insert into consent_events(unit_id,patient_id,event,notice_version,method,evidence_note)
+      values($1,$2,'granted','existing-v1','in_person','Fixture')`,[unit,patient]);
+    await db.exec(`update webhook_events set normalized_payload=normalized_payload || '{"parsed":{"kind":"unrecognized","rawText":"BAJA"}}'::jsonb`);
+    await login(null,'service_role');
+    expect((await process('BAJA')).outcome).toBe('opt_out');
+  });
+  it('an older reprocessed receipt never moves the session window backwards', async () => {
+    await prepare('hola');
+    await owner();
+    await db.query(`insert into patient_messaging_state(patient_id,unit_id,last_inbound_at) values($1,$2,now()+interval '1 minute')`,[patient,unit]);
+    const before = await query('select last_inbound_at as value from patient_messaging_state');
+    await login(null,'service_role');
+    await process('hola');
+    expect(await query('select last_inbound_at as value from patient_messaging_state')).toEqual(before);
+  });
+  it('rolls back effect, session, audit and receipt state if derivation fails, then retries once', async () => {
+    await prepare('SI ABCD1234');
+    await owner();
+    await db.exec(`create function public.test_inbound_failure() returns trigger language plpgsql as $$ begin raise exception 'injected'; end $$;
+      create trigger test_inbound_failure before insert on risk_assessments for each row execute function public.test_inbound_failure();`);
+    await login(null,'service_role');
+    await expect(process('SI ABCD1234')).rejects.toThrow('injected');
+    expect((await row('bot_interactions',target)).response_at).toBeNull();
+    expect(await query('select count(*)::integer as value from patient_messaging_state')).toBe(0);
+    expect(await query('select processing_status as value from webhook_events where id=$1',[eventId])).toBe('received');
+    expect(await query('select count(*)::integer as value from medication_responses where interaction_id=$1',[target])).toBe(0);
+    await owner();
+    await db.exec('drop trigger test_inbound_failure on risk_assessments');
+    await login(null,'service_role');
+    expect((await process('SI ABCD1234')).outcome).toBe('recorded');
+  });
+  it.each(['anon','authenticated'] as const)('denies RPC execution to %s', async (role) => {
+    await prepare('SI ABCD1234');
+    await login(actor,role);
+    await expect(process('SI ABCD1234')).rejects.toMatchObject({code:'42501'});
+  });
+});
 
 describe('clinical RPC authorization and atomicity', () => {
   it.each(rpcNames)('%s rejects missing identity, another unit, viewer and another doctor', async (name) => {
@@ -522,7 +719,7 @@ describe('SQL / TypeScript parity', () => {
     const [patients, diagnoses, plans, measurements, interactions, responses, alerts] = await Promise.all(tables.map(table =>
       query(`select coalesce(jsonb_agg(to_jsonb(t)),'[]'::jsonb) as value from public.${table} t`)));
     const rows = { patients, diagnoses, plans, measurements, interactions, responses, alerts,
-      appointments: [], prescriptions: [], nonresponse: [], consent: [] } as DashboardRows;
+      appointments: [], prescriptions: [], nonresponse: [], consent: [], complications: [] } as DashboardRows;
     const dashboard = buildDashboardData(rows, { unitId: unit, roomId: room, timezone: 'America/Mexico_City' }, new Date(snapshot.evaluatedAt));
     expect(dashboard.patients[0].risk).toEqual(expected);
     expect(result.data.adherence).toEqual(dashboard.patients[0].adherence);
@@ -631,6 +828,50 @@ describe('SQL / TypeScript parity', () => {
     } finally {
       if (originalTimezone === undefined) delete process.env.TZ;
       else process.env.TZ = originalTimezone;
+    }
+  });
+});
+
+describe('expiration RPC parity and idempotency', () => {
+  const cases: { name: string; status: DueInteractionCandidate['deliveryStatus']; future?: boolean; replied?: boolean; informational?: boolean; noEvidence?: boolean }[] = [
+    ...(['queued', 'sending', 'accepted', 'delivered', 'read', 'failed', 'cancelled', 'blocked_window', 'blocked_template', 'unknown'] as const)
+      .map(status => ({ name: status, status })),
+    { name: 'deadline future', status: 'delivered', future: true },
+    { name: 'valid reply', status: 'delivered', replied: true },
+    { name: 'informational', status: 'delivered', informational: true },
+    { name: 'missing evidence', status: 'delivered', noEvidence: true },
+  ];
+  it.each(cases)('agrees with the pure decision for $name and preserves historical timeout', async (testCase) => {
+    await owner();
+    const received = new Date(Date.parse(now) - 3_600_000).toISOString();
+    const due = testCase.informational || testCase.noEvidence ? null : new Date(Date.parse(now) + (testCase.future ? 60_000 : 0)).toISOString();
+    const target = id(190);
+    await db.query(`insert into public.bot_interactions(id,unit_id,patient_id,kind,prescription_id,deduplication_key,
+      scheduled_at,expects_response,provider,delivery_status,delivered_at,response_deadline_at,response_at)
+      values($1,$2,$3,$4,$5,$6,$7,$8,'demo',$9,$10,$11,$12)`, [
+      target, unit, patient, testCase.informational ? 'nonresponse_summary' : 'medication', testCase.informational ? null : prescription,
+      'expiry-parity', received, !testCase.informational, testCase.status, testCase.noEvidence ? null : received, due, testCase.replied ? received : null,
+    ]);
+    // Consent revoked after delivery does not erase the delivered request.
+    await db.query(`insert into public.consent_events(unit_id,patient_id,event,notice_version,method,evidence_note)
+      values($1,$2,'revoked','synthetic-test','whatsapp','Synthetic revocation')`, [unit, patient]);
+    const before = await row('bot_interactions', target);
+    const [decision] = evaluateExpirations([{
+      interactionId: target, kind: before.kind as DueInteractionCandidate['kind'], expectsResponse: before.expects_response,
+      deliveryStatus: before.delivery_status as DueInteractionCandidate['deliveryStatus'], deliveredAt: before.delivered_at,
+      dueAt: before.response_deadline_at, respondedAt: before.response_at, timeoutAt: before.timeout_at,
+    }], new Date(now));
+    await login(null, 'service_role');
+    expect(await query<number>('select public.expire_due_interactions() as value')).toBe(decision.countsAsNonResponse ? 1 : 0);
+    expect(await query<number>('select public.expire_due_interactions() as value')).toBe(0);
+    await owner();
+    const after = await row('bot_interactions', target);
+    expect(after.timeout_at).toBe(decision.countsAsNonResponse ? before.response_deadline_at : null);
+    expect(await query<number>("select count(*)::int as value from public.alerts where interaction_id=$1 and kind='no_response'", [target]))
+      .toBe(decision.countsAsNonResponse ? 1 : 0);
+    if (after.timeout_at) {
+      await db.query('update public.bot_interactions set response_at=now() where id=$1', [target]);
+      expect((await row('bot_interactions', target)).timeout_at).toBe(after.timeout_at);
     }
   });
 });

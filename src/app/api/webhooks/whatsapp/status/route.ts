@@ -3,26 +3,14 @@ import { NextResponse } from "next/server";
 import { serverEnv } from "@/lib/env/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getWhatsAppProvider } from "@/lib/whatsapp/provider";
-import {
-  computeStatusPatch,
-  type BotInteractionStatusState,
-  type DeliveryStatus,
-  type TwilioMessageStatus,
-} from "@/lib/whatsapp/status";
+import type { TwilioMessageStatus } from "@/lib/whatsapp/status";
+import { applyStatusPatchWithRetry } from "@/lib/jobs/apply-status";
+import { KNOWN_TWILIO_STATUSES } from "@/lib/jobs/reconcile-status";
 
 // El SDK de Twilio (validación de firma) necesita Node; Edge no sirve aquí.
 export const runtime = "nodejs";
 
 const WEBHOOK_PATH = "/api/webhooks/whatsapp/status";
-const KNOWN_TWILIO_STATUSES: ReadonlySet<string> = new Set([
-  "queued",
-  "sending",
-  "sent",
-  "delivered",
-  "undelivered",
-  "failed",
-  "read",
-]);
 
 function isUniqueViolation(error: { code?: string } | null): boolean {
   return error?.code === "23505";
@@ -65,6 +53,7 @@ export async function POST(request: Request) {
   const errorMessage = params.ErrorMessage ?? null;
 
   const admin = createAdminClient();
+  let receivedAt = new Date();
   // Dedup: el mismo (MessageSid, MessageStatus) no debe aplicarse dos veces
   // si Twilio reintenta la entrega del webhook (falta de ACK a tiempo, etc.).
   const eventKey = `${messageSid}:${twilioStatus}`;
@@ -74,14 +63,20 @@ export async function POST(request: Request) {
     event_type: "status",
     external_message_id: messageSid,
     normalized_payload: params,
+    received_at: receivedAt.toISOString(),
   });
 
   if (insertEventError) {
     if (isUniqueViolation(insertEventError)) {
-      return new NextResponse(null, { status: 200 });
+      const existing = await admin.from("webhook_events").select("processing_status, received_at")
+        .eq("provider", provider.dbProviderValue).eq("event_key", eventKey).maybeSingle();
+      if (existing.error || !existing.data) return new NextResponse(null, { status: 500 });
+      if (["processed", "ignored"].includes(existing.data.processing_status)) return new NextResponse(null, { status: 200 });
+      receivedAt = new Date(existing.data.received_at);
+    } else {
+      console.error("[whatsapp/status] error persistiendo webhook_events:", insertEventError);
+      return new NextResponse(null, { status: 500 });
     }
-    console.error("[whatsapp/status] error persistiendo webhook_events:", insertEventError);
-    return new NextResponse(null, { status: 500 });
   }
 
   const markEvent = (fields: { processing_status: string; last_error?: string | null }) =>
@@ -91,104 +86,18 @@ export async function POST(request: Request) {
       .eq("provider", provider.dbProviderValue)
       .eq("event_key", eventKey);
 
-  const outcome = await applyStatusPatchWithRetry(admin, messageSid, { twilioStatus, errorCode, errorMessage });
+  const outcome = await applyStatusPatchWithRetry(admin, messageSid, { twilioStatus, errorCode, errorMessage, receivedAt, provider: provider.dbProviderValue });
 
   if (outcome === "not_found") {
-    // No es un error de Twilio ni algo que reintentar: es un mensaje que
-    // esta app nunca mandó con ese SID (u otro ambiente/proyecto). Se deja
-    // constancia y se ACK de todos modos.
-    await markEvent({ processing_status: "ignored", last_error: "Sin bot_interaction con ese provider_message_id." });
+    // Puede adelantarse al guardado del SID por el emisor. Mantener pendiente
+    // para el tick; no atribuir el callback a otra interacción por heurística.
     return new NextResponse(null, { status: 200 });
   }
   if (outcome === "error") {
     return new NextResponse(null, { status: 500 });
   }
 
-  await markEvent({ processing_status: "processed" });
+  const marked = await markEvent({ processing_status: "processed", last_error: null });
+  if (marked.error) return new NextResponse(null, { status: 500 });
   return new NextResponse(null, { status: 200 });
-}
-
-type ApplyOutcome = "applied" | "noop" | "not_found" | "error";
-
-/**
- * Lee, calcula el patch y escribe — con reintento optimista.
- *
- * Dos callbacks (ej. `sent` y `read`) pueden llegar casi simultáneos; sin
- * esto, ambos leen el mismo estado "antes", calculan patches válidos por
- * separado, y el que escribe último pisa al otro sin haber visto su
- * resultado — perdiendo silenciosamente el progreso más avanzado (se probó
- * en vivo: 'read' llegó primero, luego 'sent' lo sobrescribió a 'accepted'
- * a pesar de que `delivered_at`/`read_at` ya estaban puestos). El `WHERE
- * delivery_status = <lo que leí>` en el update hace que ese `update` no
- * afecte ninguna fila si alguien más ya la cambió mientras tanto; en ese
- * caso se vuelve a leer el estado YA actualizado y se recalcula, en vez de
- * escribir a ciegas sobre datos obsoletos.
- */
-async function applyStatusPatchWithRetry(
-  admin: ReturnType<typeof createAdminClient>,
-  messageSid: string,
-  event: { twilioStatus: TwilioMessageStatus; errorCode: string | null; errorMessage: string | null },
-  maxAttempts = 5,
-): Promise<ApplyOutcome> {
-  let botResponseTimeoutMinutes: number | null = null;
-
-  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    const { data: interaction, error: findError } = await admin
-      .from("bot_interactions")
-      .select("id, unit_id, patient_id, delivery_status, expects_response, delivered_at, response_deadline_at")
-      .eq("provider_message_id", messageSid)
-      .maybeSingle();
-
-    if (findError) {
-      console.error("[whatsapp/status] error buscando bot_interaction:", findError);
-      return "error";
-    }
-    if (!interaction) return "not_found";
-
-    if (botResponseTimeoutMinutes === null && interaction.expects_response && !interaction.delivered_at) {
-      const { data: patient, error: patientError } = await admin
-        .from("patients")
-        .select("bot_response_timeout_minutes")
-        .eq("unit_id", interaction.unit_id)
-        .eq("id", interaction.patient_id)
-        .maybeSingle();
-      if (patientError) {
-        console.error("[whatsapp/status] error leyendo timeout del paciente:", patientError);
-        return "error";
-      }
-      // Paciente inactivo/borrado entre el envío y este callback: usa el
-      // default documentado (60 min, el mismo de la columna) en vez de
-      // fallar el callback por un dato que ya no es alcanzable.
-      botResponseTimeoutMinutes = patient?.bot_response_timeout_minutes ?? 60;
-    }
-
-    const state: BotInteractionStatusState = {
-      deliveryStatus: interaction.delivery_status as DeliveryStatus,
-      expectsResponse: interaction.expects_response,
-      deliveredAt: interaction.delivered_at,
-      responseDeadlineAt: interaction.response_deadline_at,
-      botResponseTimeoutMinutes: botResponseTimeoutMinutes ?? 60,
-    };
-
-    const patch = computeStatusPatch(state, { ...event, receivedAt: new Date() });
-    if (!patch) return "noop";
-
-    const { data: updated, error: updateError } = await admin
-      .from("bot_interactions")
-      .update(patch)
-      .eq("id", interaction.id)
-      .eq("delivery_status", interaction.delivery_status) // concurrencia optimista
-      .select("id");
-
-    if (updateError) {
-      console.error("[whatsapp/status] error aplicando patch:", updateError);
-      return "error";
-    }
-    if (updated && updated.length > 0) return "applied";
-    // 0 filas afectadas: otro request cambió el estado entre el select y
-    // el update. Reintentar contra el estado fresco.
-  }
-
-  console.error(`[whatsapp/status] no se pudo aplicar el patch tras ${maxAttempts} intentos (contención alta) para ${messageSid}`);
-  return "error";
 }

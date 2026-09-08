@@ -33,6 +33,8 @@ function makeQueryClient() {
 let browserQueryClient: QueryClient | undefined;
 
 function getQueryClient() {
+  // Client Components también se prerenderizan en servidor: aislar cada render.
+  if (typeof window === "undefined") return makeQueryClient();
   // En el navegador: singleton para no perder el caché entre renders.
   // (No aplica en Server Components — este archivo es "use client".)
   browserQueryClient ??= makeQueryClient();

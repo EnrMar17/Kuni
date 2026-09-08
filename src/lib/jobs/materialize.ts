@@ -4,6 +4,8 @@ import type { Database } from "@/types/database.types";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getWhatsAppProvider } from "@/lib/whatsapp/provider";
 import { todaysOccurrenceInstant } from "@/lib/whatsapp/schedule";
+import { JOB_PAGE_SIZE, readAllJobRows } from "./pagination";
+import { isAtOrAfterEffectiveTime } from "./effective-time";
 
 /**
  * Materializador — sección 3 de kuni-plan-tecnico.md ("Cada ocurrencia de
@@ -47,53 +49,48 @@ export async function materializeDueInteractions(now: Date = new Date()): Promis
   const admin = createAdminClient();
   const provider = await getWhatsAppProvider();
 
-  const { data: units, error: unitsError } = await admin
+  const units = await readAllJobRows((from, to) => admin
     .from("health_units")
-    .select("id, timezone")
-    .eq("active", true);
-  if (unitsError) throw unitsError;
+    .select("id, timezone", { count: "exact" })
+    .eq("active", true).order("id").range(from, to));
   if (!units?.length) return { candidates: 0, created: 0 };
 
   const rows: BotInteractionInsert[] = [];
 
   for (const unit of units) {
     const [prescriptionsResult, plansResult, appointmentsResult, nonresponseHistoryResult] = await Promise.all([
-      admin
+      readAllJobRows((from, to) => admin
         .from("prescriptions")
         .select(
-          "id, patient_id, dose_text, start_date, end_date, medications(name), prescription_schedules(local_time, weekdays), patients!inner(active)",
+          "id, patient_id, dose_text, start_date, end_date, created_at, medications(name), prescription_schedules(id, local_time, weekdays), patients!inner(active)",
+          { count: "exact" },
         )
         .eq("unit_id", unit.id)
         .eq("status", "active")
-        .eq("patients.active", true),
-      admin
+        .eq("patients.active", true).order("id").range(from, to)),
+      readAllJobRows((from, to) => admin
         .from("monitoring_plans")
-        .select("id, patient_id, kind, local_time, weekdays, start_date, end_date, patients!inner(active)")
+        .select("id, patient_id, kind, local_time, weekdays, start_date, end_date, patients!inner(active)", { count: "exact" })
         .eq("unit_id", unit.id)
         .eq("active", true)
-        .eq("patients.active", true),
-      admin
+        .eq("patients.active", true).order("id").range(from, to)),
+      readAllJobRows((from, to) => admin
         .from("appointments")
-        .select("id, patient_id, starts_at, consulting_rooms(name), patients!inner(active)")
+        .select("id, patient_id, starts_at, consulting_rooms(name), patients!inner(active)", { count: "exact" })
         .eq("unit_id", unit.id)
         .eq("status", "scheduled")
         .eq("patients.active", true)
-        .gt("starts_at", now.toISOString()),
-      admin
+        .gt("starts_at", now.toISOString()).order("id").range(from, to)),
+      readAllJobRows((from, to) => admin
         .from("bot_interactions")
-        .select("id, patient_id, timeout_at, response_at, patients!inner(active)")
+        .select("id, patient_id, timeout_at, response_at, patients!inner(active)", { count: "exact" })
         .eq("unit_id", unit.id)
         .in("kind", ["medication", "measurement"])
         .eq("patients.active", true)
-        .or("response_at.not.is.null,timeout_at.not.is.null"),
+        .or("response_at.not.is.null,timeout_at.not.is.null").order("id").range(from, to)),
     ]);
 
-    if (prescriptionsResult.error) throw prescriptionsResult.error;
-    if (plansResult.error) throw plansResult.error;
-    if (appointmentsResult.error) throw appointmentsResult.error;
-    if (nonresponseHistoryResult.error) throw nonresponseHistoryResult.error;
-
-    for (const prescription of prescriptionsResult.data ?? []) {
+    for (const prescription of prescriptionsResult) {
       const range = { startDate: prescription.start_date, endDate: prescription.end_date };
       for (const schedule of prescription.prescription_schedules ?? []) {
         const instant = todaysOccurrenceInstant(
@@ -103,6 +100,8 @@ export async function materializeDueInteractions(now: Date = new Date()): Promis
           now,
         );
         if (!instant) continue;
+        // C: una versión ajustada solo genera tomas desde su instante efectivo.
+        if (!isAtOrAfterEffectiveTime(instant.toISOString(), prescription.created_at)) continue;
         rows.push({
           unit_id: unit.id,
           patient_id: prescription.patient_id,
@@ -113,6 +112,7 @@ export async function materializeDueInteractions(now: Date = new Date()): Promis
           expects_response: true,
           provider: provider.dbProviderValue,
           payload_snapshot: {
+            scheduleId: schedule.id,
             doseText: prescription.dose_text,
             medicationName: prescription.medications?.name ?? null,
             localTime: schedule.local_time,
@@ -121,7 +121,7 @@ export async function materializeDueInteractions(now: Date = new Date()): Promis
       }
     }
 
-    for (const plan of plansResult.data ?? []) {
+    for (const plan of plansResult) {
       const range = { startDate: plan.start_date, endDate: plan.end_date };
       const instant = todaysOccurrenceInstant(
         { localTime: plan.local_time, weekdays: plan.weekdays },
@@ -143,7 +143,7 @@ export async function materializeDueInteractions(now: Date = new Date()): Promis
       });
     }
 
-    for (const appointment of appointmentsResult.data ?? []) {
+    for (const appointment of appointmentsResult) {
       const startsAt = new Date(appointment.starts_at);
       const reminderInstant = new Date(startsAt.getTime() - APPOINTMENT_REMINDER_LEAD_MS);
       if (reminderInstant.getTime() > now.getTime()) continue; // todavía no toca avisar
@@ -163,7 +163,7 @@ export async function materializeDueInteractions(now: Date = new Date()): Promis
       });
     }
 
-    for (const anchorId of nonresponseStreakAnchors(nonresponseHistoryResult.data ?? [])) {
+    for (const anchorId of nonresponseStreakAnchors(nonresponseHistoryResult)) {
       rows.push({
         unit_id: unit.id,
         patient_id: anchorId.patientId,
@@ -179,13 +179,16 @@ export async function materializeDueInteractions(now: Date = new Date()): Promis
 
   if (!rows.length) return { candidates: 0, created: 0 };
 
-  const { data: inserted, error: insertError } = await admin
-    .from("bot_interactions")
-    .upsert(rows, { onConflict: "unit_id,deduplication_key", ignoreDuplicates: true })
-    .select("id");
-  if (insertError) throw insertError;
-
-  return { candidates: rows.length, created: inserted?.length ?? 0 };
+  let created = 0;
+  for (let offset = 0; offset < rows.length; offset += JOB_PAGE_SIZE) {
+    const { count, error } = await admin.from("bot_interactions")
+      .upsert(rows.slice(offset, offset + JOB_PAGE_SIZE), { onConflict: "unit_id,deduplication_key", ignoreDuplicates: true, count: "exact" })
+      .select("id");
+    if (error) throw error;
+    if (count == null) throw new Error("No se pudo confirmar el total de ocurrencias insertadas.");
+    created += count;
+  }
+  return { candidates: rows.length, created };
 }
 
 interface NonresponseHistoryRow {
@@ -230,7 +233,7 @@ export function nonresponseStreakAnchors(
 
     const streak = history
       .filter((row) => row.timeout_at && !row.response_at && (lastResponseAt == null || Date.parse(row.timeout_at) > lastResponseAt))
-      .sort((a, b) => Date.parse(a.timeout_at!) - Date.parse(b.timeout_at!));
+      .sort((a, b) => Date.parse(a.timeout_at!) - Date.parse(b.timeout_at!) || a.id.localeCompare(b.id));
 
     if (streak.length >= NONRESPONSE_STREAK_THRESHOLD) {
       anchors.push({ patientId, anchorInteractionId: streak[NONRESPONSE_STREAK_THRESHOLD - 1].id });

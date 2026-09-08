@@ -1,5 +1,7 @@
 # Documentación A
 
+> Revisión posterior: [auditoría actual](auditoria-estado-actual.md). Corrige urgencia `open`, horario `HH:MM` del ajuste y exportaciones de esquemas; el adaptador de adherencia por clase ya existe. Los pendientes históricos de esta página no sustituyen esa revisión.
+
 ## Continuidad de interfaz — 8 septiembre 2026
 
 - Se añadieron fronteras de error recuperables a censo, ficha, alta, alertas, citas y estadísticas, más un `global-error.tsx`. Todas usan el mismo fallback accesible y no exponen detalles internos al navegador.

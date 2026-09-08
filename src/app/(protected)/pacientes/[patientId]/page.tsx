@@ -10,5 +10,5 @@ export default async function PatientPage({ params }: { params: Promise<{ patien
   const [{ patientId }, context, data] = await Promise.all([params, getPageAuthContext(), getDashboardData()]);
   const patient = data.patients.find((item) => item.id === patientId);
   if (!patient) notFound();
-  return <PatientProfile context={{ unitName: context.unitName, roomName: context.consultingRoom?.name ?? "Consultorio", doctorName: context.consultingRoom?.doctorName ?? "Personal clínico" }} data={data} patient={patient} predictionPanel={<Suspense fallback={<PatientPredictionSkeleton />}><PatientPredictionPanel patient={patient} /></Suspense>} />;
+  return <PatientProfile context={{ unitName: context.unitName, roomName: context.consultingRoom?.name ?? "Consultorio", doctorName: context.consultingRoom?.doctorName ?? "Personal clínico" }} data={data} patient={patient} predictionPanel={<Suspense fallback={<PatientPredictionSkeleton />}><PatientPredictionPanel patient={patient} asOf={data.generatedAt} timezone={data.timezone} /></Suspense>} />;
 }

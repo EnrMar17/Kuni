@@ -4,11 +4,15 @@ const mocks = vi.hoisted(() => ({
   expireDueInteractions: vi.fn(),
   materializeDueInteractions: vi.fn(),
   sendDueInteractions: vi.fn(),
+  reconcileStatusEvents: vi.fn(),
+  reconcileInboundEvents: vi.fn(),
 }));
 vi.mock("@/lib/env/server", () => ({ serverEnv: { CRON_SECRET: "un-secreto-de-mas-de-16-caracteres" } }));
 vi.mock("@/lib/jobs/expire", () => ({ expireDueInteractions: mocks.expireDueInteractions }));
 vi.mock("@/lib/jobs/materialize", () => ({ materializeDueInteractions: mocks.materializeDueInteractions }));
 vi.mock("@/lib/jobs/send", () => ({ sendDueInteractions: mocks.sendDueInteractions }));
+vi.mock("@/lib/jobs/reconcile-status", () => ({ reconcileStatusEvents: mocks.reconcileStatusEvents }));
+vi.mock("@/lib/jobs/reconcile-inbound", () => ({ reconcileInboundEvents: mocks.reconcileInboundEvents }));
 
 import { POST } from "@/app/api/jobs/tick/route";
 
@@ -19,12 +23,21 @@ function request(bearer: string | null) {
 }
 
 beforeEach(() => {
+  mocks.reconcileInboundEvents.mockReset().mockResolvedValue({ processed: 0 });
+  mocks.reconcileStatusEvents.mockReset().mockResolvedValue({ processed: 0, pending: 0 });
   mocks.expireDueInteractions.mockReset().mockResolvedValue({ expired: 0 });
   mocks.materializeDueInteractions.mockReset().mockResolvedValue({ candidates: 1, created: 1 });
   mocks.sendDueInteractions.mockReset().mockResolvedValue({ claimed: 1, sent: 1, failed: 0 });
 });
 
 describe("POST /api/jobs/tick", () => {
+  it("si inbound falla, no vence, materializa ni envia", async () => {
+    mocks.reconcileInboundEvents.mockRejectedValue(new Error("inbound pendiente"));
+    expect((await POST(request("Bearer un-secreto-de-mas-de-16-caracteres"))).status).toBe(500);
+    expect(mocks.expireDueInteractions).not.toHaveBeenCalled();
+    expect(mocks.materializeDueInteractions).not.toHaveBeenCalled();
+    expect(mocks.sendDueInteractions).not.toHaveBeenCalled();
+  });
   it("sin header Authorization → 401, nunca corre los jobs", async () => {
     const res = await POST(request(null));
     expect(res.status).toBe(401);
@@ -40,6 +53,11 @@ describe("POST /api/jobs/tick", () => {
 
   it("con el Bearer correcto → 200, corre expire, LUEGO materialize y LUEGO send, y devuelve los tres resultados", async () => {
     const order: string[] = [];
+    mocks.reconcileInboundEvents.mockImplementation(async () => { order.push("inbound"); return { processed: 0 }; });
+    mocks.reconcileStatusEvents.mockImplementation(async () => {
+      order.push("callbacks");
+      return { processed: 0, pending: 0 };
+    });
     mocks.expireDueInteractions.mockImplementation(async () => {
       order.push("expire");
       return { expired: 2 };
@@ -57,8 +75,10 @@ describe("POST /api/jobs/tick", () => {
 
     expect(res.status).toBe(200);
     // El silencio se convierte en alerta antes de que salgan los mensajes nuevos.
-    expect(order).toEqual(["expire", "materialize", "send"]);
+    expect(order).toEqual(["callbacks", "inbound", "expire", "materialize", "send", "callbacks"]);
     expect(await res.json()).toEqual({
+      callbacksBefore: { processed: 0, pending: 0 }, callbacksAfter: { processed: 0, pending: 0 },
+      inbound: { processed: 0 },
       expire: { expired: 2 },
       materialize: { candidates: 1, created: 1 },
       send: { claimed: 1, sent: 1, failed: 0 },

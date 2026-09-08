@@ -85,15 +85,15 @@ describe("POST /api/webhooks/whatsapp/status — firma y payload", () => {
 
 describe("POST /api/webhooks/whatsapp/status — deduplicación", () => {
   it("un (sid,status) repetido (violación de unicidad) → ack 200 sin reprocesar", async () => {
-    queueFrom({ webhook_events: [makeChain({ error: { code: "23505" } })] });
+    queueFrom({ webhook_events: [makeChain({ error: { code: "23505" } }), makeChain({ data: { processing_status: "processed", received_at: "2026-09-08T12:00:00Z" }, error: null })] });
     const res = await POST(request(twilioForm({ MessageSid: "SM1", MessageStatus: "delivered" })));
     expect(res.status).toBe(200);
-    expect(mocks.from).toHaveBeenCalledTimes(1);
+    expect(mocks.from).toHaveBeenCalledTimes(2);
   });
 });
 
 describe("POST /api/webhooks/whatsapp/status — sin bot_interaction correspondiente", () => {
-  it("SID desconocido → se marca 'ignored' y se ACK 200 igual (no le pide a Twilio reintentar)", async () => {
+  it("SID aún desconocido → queda pendiente para reconciliación y se ACK 200", async () => {
     const markIgnored = makeChain({ error: null });
     queueFrom({
       webhook_events: [makeChain({ error: null }), markIgnored],
@@ -101,13 +101,21 @@ describe("POST /api/webhooks/whatsapp/status — sin bot_interaction correspondi
     });
     const res = await POST(request(twilioForm({ MessageSid: "SM-desconocido", MessageStatus: "delivered" })));
     expect(res.status).toBe(200);
-    expect(markIgnored.update).toHaveBeenCalledWith(
-      expect.objectContaining({ processing_status: "ignored" }),
-    );
+    expect(markIgnored.update).not.toHaveBeenCalled();
   });
 });
 
 describe("POST /api/webhooks/whatsapp/status — progresión aplicada", () => {
+  it("reintenta un duplicado pendiente conservando la fecha de primera recepción", async () => {
+    const update = makeChain({ data: [{ id: "interaction-1" }], error: null });
+    queueFrom({
+      webhook_events: [makeChain({ error: { code: "23505" } }), makeChain({ data: { processing_status: "received", received_at: "2026-09-08T10:00:00.000Z" }, error: null }), makeChain({ error: null })],
+      bot_interactions: [makeChain({ data: { id: "interaction-1", unit_id: "unit-1", patient_id: "p-1", delivery_status: "accepted", expects_response: true, delivered_at: null, response_deadline_at: null }, error: null }), update],
+      patients: [makeChain({ data: { bot_response_timeout_minutes: 60 }, error: null })],
+    });
+    expect((await POST(request(twilioForm({ MessageSid: "SM1", MessageStatus: "delivered" })))).status).toBe(200);
+    expect(update.update).toHaveBeenCalledWith(expect.objectContaining({ delivered_at: "2026-09-08T10:00:00.000Z", response_deadline_at: "2026-09-08T11:00:00.000Z" }));
+  });
   it("delivered con expects_response=true: consulta el timeout del paciente y aplica el patch", async () => {
     const updateInteraction = makeChain({ data: [{ id: "interaction-1" }], error: null });
     const markProcessed = makeChain({ error: null });

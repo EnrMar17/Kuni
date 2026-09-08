@@ -1,6 +1,8 @@
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
+process.env.TZ = "UTC";
+
 export default defineConfig({
   resolve: {
     alias: {
@@ -11,8 +13,8 @@ export default defineConfig({
   test: {
     // La suite de integración SQL de C (`domain-core/tests/integration`)
     // corre con el runner y las dependencias de su propio paquete
-    // (`npm --prefix domain-core test`): usa Vitest 2.x y PGlite, que no
-    // están instalados en la raíz. Aquí solo entran sus pruebas unitarias.
+    // (`npm --prefix domain-core test`): PGlite vive en ese paquete.
+    // Ambos runners usan Vitest 5; aquí solo entran sus pruebas unitarias.
     include: ["tests/**/*.test.ts", "domain-core/tests/unit/**/*.test.ts"],
     environment: "node",
     clearMocks: true,

@@ -1,5 +1,7 @@
 # Documentación B
 
+> Revisión posterior: [auditoría actual](auditoria-estado-actual.md). Incluye brechas de envío/claim, corte efectivo de recetas, paginación y recuperación. Las pruebas remotas relatadas aquí son evidencia de la bitácora y no se reejecutaron en esa auditoría.
+
 ## Resumen del avance
 
 B mantiene la persistencia, autorización de datos y transporte. La base disponible en `develop` contiene el esquema de Supabase, tipos, clientes por sesión, semillas de prueba y las operaciones SQL de cola/expiración. La entrega de correcciones incorpora la consulta real del dashboard y adaptadores que alimentan las funciones de dominio de C. La app puede leer datos del consultorio autorizado sin depender de pacientes o porcentajes fijos.

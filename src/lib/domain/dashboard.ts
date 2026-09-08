@@ -157,12 +157,17 @@ function measurementPlan(measurement: Row<"measurements">, plans: Row<"monitorin
 }
 
 function grouped<T extends { patient_id: string | null }>(items: T[]): Map<string, T[]> {
+  return groupBy(items, (item) => item.patient_id);
+}
+
+function groupBy<T>(items: T[], keyOf: (item: T) => string | null): Map<string, T[]> {
   const result = new Map<string, T[]>();
   for (const item of items) {
-    if (item.patient_id == null) continue;
-    const bucket = result.get(item.patient_id) ?? [];
+    const key = keyOf(item);
+    if (key == null) continue;
+    const bucket = result.get(key) ?? [];
     bucket.push(item);
-    result.set(item.patient_id, bucket);
+    result.set(key, bucket);
   }
   return result;
 }
@@ -195,6 +200,8 @@ export function buildDashboardData(rows: DashboardRows, scope: { unitId: string;
     .sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt));
   const alerts: DashboardAlert[] = rows.alerts.filter((r) => inScope(r) && ["open", "acknowledged"].includes(r.status))
     .map((r) => ({ id: r.id, patientId: r.patient_id, patientName: names.get(r.patient_id)!, kind: r.kind, severity: r.severity, status: r.status, title: r.title, createdAt: r.created_at, updatedAt: r.updated_at }));
+  const alertsByPatient = groupBy(alerts, (alert) => alert.patientId);
+  const appointmentsByPatient = groupBy(appointments, (appointment) => appointment.patientId);
   const adherenceInputs: AdherenceInput[] = [];
   const patients: DashboardPatient[] = scopedPatients.map((patient) => {
     const patientInteractions = interactions.get(patient.id) ?? [];
@@ -234,7 +241,7 @@ export function buildDashboardData(rows: DashboardRows, scope: { unitId: string;
       const variables: EvaluableMeasurement["variable"][] = plan.kind === "glucose" ? ["glucose"] : ["blood_pressure_systolic", "blood_pressure_diastolic"];
       return variables.map((variable) => ({ variable, monitoringPlanId: plan.id, context: (plan.kind === "glucose" ? plan.measurement_context ?? "unspecified" : "unspecified") as GlucoseContext, lastExpectedRequestAt: expected }));
     });
-    const patientAlerts = alerts.filter((a) => a.patientId === patient.id);
+    const patientAlerts = alertsByPatient.get(patient.id) ?? [];
     const level = ["high", "medium", "low", "unknown"].includes(patient.initial_risk) ? patient.initial_risk as RiskResult["level"] : "unknown";
     const risk = evaluateRisk({ patientId: patient.id, urgentFlagActive: patientAlerts.some((a) => a.kind === "urgent_followup"),
       initialAssessment: { level, reason: patient.initial_risk_reason, evaluatedAt: patient.updated_at, active: true },
@@ -248,11 +255,15 @@ export function buildDashboardData(rows: DashboardRows, scope: { unitId: string;
     const lastResponseAt = patientInteractions.filter((r) => r.expects_response && isPast(r.response_at, now) && Date.parse(r.response_at!) >= now.getTime() - 90 * DAY_MS)
       .map((r) => r.response_at!).sort((a, b) => Date.parse(b) - Date.parse(a))[0] ?? null;
     const patientPrescriptions = prescriptions.get(patient.id) ?? [];
+    const interactionsByPrescription = groupBy(patientInteractions, (item) => item.prescription_id);
+    const adherenceByPrescription = new Map(patientPrescriptions.map((p) => [
+      p.id, toAdherenceInput(interactionsByPrescription.get(p.id) ?? [], patientResponses, now),
+    ]));
     // Cada prescripción activa suma su propia cohorte Y/N/U (aggregateAdherence) —
     // nunca se promedian los `confirmedAdherencePct` ya calculados por prescripción.
     const byClass = (cls: "antidiabetic" | "antihypertensive") =>
       aggregateAdherence(patientPrescriptions.filter((p) => therapeuticClass(p.medications?.therapeutic_class) === cls)
-        .map((p) => toAdherenceInput(patientInteractions.filter((i) => i.prescription_id === p.id), patientResponses, now)));
+        .map((p) => adherenceByPrescription.get(p.id)!));
     const therapeuticAdherence = { antidiabetic: byClass("antidiabetic"), antihypertensive: byClass("antihypertensive") };
     return { id: patient.id, fullName: patient.full_name, clinicalRecord: patient.record_number ?? patient.affiliation_number ?? patient.curp ?? "Sin expediente",
       curp: patient.curp, birthDate: patient.birth_date, age, sex: patient.sex, bloodType: patient.blood_type, whatsappE164: patient.whatsapp_e164,
@@ -271,9 +282,9 @@ export function buildDashboardData(rows: DashboardRows, scope: { unitId: string;
         version: p.version, updatedAt: p.updated_at, medicationName: p.medications?.name ?? "Medicamento sin nombre disponible", doseText: p.dose_text,
         route: p.route, instructions: p.instructions, startDate: p.start_date, endDate: p.end_date,
         schedules: p.prescription_schedules.map((s) => ({ localTime: s.local_time, weekdays: s.weekdays })),
-        adherence: computeAdherence(toAdherenceInput(patientInteractions.filter((i) => i.prescription_id === p.id), patientResponses, now)) })),
-      appointments: appointments.filter((a) => a.patientId === patient.id), alerts: patientAlerts,
-      complications: (rows.complications ?? []).filter((item) => inScope(item) && item.patient_id === patient.id && item.active)
+        adherence: computeAdherence(adherenceByPrescription.get(p.id)!) })),
+      appointments: appointmentsByPatient.get(patient.id) ?? [], alerts: patientAlerts,
+      complications: (complications.get(patient.id) ?? [])
         .map((item) => ({ id: item.id, code: item.code, diagnosedOn: item.diagnosed_on, notes: item.notes, updatedAt: item.updated_at })),
       interactions: [...patientInteractions].sort((a, b) => Date.parse(b.scheduled_at) - Date.parse(a.scheduled_at)).slice(0, 20).map((r) => ({ id: r.id, kind: r.kind,
         scheduledAt: r.scheduled_at, deliveredAt: r.delivered_at, responseAt: r.response_at, timeoutAt: r.timeout_at, deliveryStatus: r.delivery_status,

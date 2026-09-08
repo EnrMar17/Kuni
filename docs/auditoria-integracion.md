@@ -1,5 +1,7 @@
 # Auditoría de integración — 8 septiembre 2026
 
+> **Informe histórico sobre `7e60df9`.** Para el estado posterior a las nuevas integraciones consultar [auditoría actual](auditoria-estado-actual.md). No usar las cifras ni los bloqueos de este documento como estado vigente. La ausencia de RPC en tipos locales no demuestra por sí sola que no estén desplegadas en remoto.
+
 Revisión completa de `develop` (`7e60df9`) contra `README.md`, `plan-integracion.md` y la documentación de cada integrante. Se ejecutaron typecheck, ESLint, la suite de pruebas y el build de producción; **no** se aplicaron migraciones remotas, no se enviaron mensajes y no se contactó el modelo.
 
 Mapeo de autoría según `git shortlog`: **A** = `enriq`/Enrique Martínez, **B** = `Cesaredmyt`, **C** = `Rudy-77`. Las cuatro ramas (`feature/a-app`, `feature/b-datos`, `feature/c-negocio`, `main`) están fusionadas en `develop`; ninguna tiene commits pendientes.

@@ -1,8 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   from: vi.fn(),
   rpc: vi.fn(),
+  revalidateSend: vi.fn(),
   sendFreeformMessage: vi.fn(),
   sendTemplateMessage: vi.fn(),
   // B5: cada test configura los Content SID que necesite; vacío por default,
@@ -18,6 +19,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({ from: mocks.from, rpc: mocks.rpc }) }));
 vi.mock("@/lib/env/server", () => ({ serverEnv: mocks.serverEnv }));
+vi.mock("@/lib/jobs/revalidate-send", () => ({ revalidateSend: mocks.revalidateSend }));
 vi.mock("@/lib/whatsapp/provider", async () => {
   const actual = await vi.importActual<typeof import("@/lib/whatsapp/provider")>("@/lib/whatsapp/provider");
   return {
@@ -34,14 +36,17 @@ import { sendDueInteractions } from "@/lib/jobs/send";
 import { WhatsAppProviderError } from "@/lib/whatsapp/provider";
 
 function makeChain(result: { data?: unknown; error?: unknown } = { data: null, error: null }) {
+  const response = { data: [{ id: "bi-1" }], ...result };
   const chain = {
     select: vi.fn(() => chain),
     update: vi.fn(() => chain),
     in: vi.fn(() => chain),
     eq: vi.fn(() => chain),
+    is: vi.fn(() => chain),
+    maybeSingle: vi.fn(() => chain),
     then: <TResult1 = typeof result>(
       onfulfilled?: ((value: typeof result) => TResult1 | PromiseLike<TResult1>) | null,
-    ) => Promise.resolve(result).then(onfulfilled),
+    ) => Promise.resolve(response).then(onfulfilled),
   };
   return chain;
 }
@@ -63,8 +68,18 @@ const medicationInteraction = {
 };
 
 beforeEach(() => {
+  vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-09-08T14:00:00Z"));
   mocks.from.mockReset();
   mocks.rpc.mockReset();
+  mocks.revalidateSend.mockReset();
+  // Unit boundary: revalidation has its own tests against scoped reads.
+  mocks.revalidateSend.mockImplementation(async (_admin, interaction) => {
+    const patients = await mocks.from("patients");
+    const session = await mocks.from("patient_messaging_state");
+    return { interaction: { ...interaction, unit_id: "unit-1", claimed_at: "2026-09-08T14:00:00Z" },
+      phoneE164: patients.data[0]?.whatsapp_e164 ?? null,
+      lastInboundAt: session.data[0]?.last_inbound_at ?? null };
+  });
   mocks.sendFreeformMessage.mockReset();
   mocks.sendTemplateMessage.mockReset();
   mocks.serverEnv.TWILIO_MEDICATION_CONTENT_SID = undefined;
@@ -73,8 +88,46 @@ beforeEach(() => {
   mocks.serverEnv.TWILIO_APPOINTMENT_CONTENT_SID = undefined;
   mocks.serverEnv.TWILIO_NONRESPONSE_CONTENT_SID = undefined;
 });
+afterEach(() => vi.restoreAllMocks());
 
 describe("sendDueInteractions", () => {
+  it("no envía si la revalidación detectó una cancelación", async () => {
+    mocks.rpc.mockResolvedValue({ data: [medicationInteraction], error: null });
+    mocks.revalidateSend.mockResolvedValue(null);
+    expect(await sendDueInteractions()).toEqual({ claimed: 1, sent: 0, failed: 1 });
+    expect(mocks.sendFreeformMessage).not.toHaveBeenCalled();
+    expect(mocks.from).not.toHaveBeenCalled();
+  });
+
+  it("no convierte un error SQL posterior a aceptación en fallo del proveedor", async () => {
+    mocks.rpc.mockResolvedValue({ data: [medicationInteraction], error: null });
+    mocks.revalidateSend.mockResolvedValue({ interaction: medicationInteraction, phoneE164: "+525512345678", lastInboundAt: "2026-09-08T13:00:00Z" });
+    const update = makeChain({ error: new Error("db offline") });
+    queueFrom({ bot_interactions: [update] });
+    mocks.sendFreeformMessage.mockResolvedValue({ providerMessageId: "sid", acceptedAt: new Date() });
+    await expect(sendDueInteractions()).rejects.toThrow("db offline");
+    expect(update.update).toHaveBeenCalledTimes(1);
+    expect(update.update).toHaveBeenCalledWith(expect.objectContaining({ delivery_status: "accepted" }));
+  });
+
+  it("no rebaja read a accepted si otro escritor ya guardó el mismo SID", async () => {
+    mocks.rpc.mockResolvedValue({ data: [medicationInteraction], error: null });
+    mocks.revalidateSend.mockResolvedValue({ interaction: { ...medicationInteraction, unit_id: "unit-1", claimed_at: "claim" }, phoneE164: "+525512345678", lastInboundAt: "2026-09-08T13:00:00Z" });
+    const update = makeChain({ data: [], error: null });
+    queueFrom({ bot_interactions: [update, makeChain({ data: { provider_message_id: "sid", delivery_status: "read" }, error: null })] });
+    mocks.sendFreeformMessage.mockResolvedValue({ providerMessageId: "sid", acceptedAt: new Date() });
+    expect((await sendDueInteractions()).sent).toBe(1);
+    expect(update.eq).toHaveBeenCalledWith("delivery_status", "sending");
+    expect(update.eq).toHaveBeenCalledWith("claimed_at", "claim");
+  });
+
+  it.each(["2026-09-09T13:00:00Z", "2026-09-07T14:00:00Z", "invalid"])("no abre ventana con inbound futuro, vencido o inválido: %s", async (lastInboundAt) => {
+    mocks.rpc.mockResolvedValue({ data: [medicationInteraction], error: null });
+    mocks.revalidateSend.mockResolvedValue({ interaction: medicationInteraction, phoneE164: "+525512345678", lastInboundAt });
+    queueFrom({ bot_interactions: [makeChain({ error: null })] });
+    expect((await sendDueInteractions()).failed).toBe(1);
+    expect(mocks.sendFreeformMessage).not.toHaveBeenCalled();
+  });
   it("sin interacciones reclamadas, no hace ninguna otra consulta ni envío", async () => {
     mocks.rpc.mockResolvedValue({ data: [], error: null });
     const result = await sendDueInteractions();

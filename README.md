@@ -134,6 +134,8 @@ Copiar `.env.example` a `.env.local` y completar las variables documentadas en `
 
 ## 9. Estado del proyecto
 
+El trabajo continúa con un [backlog único](docs/continuidad-unificada.md): entrega realizada, verificación y pendientes. La [auditoría previa](docs/auditoria-estado-actual.md) conserva los porcentajes históricos por integrante. Los resultados remotos se distinguen de la verificación local.
+
 - [x] Requerimientos y plan técnico definidos (documentos internos, no versionados).
 - [x] Estructura de carpetas del repositorio.
 - [x] Inicialización de la app Next.js (`create-next-app`) + dependencias del plan instaladas.
@@ -142,22 +144,38 @@ Copiar `.env.example` a `.env.local` y completar las variables documentadas en `
 - [x] Login/logout y selección de consultorio conectados a Supabase SSR.
 - [x] Dashboard de lectura conectado a consultas por unidad/consultorio y al dominio común.
 - [x] Correcciones de riesgo, referencias, contratos, tendencias y cliente ML con regresiones.
-- [ ] Transporte WhatsApp integrado a Kuni (proveedor, firma, webhook, callbacks, jobs y Cron).
-- [ ] Alta/edición y acciones clínicas transaccionales.
-- [ ] Migración RF28, vector final y endpoint predictivo RF29–RF30.
+- [x] Proveedor, firma, recepción de webhooks, callbacks y tick implementados; Cron documentado por B.
+- [ ] Cierre del transporte: efecto clínico del inbound/BAJA, envío seguro ante cambios, recuperación y volumen.
+- [x] Cinco RPC clínicas y adaptadores de acciones; ensayo completo de UI/cola pendiente.
+- [ ] Alta/edición y citas con persistencia desde sus formularios.
+- [x] Migraciones RF28/clase terapéutica, vector/adaptador ML y panel RF30 implementados.
+- [ ] Endpoint predictivo alojado y procedencia/corte/vigencia verificados.
 - [ ] Ciclo completo (alta -> WhatsApp -> alerta -> revisión médica) funcionando en demo.
 
 La documentación de avance del equipo (decisiones, bitácora, notas de integración) vive en `docs/`.
 
 ## 10. Verificación y continuidad
 
+Comando unificado: `rtk npm run verify` (ambas suites, ambos typechecks, lint y build). Los scripts de Next arrancan Node con `TZ=UTC` para la paridad SQL documentada; las horas clínicas siguen usando la zona de cada unidad. Se requiere Node >=22.12 para Vitest 5.
+
+En un clon limpio instalar las dependencias de ambos paquetes en el mismo sistema operativo que ejecutará las pruebas:
+
+```sh
+rtk npm ci
+rtk npm --prefix domain-core ci
+```
+
 ```sh
 rtk npm test
 rtk npm run typecheck
 rtk npm run lint
 rtk npm run build
+rtk npm --prefix domain-core test
+rtk npm --prefix domain-core run typecheck
 ```
 
-La suite raíz reúne dominio, contratos SQL, autenticación, adaptadores/queries y presentación. Las pruebas usan mocks/datos sintéticos; no ejecutan migraciones ni envían WhatsApp. La validación alojada sigue pendiente.
+La suite raíz reúne dominio, contratos, autenticación, adaptadores/queries y presentación (408 pruebas). La suite independiente de `domain-core` incluye integración SQL con migraciones en PostgreSQL efímero PGlite (299 pruebas). Hay pruebas unitarias compartidas: no sumar ambos conteos. No envían WhatsApp ni aplican migraciones remotas. La bitácora B acredita ensayos alojados específicos; el ciclo completo sigue pendiente.
+
+La [entrega U06](docs/u06-inbound-y-baja.md) añade respuestas clínicas y BAJA atómicas. Requiere aplicar `0006_inbound_commands.sql` después de las migraciones anteriores antes de operar el nuevo webhook/cron; la validación alojada está pendiente.
 
 Consultar [plan de integración](docs/plan-integracion.md), [A](docs/documentacionA.md), [B](docs/documentacionB.md) y [C](docs/documentacionC.md) para conocer qué está implementado y qué entrega cada miembro a continuación.

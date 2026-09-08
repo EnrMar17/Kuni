@@ -1,5 +1,6 @@
 import type { DashboardPatient } from "@/lib/domain/dashboard";
 import { getPatientPrediction } from "@/lib/ml/predict-patient";
+import { formatInTimeZone } from "date-fns-tz";
 
 const levelStyle = {
   bajo: "border-emerald-200 bg-emerald-50 text-emerald-800",
@@ -42,8 +43,8 @@ export function PatientPredictionSkeleton() {
   );
 }
 
-export async function PatientPredictionPanel({ patient }: { patient: DashboardPatient }) {
-  const { prediction, gaps } = await getPatientPrediction(patient);
+export async function PatientPredictionPanel({ patient, asOf, timezone }: { patient: DashboardPatient; asOf: string; timezone: string }) {
+  const { prediction, gaps } = await getPatientPrediction(patient, new Date(asOf));
 
   // The model is optional. Keep the panel visible, but never turn an absent
   // endpoint, timeout, or malformed response into a fabricated prediction.
@@ -123,6 +124,7 @@ export async function PatientPredictionPanel({ patient }: { patient: DashboardPa
 
       <p className="mt-4 text-xs text-slate-500">
         {prediction.modelVersion ? `Modelo ${prediction.modelVersion}` : "Versión del modelo no informada"}
+        {` · Datos al ${formatInTimeZone(new Date(asOf), timezone, "dd/MM/yyyy HH:mm")} (${timezone})`}
       </p>
     </section>
   );

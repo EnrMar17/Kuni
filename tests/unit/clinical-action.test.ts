@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/auth/context", () => ({ requireClinicalWriteContext: vi.fn() }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
 
-import { medicationTherapeuticClassInputSchema, resolveAlertRpcInputSchema } from "@/actions/clinical";
+import { medicationTherapeuticClassInputSchema, resolveAlertRpcInputSchema } from "@/contracts/clinical-actions";
 import { mapClinicalRpcFailure } from "@/lib/clinical/rpc-errors";
 
 describe("adaptador de resolve_alert", () => {

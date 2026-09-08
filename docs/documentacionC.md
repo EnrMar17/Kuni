@@ -1,5 +1,7 @@
 # Documentación C
 
+> Revisión posterior: [auditoría actual](auditoria-estado-actual.md). Suite vigente: 253 pruebas en 13 archivos, tras corregir los fixtures de paridad para RF28. Continúan pendientes ingesta, eventos externos, concurrencia y vigencia ML; vector y adaptador por clase ya existen.
+
 ## Resumen del avance
 
 C mantiene el dominio de negocio: reglas de prioridad actual, adherencia, interpretación de respuestas, vencimientos, tendencias y el cliente del modelo predictivo. En esta revisión se corrigieron contradicciones entre el código, el plan técnico y el esquema SQL. Los cambios quedan sin commit en `develop` y no modifican el diseño.

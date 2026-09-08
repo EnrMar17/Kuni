@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { serverEnv } from "@/lib/env/server";
 import { getWhatsAppProvider, WhatsAppProviderError } from "@/lib/whatsapp/provider";
 import { renderReminderBody } from "@/lib/whatsapp/message-body";
+import { revalidateSend } from "./revalidate-send";
 
 /**
  * Envío — sección 3 de kuni-plan-tecnico.md y `docs/documentacionB.md`
@@ -33,6 +34,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export interface SendResult {
   claimed: number;
   sent: number;
+  /** No enviados por esta ejecución, incluidos los detenidos al revalidar. */
   failed: number;
 }
 
@@ -57,27 +59,17 @@ export async function sendDueInteractions(batchSize = 25): Promise<SendResult> {
   if (claimError) throw claimError;
   if (!claimed?.length) return { claimed: 0, sent: 0, failed: 0 };
 
-  const patientIds = [...new Set(claimed.map((i) => i.patient_id))];
-  const [{ data: patients, error: patientsError }, { data: messagingStates, error: messagingError }] = await Promise.all([
-    admin.from("patients").select("id, whatsapp_e164").in("id", patientIds),
-    admin.from("patient_messaging_state").select("patient_id, last_inbound_at").in("patient_id", patientIds),
-  ]);
-  if (patientsError) throw patientsError;
-  if (messagingError) throw messagingError;
-
-  const phoneByPatient = new Map((patients ?? []).map((p) => [p.id, p.whatsapp_e164]));
-  const lastInboundByPatient = new Map((messagingStates ?? []).map((m) => [m.patient_id, m.last_inbound_at]));
-
   let sent = 0;
   let failed = 0;
-  const now = Date.now();
-
   for (const interaction of claimed as ClaimedInteraction[]) {
-    const outcome = await sendOne(interaction, {
+    // Re-read per interaction, after all earlier provider calls in this batch.
+    const prepared = await revalidateSend(admin, interaction);
+    if (!prepared) { failed += 1; continue; }
+    const outcome = await sendOne(prepared.interaction, {
       admin,
       provider,
-      phoneE164: phoneByPatient.get(interaction.patient_id) ?? null,
-      recentSession: hasRecentSession(lastInboundByPatient.get(interaction.patient_id) ?? null, now),
+      phoneE164: prepared.phoneE164,
+      recentSession: hasRecentSession(prepared.lastInboundAt, Date.now()),
     });
     if (outcome === "sent") sent += 1;
     else failed += 1;
@@ -88,7 +80,8 @@ export async function sendDueInteractions(batchSize = 25): Promise<SendResult> {
 
 function hasRecentSession(lastInboundAt: string | null, nowMs: number): boolean {
   if (!lastInboundAt) return false;
-  return nowMs - new Date(lastInboundAt).getTime() < DAY_MS;
+  const elapsed = nowMs - Date.parse(lastInboundAt);
+  return Number.isFinite(elapsed) && elapsed >= 0 && elapsed < DAY_MS;
 }
 
 async function sendOne(
@@ -101,10 +94,7 @@ async function sendOne(
   },
 ): Promise<"sent" | "failed"> {
   const markFailed = async (code: string, detail: string) => {
-    await ctx.admin
-      .from("bot_interactions")
-      .update({ delivery_status: "failed", failure_code: code, failure_detail: detail })
-      .eq("id", interaction.id);
+    await recordSendingResult(ctx.admin, interaction, { delivery_status: "failed", failure_code: code, failure_detail: detail });
     return "failed" as const;
   };
 
@@ -138,36 +128,49 @@ async function sendAndRecord(
   interaction: ClaimedInteraction,
   send: () => Promise<{ providerMessageId: string; acceptedAt: Date }>,
 ): Promise<"sent" | "failed"> {
+  let result: Awaited<ReturnType<typeof send>>;
   try {
-    const result = await send();
-    await ctx.admin
-      .from("bot_interactions")
-      .update({
-        delivery_status: "accepted",
-        accepted_at: result.acceptedAt.toISOString(),
-        provider_message_id: result.providerMessageId,
-      })
-      .eq("id", interaction.id);
-    return "sent";
+    result = await send();
   } catch (error) {
     const providerError =
       error instanceof WhatsAppProviderError
         ? error
-        : new WhatsAppProviderError("unknown", "Error inesperado enviando el mensaje.", { retriable: false, cause: error });
+        : new WhatsAppProviderError("unknown", "Error inesperado enviando el mensaje.", { retriable: true, cause: error });
     // Un error "reintentable" (rate limit, proveedor caído) es ambiguo: no
     // sabemos si Twilio de todos modos llegó a encolarlo. 'unknown' evita
     // declarar un 'failed' definitivo que un reintento ciego podría
     // duplicar — reconciliar eso es trabajo pendiente (ver documentacionB.md).
-    await ctx.admin
-      .from("bot_interactions")
-      .update({
+    await recordSendingResult(ctx.admin, interaction, {
         delivery_status: providerError.retriable ? "unknown" : "failed",
         failure_code: providerError.code,
         failure_detail: providerError.providerDetail ?? providerError.message,
-      })
-      .eq("id", interaction.id);
+      });
     return "failed";
   }
+  // A database failure after provider acceptance is NOT a provider rejection.
+  // Leave the claim unretriable by claim_due_interactions and report the error.
+  await recordSendingResult(ctx.admin, interaction, {
+    delivery_status: "accepted", accepted_at: result.acceptedAt.toISOString(), provider_message_id: result.providerMessageId,
+  });
+  return "sent";
+}
+
+async function recordSendingResult(
+  admin: ReturnType<typeof createAdminClient>, interaction: ClaimedInteraction,
+  patch: Database["public"]["Tables"]["bot_interactions"]["Update"],
+) {
+  const { data, error } = await admin.from("bot_interactions").update(patch)
+    .eq("unit_id", interaction.unit_id).eq("id", interaction.id).eq("delivery_status", "sending")
+    .eq("claimed_at", interaction.claimed_at!).is("provider_message_id", null)
+    .is("accepted_at", null).is("delivered_at", null).is("read_at", null).is("response_at", null).select("id");
+  if (error) throw error;
+  if (data?.length) return;
+  const current = await admin.from("bot_interactions").select("provider_message_id, delivery_status")
+    .eq("unit_id", interaction.unit_id).eq("id", interaction.id).maybeSingle();
+  if (current.error) throw current.error;
+  if (patch.provider_message_id && current.data?.provider_message_id === patch.provider_message_id
+    && ["accepted", "delivered", "read"].includes(current.data.delivery_status)) return;
+  throw new Error(`No se pudo confirmar el resultado del envío ${interaction.id}; requiere reconciliación.`);
 }
 
 function appointmentSnapshot(payload: unknown): { startsAtLocal: string; roomName: string | null } {

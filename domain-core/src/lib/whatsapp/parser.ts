@@ -9,6 +9,7 @@
  *   SI                      (solo válido si hay una única solicitud pendiente compatible — lo valida quien llama)
  *   GLUCOSA B9K2 120
  *   PRESION C6M4 120/80
+ *   BAJA                    (revoca automatizacion; no es un reporte clinico)
  *
  * Reglas:
  * - El código de referencia (ref) es corto y no se reutiliza por interacción.
@@ -59,6 +60,7 @@ export interface ParsedUnrecognized {
 }
 
 export type ParsedMessage =
+  | { kind: 'opt_out' }
   | ParsedMedicationConfirm
   | ParsedMeasurementReport
   | ParsedUnrecognized;
@@ -92,6 +94,7 @@ function normalizeContext(raw: string | undefined): GlucoseContext {
 
 export function parseIncomingMessage(rawText: string): ParsedMessage {
   const text = rawText.trim();
+  if (/^BAJA$/i.test(text)) return { kind: 'opt_out' };
 
   if (text.length === 0) {
     return { kind: 'unrecognized', rawText, reason: 'Mensaje vacío.' };

@@ -6,11 +6,12 @@ import { formatInTimeZone } from "date-fns-tz";
 
 import { AppError, ok, toApiError, type ApiResult } from "@/contracts/errors";
 import {
-  alertResolutionInputSchema,
   measurementInputSchema,
   medicationResponseCorrectionInputSchema,
+  prescriptionAdjustmentInputSchema,
   type MedicationResponseCorrectionInput,
 } from "@/contracts/clinical";
+import { resolveAlertRpcInputSchema, medicationTherapeuticClassInputSchema } from "@/contracts/clinical-actions";
 import { requireClinicalWriteContext } from "@/lib/auth/context";
 import { mapClinicalRpcFailure } from "@/lib/clinical/rpc-errors";
 import { createClient } from "@/lib/supabase/server";
@@ -18,15 +19,10 @@ import { createClient } from "@/lib/supabase/server";
 // `updated_at` es intencionalmente un string: convertirlo por Date puede
 // perder microsegundos y volver inválido un token de concurrencia optimista
 // que sí era correcto.
-export const resolveAlertRpcInputSchema = alertResolutionInputSchema.extend({
-  patientId: z.uuid(),
-  expectedUpdatedAt: z.iso.datetime({ offset: true }),
-});
-
 export type ResolveAlertRpcInput = z.infer<typeof resolveAlertRpcInputSchema>;
 export type ResolvedAlert = {
   id: string;
-  status: "acknowledged" | "resolved" | "dismissed";
+  status: "open" | "acknowledged" | "resolved" | "dismissed";
 };
 
 const patientIdSchema = z.object({ patientId: z.uuid() });
@@ -51,15 +47,9 @@ const correctMeasurementInputSchema = z.intersection(measurementInputSchema, z.o
 const adjustPrescriptionInputSchema = z.object({
   patientId: z.uuid(), prescriptionId: z.uuid(), expectedVersion: z.number().int().positive(), expectedUpdatedAt: z.iso.datetime({ offset: true }), medicationId: z.uuid(),
   doseText: z.string().trim().min(1).max(500), instructions: z.string().trim().min(1).max(2_000), endsAt: z.iso.date().nullable(),
-  schedules: z.array(z.object({ weekday: z.number().int().min(1).max(7), localTime: z.iso.time({ precision: 0 }) })).min(1).max(168),
+  schedules: prescriptionAdjustmentInputSchema.shape.schedules,
   reason: z.string().trim().min(1).max(2_000),
 });
-export const medicationTherapeuticClassInputSchema = patientIdSchema.extend({
-  prescriptionId: z.uuid(),
-  medicationId: z.uuid(),
-  therapeuticClass: z.enum(["antidiabetic", "antihypertensive", "other"]),
-});
-
 export type UrgentInput = z.infer<typeof urgentInputSchema>;
 export type ComplicationInput = z.infer<typeof complicationInputSchema>;
 export type DeactivateComplicationInput = z.infer<typeof deactivateComplicationInputSchema>;
@@ -67,20 +57,20 @@ export type CorrectMeasurementInput = z.infer<typeof correctMeasurementInputSche
 export type AdjustPrescriptionInput = z.infer<typeof adjustPrescriptionInputSchema>;
 export type MedicationTherapeuticClassInput = z.infer<typeof medicationTherapeuticClassInputSchema>;
 
-function readResolvedAlert(payload: unknown): ResolvedAlert {
+function readResolvedAlert(payload: unknown, allowOpen = false): ResolvedAlert {
   const parsed = z
     .object({
       data: z.object({
         alert: z.object({
           id: z.uuid(),
-          status: z.enum(["acknowledged", "resolved", "dismissed"]),
+          status: z.enum(["open", "acknowledged", "resolved", "dismissed"]),
         }),
       }),
       error: z.unknown().nullable(),
     })
     .safeParse(payload);
 
-  if (!parsed.success || parsed.data.error !== null) {
+  if (!parsed.success || parsed.data.error !== null || (!allowOpen && parsed.data.data.alert.status === "open")) {
     throw new AppError(
       "INTERNAL",
       "La operación de alerta devolvió una respuesta inválida.",
@@ -168,7 +158,7 @@ export async function markUrgent(input: UrgentInput): Promise<ApiResult<Resolved
       p_doctor_id: context.consultingRoom.doctorId,
     });
     if (response.error) throw mapClinicalRpcFailure(response.error);
-    const alert = readResolvedAlert(response.data);
+    const alert = readResolvedAlert(response.data, true);
     refreshClinicalViews();
     return ok(alert);
   } catch (error) {

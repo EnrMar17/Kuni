@@ -1,5 +1,7 @@
 # Pendientes por integrante e integración del modelo predictivo
 
+> **Lista histórica:** varias tareas de esta entrega ya se implementaron (RPC, RF28, clase terapéutica, Cron, adaptador y panel ML). Consultar [auditoría actual](auditoria-estado-actual.md) para pendientes, evidencia y responsables vigentes; este documento conserva el contexto de integración del modelo.
+
 Continuación de [`auditoria-integracion.md`](auditoria-integracion.md). Este documento tiene dos partes:
 
 1. **Qué le falta a cada quien**, separando lo que puede hacer solo de lo que depende de otro.

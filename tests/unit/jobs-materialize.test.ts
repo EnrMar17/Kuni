@@ -9,6 +9,7 @@ vi.mock("@/lib/whatsapp/provider", () => ({
 import { materializeDueInteractions, nonresponseStreakAnchors } from "@/lib/jobs/materialize";
 
 function makeChain(result: { data?: unknown; error?: unknown } = { data: null, error: null }) {
+  const page = { ...result, count: Array.isArray(result.data) ? result.data.length : 0 };
   const chain = {
     select: vi.fn(() => chain),
     upsert: vi.fn(() => chain),
@@ -16,9 +17,11 @@ function makeChain(result: { data?: unknown; error?: unknown } = { data: null, e
     in: vi.fn(() => chain),
     gt: vi.fn(() => chain),
     or: vi.fn(() => chain),
+    order: vi.fn(() => chain),
+    range: vi.fn(() => chain),
     then: <TResult1 = typeof result>(
       onfulfilled?: ((value: typeof result) => TResult1 | PromiseLike<TResult1>) | null,
-    ) => Promise.resolve(result).then(onfulfilled),
+    ) => Promise.resolve(page).then(onfulfilled),
   };
   return chain;
 }
@@ -36,6 +39,19 @@ beforeEach(() => {
 });
 
 describe("materializeDueInteractions", () => {
+  it("no regenera la toma anterior al ajuste y conserva la ocurrencia del instante efectivo", async () => {
+    const insert = makeChain({ data: [{ id: "new" }], error: null });
+    queueFrom({
+      health_units: [makeChain({ data: [{ id: "unit-1", timezone: "America/Mexico_City" }], error: null })],
+      prescriptions: [makeChain({ data: [{ id: "rx-new", patient_id: "p-1", dose_text: "Dosis de prueba", start_date: "2026-09-08", end_date: null,
+        created_at: "2026-09-08T18:00:00Z", medications: { name: "Prueba" },
+        prescription_schedules: [{ id: "morning", local_time: "08:00", weekdays: [2] }, { id: "noon", local_time: "12:00", weekdays: [2] }] }], error: null })],
+      monitoring_plans: [makeChain({ data: [], error: null })], appointments: [makeChain({ data: [], error: null })],
+      bot_interactions: [makeChain({ data: [], error: null }), insert],
+    });
+    expect(await materializeDueInteractions(new Date("2026-09-08T18:00:00Z"))).toEqual({ candidates: 1, created: 1 });
+    expect(insert.upsert).toHaveBeenCalledWith([expect.objectContaining({ scheduled_at: "2026-09-08T18:00:00.000Z", payload_snapshot: expect.objectContaining({ scheduleId: "noon" }) })], expect.anything());
+  });
   it("sin unidades activas, no hace ninguna otra consulta", async () => {
     queueFrom({ health_units: [makeChain({ data: [], error: null })] });
     const result = await materializeDueInteractions(new Date("2026-09-08T14:00:00.000Z"));
@@ -52,6 +68,7 @@ describe("materializeDueInteractions", () => {
           data: [
             {
               id: "presc-1",
+              created_at: "2026-01-01T00:00:00Z",
               patient_id: "patient-1",
               dose_text: "1 tableta",
               start_date: "2026-01-01",
@@ -104,7 +121,7 @@ describe("materializeDueInteractions", () => {
           provider: "demo",
         }),
       ],
-      { onConflict: "unit_id,deduplication_key", ignoreDuplicates: true },
+      { onConflict: "unit_id,deduplication_key", ignoreDuplicates: true, count: "exact" },
     );
   });
 
@@ -116,6 +133,7 @@ describe("materializeDueInteractions", () => {
           data: [
             {
               id: "presc-1",
+              created_at: "2026-01-01T00:00:00Z",
               patient_id: "patient-1",
               dose_text: "1 tableta",
               start_date: "2026-01-01",
@@ -198,7 +216,7 @@ describe("materializeDueInteractions", () => {
           payload_snapshot: { startsAtLocal: "2026-09-09 08:00", roomName: "Consultorio 3" },
         }),
       ],
-      { onConflict: "unit_id,deduplication_key", ignoreDuplicates: true },
+      { onConflict: "unit_id,deduplication_key", ignoreDuplicates: true, count: "exact" },
     );
   });
 
@@ -254,7 +272,7 @@ describe("materializeDueInteractions", () => {
           expects_response: false,
         }),
       ],
-      { onConflict: "unit_id,deduplication_key", ignoreDuplicates: true },
+      { onConflict: "unit_id,deduplication_key", ignoreDuplicates: true, count: "exact" },
     );
   });
 });

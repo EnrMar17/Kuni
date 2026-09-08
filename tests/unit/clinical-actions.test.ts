@@ -169,14 +169,14 @@ describe("markUrgent", () => {
 
   it("marca la urgencia y llama al RPC con patientId, eventId y el motivo", async () => {
     const supabase = makeSupabase({
-      rpc: { data: { data: { alert: { id: urgentAlertId, status: "acknowledged" } }, error: null }, error: null },
+      rpc: { data: { data: { alert: { id: urgentAlertId, status: "open" } }, error: null }, error: null },
     });
     createClient.mockResolvedValue(supabase);
 
     const result = await markUrgent(input);
 
     expect(result.error).toBeNull();
-    expect(result.data).toEqual({ id: urgentAlertId, status: "acknowledged" });
+    expect(result.data).toEqual({ id: urgentAlertId, status: "open" });
     expect(supabase.rpc).toHaveBeenCalledWith("mark_urgent", {
       p_patient_id: patientId,
       p_event_id: eventId,
@@ -188,6 +188,11 @@ describe("markUrgent", () => {
   it("exige un motivo no vacío", async () => {
     const result = await markUrgent({ ...input, reason: "   " });
     expect(result.error?.code).toBe("VALIDATION");
+  });
+
+  it("acepta la urgencia ya atendida que devuelve un reintento idempotente", async () => {
+    createClient.mockResolvedValue(makeSupabase({ rpc: { data: { data: { alert: { id: urgentAlertId, status: "resolved" } }, error: null }, error: null } }));
+    expect((await markUrgent(input)).data).toEqual({ id: urgentAlertId, status: "resolved" });
   });
 });
 
@@ -281,18 +286,22 @@ describe("adjustPrescription", () => {
     doseText: "500mg",
     instructions: "Cada 12 horas con alimentos.",
     endsAt: null,
-    // El schema de A usa z.iso.time({ precision: 0 }) — exige segundos
-    // (HH:MM:SS), a diferencia del regex HH:MM que validaba nuestro schema
-    // original en contracts/clinical.ts.
+    // El formulario y la RPC documentada comparten HH:MM.
     schedules: [
-      { weekday: 1, localTime: "08:00:00" },
-      { weekday: 1, localTime: "20:00:00" },
+      { weekday: 1, localTime: "08:00" },
+      { weekday: 1, localTime: "20:00" },
     ],
     reason: "Ajuste por hipoglucemia recurrente.",
   };
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it("rechaza horarios con segundos antes de llamar la RPC que exige HH:MM", async () => {
+    const result = await adjustPrescription({ ...input, schedules: [{ weekday: 1, localTime: "08:00:00" }] });
+    expect(result.error?.code).toBe("VALIDATION");
+    expect(createClient).not.toHaveBeenCalled();
   });
 
   it("calcula startsAt como 'hoy' en la zona horaria de la unidad, no en UTC", async () => {
@@ -310,6 +319,7 @@ describe("adjustPrescription", () => {
     expect(pInput.startsAt).toBe("2026-09-08");
     expect(pInput.previousPrescriptionId).toBe(prescriptionId);
     expect(pInput.prescribedByDoctorId).toBe(doctorId);
+    expect(pInput.schedules).toEqual(input.schedules);
   });
 
   it("mapea PT422 a VALIDATION cuando startsAt no coincide con 'hoy'", async () => {
