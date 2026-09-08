@@ -1,4 +1,5 @@
 import "server-only";
+import { formatInTimeZone } from "date-fns-tz";
 import type { Database } from "@/types/database.types";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getWhatsAppProvider } from "@/lib/whatsapp/provider";
@@ -8,25 +9,32 @@ import { todaysOccurrenceInstant } from "@/lib/whatsapp/schedule";
  * Materializador — sección 3 de kuni-plan-tecnico.md ("Cada ocurrencia de
  * un horario crea una bot_interaction") y `docs/documentacionB.md`
  * ("Qué falta de B" #3). Convierte recetas/planes de monitoreo activos con
- * ocurrencia de HOY en filas `bot_interactions` (delivery_status='queued'),
- * listas para que `sendDueInteractions()` (send.ts) las reclame y mande.
+ * ocurrencia de HOY, citas próximas y rachas de no-respuesta en filas
+ * `bot_interactions` (delivery_status='queued'), listas para que
+ * `sendDueInteractions()` (send.ts) las reclame y mande.
  *
- * Alcance de esta entrega: `medication` y `measurement` (el CORE — "una
- * toma y una solicitud de medición tienen entrega y respuesta vinculadas").
- * `appointment` y `nonresponse_summary` quedan fuera a propósito: el primero
- * necesita una plantilla aprobada cuyo contenido real no existe todavía: el
- * segundo tiene un disparador ambiguo en el plan ("al siguiente contacto
- * permitido") que no está definido con precisión suficiente para
- * implementarlo sin inventar la regla.
+ * B7 (2026-09-08, decidido con el equipo — ver bitácora): `appointment` y
+ * `nonresponse_summary` ya no quedan fuera. `appointment` recuerda una cita
+ * 24h antes de `starts_at`. `nonresponse_summary` es un check-in amable, UNA
+ * VEZ por racha, cuando un paciente acumula 3 no-respuestas seguidas desde
+ * su última respuesta — ver `materializeNonresponseSummaries()` abajo para
+ * el criterio exacto y por qué es idempotente sin volver a mandar el mismo
+ * mensaje mientras la racha sigue viva.
  *
- * Idempotente por diseño: la clave de deduplicación (`tipo:id:instanteISO`)
- * es determinística, así que reinsertar la misma ocurrencia en un tick
- * posterior simplemente no hace nada (`ignoreDuplicates`), sin necesidad de
- * una consulta previa de existencia ni riesgo de condición de carrera entre
- * dos ticks concurrentes.
+ * Idempotente por diseño: la clave de deduplicación (`tipo:id:instanteISO`
+ * para medicamento/medición/cita, `nonresponse_summary:paciente:ancla` para
+ * el check-in) es determinística, así que reinsertar la misma ocurrencia en
+ * un tick posterior simplemente no hace nada (`ignoreDuplicates`), sin
+ * necesidad de una consulta previa de existencia ni riesgo de condición de
+ * carrera entre dos ticks concurrentes.
  */
 
 type BotInteractionInsert = Database["public"]["Tables"]["bot_interactions"]["Insert"];
+
+/** Anticipación del recordatorio de cita — decidida con el equipo, B7. */
+const APPOINTMENT_REMINDER_LEAD_MS = 24 * 60 * 60 * 1000;
+/** No-respuestas seguidas (desde la última respuesta) que disparan el check-in — decidido con el equipo, B7. */
+const NONRESPONSE_STREAK_THRESHOLD = 3;
 
 export interface MaterializeResult {
   /** Ocurrencias candidatas calculadas en este tick (antes de deduplicar). */
@@ -49,7 +57,7 @@ export async function materializeDueInteractions(now: Date = new Date()): Promis
   const rows: BotInteractionInsert[] = [];
 
   for (const unit of units) {
-    const [prescriptionsResult, plansResult] = await Promise.all([
+    const [prescriptionsResult, plansResult, appointmentsResult, nonresponseHistoryResult] = await Promise.all([
       admin
         .from("prescriptions")
         .select(
@@ -64,10 +72,26 @@ export async function materializeDueInteractions(now: Date = new Date()): Promis
         .eq("unit_id", unit.id)
         .eq("active", true)
         .eq("patients.active", true),
+      admin
+        .from("appointments")
+        .select("id, patient_id, starts_at, consulting_rooms(name), patients!inner(active)")
+        .eq("unit_id", unit.id)
+        .eq("status", "scheduled")
+        .eq("patients.active", true)
+        .gt("starts_at", now.toISOString()),
+      admin
+        .from("bot_interactions")
+        .select("id, patient_id, timeout_at, response_at, patients!inner(active)")
+        .eq("unit_id", unit.id)
+        .in("kind", ["medication", "measurement"])
+        .eq("patients.active", true)
+        .or("response_at.not.is.null,timeout_at.not.is.null"),
     ]);
 
     if (prescriptionsResult.error) throw prescriptionsResult.error;
     if (plansResult.error) throw plansResult.error;
+    if (appointmentsResult.error) throw appointmentsResult.error;
+    if (nonresponseHistoryResult.error) throw nonresponseHistoryResult.error;
 
     for (const prescription of prescriptionsResult.data ?? []) {
       const range = { startDate: prescription.start_date, endDate: prescription.end_date };
@@ -118,6 +142,39 @@ export async function materializeDueInteractions(now: Date = new Date()): Promis
         payload_snapshot: { variable: plan.kind, localTime: plan.local_time },
       });
     }
+
+    for (const appointment of appointmentsResult.data ?? []) {
+      const startsAt = new Date(appointment.starts_at);
+      const reminderInstant = new Date(startsAt.getTime() - APPOINTMENT_REMINDER_LEAD_MS);
+      if (reminderInstant.getTime() > now.getTime()) continue; // todavía no toca avisar
+      rows.push({
+        unit_id: unit.id,
+        patient_id: appointment.patient_id,
+        kind: "appointment",
+        appointment_id: appointment.id,
+        deduplication_key: `appointment:${appointment.id}:reminder`,
+        scheduled_at: reminderInstant.toISOString(),
+        expects_response: false,
+        provider: provider.dbProviderValue,
+        payload_snapshot: {
+          startsAtLocal: formatInTimeZone(startsAt, unit.timezone, "yyyy-MM-dd HH:mm"),
+          roomName: appointment.consulting_rooms?.name ?? null,
+        },
+      });
+    }
+
+    for (const anchorId of nonresponseStreakAnchors(nonresponseHistoryResult.data ?? [])) {
+      rows.push({
+        unit_id: unit.id,
+        patient_id: anchorId.patientId,
+        kind: "nonresponse_summary",
+        deduplication_key: `nonresponse_summary:${anchorId.patientId}:${anchorId.anchorInteractionId}`,
+        scheduled_at: now.toISOString(),
+        expects_response: false,
+        provider: provider.dbProviderValue,
+        payload_snapshot: { anchorInteractionId: anchorId.anchorInteractionId },
+      });
+    }
   }
 
   if (!rows.length) return { candidates: 0, created: 0 };
@@ -129,4 +186,55 @@ export async function materializeDueInteractions(now: Date = new Date()): Promis
   if (insertError) throw insertError;
 
   return { candidates: rows.length, created: inserted?.length ?? 0 };
+}
+
+interface NonresponseHistoryRow {
+  id: string;
+  patient_id: string;
+  timeout_at: string | null;
+  response_at: string | null;
+}
+
+/**
+ * B7 — criterio de "racha de no-respuesta": desde la última vez que el
+ * paciente respondió CUALQUIER medicamento/medición (o desde siempre, si
+ * nunca ha respondido), cuenta sus no-respuestas seguidas (`timeout_at` sin
+ * `response_at`). Al llegar a `NONRESPONSE_STREAK_THRESHOLD`, el `id` de esa
+ * no-respuesta N-ésima (la más antigua que cierra el umbral) es el ancla del
+ * mensaje — fija mientras la racha siga creciendo, así que la clave de
+ * deduplicación no cambia y el check-in se manda UNA SOLA VEZ por racha. La
+ * racha se "rompe" (y una futura podría volver a disparar el mensaje, con
+ * una ancla distinta) en cuanto el paciente responde algo: esa respuesta se
+ * vuelve la nueva `lastResponseAt` y las no-respuestas previas a ella dejan
+ * de contar.
+ *
+ * Función pura: no hace I/O, recibe ya cargada la historia relevante.
+ */
+export function nonresponseStreakAnchors(
+  rows: NonresponseHistoryRow[],
+): { patientId: string; anchorInteractionId: string }[] {
+  const byPatient = new Map<string, NonresponseHistoryRow[]>();
+  for (const row of rows) {
+    const list = byPatient.get(row.patient_id) ?? [];
+    list.push(row);
+    byPatient.set(row.patient_id, list);
+  }
+
+  const anchors: { patientId: string; anchorInteractionId: string }[] = [];
+  for (const [patientId, history] of byPatient) {
+    const lastResponseAt = history.reduce<number | null>((max, row) => {
+      if (!row.response_at) return max;
+      const t = Date.parse(row.response_at);
+      return max == null || t > max ? t : max;
+    }, null);
+
+    const streak = history
+      .filter((row) => row.timeout_at && !row.response_at && (lastResponseAt == null || Date.parse(row.timeout_at) > lastResponseAt))
+      .sort((a, b) => Date.parse(a.timeout_at!) - Date.parse(b.timeout_at!));
+
+    if (streak.length >= NONRESPONSE_STREAK_THRESHOLD) {
+      anchors.push({ patientId, anchorInteractionId: streak[NONRESPONSE_STREAK_THRESHOLD - 1].id });
+    }
+  }
+  return anchors;
 }

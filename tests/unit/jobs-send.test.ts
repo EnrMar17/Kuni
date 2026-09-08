@@ -161,6 +161,60 @@ describe("sendDueInteractions", () => {
     );
   });
 
+  it("B7: recordatorio de cita (informativo) se manda con sesión reciente", async () => {
+    const appointmentInteraction = {
+      id: "bi-appt",
+      patient_id: "patient-1",
+      kind: "appointment",
+      reply_code: "Z9K1", // sin uso: expects_response=false, pero la RPC siempre asigna uno
+      payload_snapshot: { startsAtLocal: "2026-09-09 08:00", roomName: "Consultorio 3" },
+    };
+    mocks.rpc.mockResolvedValue({ data: [appointmentInteraction], error: null });
+    const updateChain = makeChain({ error: null });
+    queueFrom({
+      patients: [makeChain({ data: [{ id: "patient-1", whatsapp_e164: "+5215512345678" }], error: null })],
+      patient_messaging_state: [
+        makeChain({ data: [{ patient_id: "patient-1", last_inbound_at: "2026-09-08T10:00:00.000Z" }], error: null }),
+      ],
+      bot_interactions: [updateChain],
+    });
+    mocks.sendFreeformMessage.mockResolvedValue({ providerMessageId: "demo-2", acceptedAt: new Date("2026-09-08T14:00:00.000Z") });
+
+    const result = await sendDueInteractions();
+
+    expect(result).toEqual({ claimed: 1, sent: 1, failed: 0 });
+    expect(mocks.sendFreeformMessage).toHaveBeenCalledWith({
+      toE164: "+5215512345678",
+      body: expect.stringContaining("Consultorio 3"),
+    });
+  });
+
+  it("B7: check-in de no-respuesta se manda con sesión reciente, tono amable sin código de respuesta", async () => {
+    const summaryInteraction = {
+      id: "bi-summary",
+      patient_id: "patient-1",
+      kind: "nonresponse_summary",
+      reply_code: "M4P2",
+      payload_snapshot: { anchorInteractionId: "bi-3" },
+    };
+    mocks.rpc.mockResolvedValue({ data: [summaryInteraction], error: null });
+    const updateChain = makeChain({ error: null });
+    queueFrom({
+      patients: [makeChain({ data: [{ id: "patient-1", whatsapp_e164: "+5215512345678" }], error: null })],
+      patient_messaging_state: [
+        makeChain({ data: [{ patient_id: "patient-1", last_inbound_at: "2026-09-08T10:00:00.000Z" }], error: null }),
+      ],
+      bot_interactions: [updateChain],
+    });
+    mocks.sendFreeformMessage.mockResolvedValue({ providerMessageId: "demo-3", acceptedAt: new Date("2026-09-08T14:00:00.000Z") });
+
+    const result = await sendDueInteractions();
+
+    expect(result).toEqual({ claimed: 1, sent: 1, failed: 0 });
+    const sentBody = mocks.sendFreeformMessage.mock.calls[0][0].body as string;
+    expect(sentBody).not.toMatch(/\bSI\b|\bNO\b|GLUCOSA|PRESION/);
+  });
+
   it("un error no reintentable (número inválido) marca 'failed' directo", async () => {
     mocks.rpc.mockResolvedValue({ data: [medicationInteraction], error: null });
     const updateChain = makeChain({ error: null });

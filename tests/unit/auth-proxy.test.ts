@@ -54,4 +54,33 @@ describe("proxy de sesión SSR", () => {
     const response = await updateSession(new NextRequest("https://kuni.example/login"));
     expect(response.headers.get("location")).toBeNull();
   });
+
+  describe("B8 — CSP con nonce", () => {
+    it("manda un Content-Security-Policy con nonce en script-src cuando no redirige", async () => {
+      state.authenticated = true;
+      const response = await updateSession(new NextRequest("https://kuni.example/consultorios"));
+      const csp = response.headers.get("Content-Security-Policy");
+      expect(csp).toMatch(/script-src 'self' 'nonce-[A-Za-z0-9+/=]+' 'strict-dynamic'/);
+      expect(csp).toContain("frame-ancestors 'none'");
+    });
+
+    it("manda el mismo Content-Security-Policy también en la respuesta de redirect a /login", async () => {
+      const response = await updateSession(new NextRequest("https://kuni.example/dashboard"));
+      expect(response.headers.get("location")).not.toBeNull();
+      expect(response.headers.get("Content-Security-Policy")).toMatch(/script-src 'self' 'nonce-/);
+    });
+
+    it("dos requests distintos obtienen nonces distintos", async () => {
+      state.authenticated = true;
+      const [first, second] = await Promise.all([
+        updateSession(new NextRequest("https://kuni.example/consultorios")),
+        updateSession(new NextRequest("https://kuni.example/dashboard")),
+      ]);
+      const nonceOf = (csp: string | null) => csp?.match(/'nonce-([A-Za-z0-9+/=]+)'/)?.[1];
+      expect(nonceOf(first.headers.get("Content-Security-Policy"))).toBeTruthy();
+      expect(nonceOf(first.headers.get("Content-Security-Policy"))).not.toBe(
+        nonceOf(second.headers.get("Content-Security-Policy")),
+      );
+    });
+  });
 });
