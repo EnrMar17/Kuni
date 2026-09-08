@@ -5,7 +5,7 @@ import { dashboard, patient, testNow } from "../support/dashboard";
 import { dateTime } from "@/components/dashboard/presentation";
 
 vi.mock("@/actions/auth", () => ({ logout: vi.fn() }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+vi.mock("next/navigation", () => ({ usePathname: () => "/dashboard", useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
 
 import { ClinicalDashboard } from "@/components/dashboard/clinical-dashboard";
 
@@ -19,7 +19,7 @@ describe("dashboard con datos del servidor", () => {
     expect(html).toContain("Selecciona un paciente");
     expect(html).toContain("Sin recetas vigentes registradas");
     expect(html).toContain("Sin datos");
-    expect(html).toContain("Alta aún no disponible");
+    expect(html).toContain('href="/pacientes/nuevo"');
     expect(html).toContain("Registro de urgencia aún no disponible");
     expect(html).not.toContain("87%");
     expect(html).not.toContain("40% abandono");
