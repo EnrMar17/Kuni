@@ -1,0 +1,16 @@
+{
+  "name": "kuni-domain-core",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Funciones puras de dominio de Kuni (riesgo, adherencia, parser de WhatsApp) — Persona C. Diseñadas para vivir en src/lib/domain y src/lib/whatsapp dentro de la app Next.js una vez que A la escafolde; mientras tanto se pueden desarrollar y probar de forma aislada aquí.",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

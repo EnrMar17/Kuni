@@ -4,6 +4,19 @@ kuni-plan-tecnico.md
 kuni-schema.sql
 kuni-cron.sql
 kuni.env.example
+persona-c-tareas.md
+
+# Coordinación con el equipo del modelo de IA + bitácora de Persona C
+# (viven en el Proyecto de Claude, no en el repo)
+preguntas-equipo-modelo-ia.md
+documentacion_tecnica.md
+alineacion-y-preguntas-equipo-ia.md
+respuestas_alineacion_kuni.md
+reporte_metricas.txt
+cambios-para-A-y-B.md
+mi-plan-modelo-ia.md
+contexto-equipo-ia-para-A-y-B.md
+documentacion-persona-c.md
 
 # Configuración local de asistentes de IA (Claude Code / Codex CLI)
 .claude/
