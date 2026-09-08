@@ -18,7 +18,7 @@ import { serverEnv } from "@/lib/env/server";
  *   es responsable de esa decisión; el proveedor no la valida.
  *
  * `dbProviderValue` es el valor que se persiste en `bot_interactions.provider`
- * / `webhook_events.provider` (constraint SQL: 'twilio' | 'meta' | 'demo').
+ * / `webhook_events.provider` (incluye 'smsgate' desde la migración 0010).
  */
 export interface WhatsAppProvider {
   readonly dbProviderValue: "twilio" | "meta" | "demo" | "smsgate";
@@ -144,8 +144,8 @@ class DemoWhatsAppProvider implements WhatsAppProvider {
 let cachedProvider: WhatsAppProvider | null = null;
 
 /**
- * Selecciona el adaptador según `WHATSAPP_PROVIDER`. Import dinámico del
- * adaptador de Twilio para que el SDK real no se cargue en modo demo/meta.
+ * Selecciona según `MESSAGE_PROVIDER`, con WHATSAPP_PROVIDER como fallback
+ * compatible. Los adaptadores reales se importan dinámicamente.
  */
 export async function getWhatsAppProvider(): Promise<WhatsAppProvider> {
   if (cachedProvider) return cachedProvider;

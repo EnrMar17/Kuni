@@ -3,8 +3,6 @@ import { serverEnv } from "@/lib/env/server";
 import {
   WhatsAppProviderError,
   type SendFreeformMessageInput,
-  type SendTemplateMessageInput,
-  type VerifyWebhookSignatureInput,
   type WhatsAppProvider,
   type WhatsAppProviderErrorCode,
   type WhatsAppSendResult,
@@ -33,7 +31,7 @@ class SmsGateProvider implements WhatsAppProvider {
     },
   ) {}
 
-  async sendTemplateMessage(_input: SendTemplateMessageInput): Promise<WhatsAppSendResult> {
+  async sendTemplateMessage(): Promise<WhatsAppSendResult> {
     throw new WhatsAppProviderError(
       "template_rejected",
       "SMSGate envía SMS de texto y no acepta plantillas de WhatsApp.",
@@ -94,7 +92,7 @@ class SmsGateProvider implements WhatsAppProvider {
     return { providerMessageId: payload.id, acceptedAt: new Date() };
   }
 
-  verifyWebhookSignature(_input: VerifyWebhookSignatureInput): boolean {
+  verifyWebhookSignature(): boolean {
     // Los webhooks SMS usan HMAC sobre cuerpo crudo + timestamp y tienen una
     // ruta separada pendiente; jamás aceptar la firma Twilio por esta vía.
     return false;
