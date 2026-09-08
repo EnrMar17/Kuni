@@ -35,7 +35,17 @@ export type DashboardInteraction = {
 };
 export type DashboardPatient = {
   id: string; fullName: string; clinicalRecord: string; curp: string | null; birthDate: string; age: number;
-  sex: string; bloodType: string | null; whatsappE164: string; diagnoses: string[]; consentGranted: boolean;
+  sex: string; bloodType: string | null; whatsappE164: string; diagnoses: string[];
+  /** `condition_code` crudo (DDL), sin etiquetas de UI — lo necesita el vector de features del modelo (RF29). */
+  diagnosisCodes: string[];
+  /**
+   * Códigos vigentes de `patient_complications` (RF28). `null` = ninguna fila para
+   * este paciente = expediente SIN REVISAR — nunca equivale a `["E119"]`
+   * ("revisado, ninguna complicación"). Mismo criterio que `MlComplicationsCapture`
+   * en `domain-core/src/lib/ml/features.ts`.
+   */
+  complicationCodes: string[] | null;
+  consentGranted: boolean;
   initialRiskReason: string | null; risk: RiskResult; adherence: AdherenceResult;
   lastResponseAt: string | null;
   nonresponse: { historical: number; pending: number };
@@ -51,7 +61,7 @@ export type DashboardRows = {
   patients: Row<"patients">[]; diagnoses: Row<"patient_diagnoses">[]; plans: Row<"monitoring_plans">[];
   measurements: Row<"measurements">[]; interactions: Row<"bot_interactions">[]; responses: Row<"medication_responses">[];
   prescriptions: PrescriptionRow[]; appointments: Row<"appointments">[]; alerts: Row<"alerts">[];
-  nonresponse: NonresponseRow[]; consent: ConsentRow[];
+  nonresponse: NonresponseRow[]; consent: ConsentRow[]; complications: Row<"patient_complications">[];
 };
 
 const DAY_MS = 86_400_000;
@@ -157,6 +167,7 @@ export function buildDashboardData(rows: DashboardRows, scope: { unitId: string;
   const responses = grouped(allResponses);
   const plans = grouped(rows.plans.filter(inScope));
   const diagnoses = grouped(rows.diagnoses.filter((r) => inScope(r) && r.active));
+  const complications = grouped(rows.complications.filter((r) => inScope(r) && r.active));
   const measurements = grouped(rows.measurements.filter((r) => inScope(r) && r.voided_at == null && isPast(r.measured_at, now) && Date.parse(r.measured_at) >= now.getTime() - 90 * DAY_MS));
   const prescriptions = grouped(rows.prescriptions.filter((r) => inScope(r) && r.status === "active" && r.start_date <= today && (r.end_date == null || r.end_date >= today)));
   const counts = new Map(rows.nonresponse.filter(inScope).map((r) => [r.patient_id, r]));
@@ -221,6 +232,9 @@ export function buildDashboardData(rows: DashboardRows, scope: { unitId: string;
     return { id: patient.id, fullName: patient.full_name, clinicalRecord: patient.record_number ?? patient.affiliation_number ?? patient.curp ?? "Sin expediente",
       curp: patient.curp, birthDate: patient.birth_date, age, sex: patient.sex, bloodType: patient.blood_type, whatsappE164: patient.whatsapp_e164,
       diagnoses: (diagnoses.get(patient.id) ?? []).map((r) => r.description || diagnosisLabels[r.condition_code] || r.condition_code),
+      diagnosisCodes: (diagnoses.get(patient.id) ?? []).map((r) => r.condition_code),
+      // Sin `.get()` -> undefined -> null: "expediente sin revisar", nunca `[]` (eso confundiría con "revisado, sin nada que reportar").
+      complicationCodes: complications.get(patient.id)?.map((r) => r.code) ?? null,
       consentGranted: consent.get(patient.id) ?? false, initialRiskReason: patient.initial_risk_reason, risk, adherence: computeAdherence(input),
       lastResponseAt,
       nonresponse: { historical: counts.get(patient.id)?.ever_timed_out ?? 0, pending: counts.get(patient.id)?.currently_unanswered ?? 0 },

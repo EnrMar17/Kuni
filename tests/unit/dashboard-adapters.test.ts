@@ -36,9 +36,14 @@ const measurement = (overrides: Partial<Row<"measurements">> = {}): Row<"measure
   source: "manual", notes: null, correction_reason: null, voided_at: null, attributed_doctor_id: "doctor-a",
   created_at: "2026-09-08T15:05:00Z", updated_at: "2026-09-08T15:05:00Z", ...overrides,
 });
+const complication = (overrides: Partial<Row<"patient_complications">> = {}): Row<"patient_complications"> => ({
+  id: "complication-a", unit_id: "unit-a", patient_id: "patient-a", code: "E110", diagnosed_on: "2026-01-01",
+  active: true, correction_reason: null, notes: null, attributed_doctor_id: "doctor-a",
+  created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z", ...overrides,
+});
 const rows = (overrides: Partial<DashboardRows> = {}): DashboardRows => ({
   patients: [patient()], diagnoses: [], plans: [], measurements: [], interactions: [], responses: [], prescriptions: [],
-  appointments: [], alerts: [], nonresponse: [], consent: [], ...overrides,
+  appointments: [], alerts: [], nonresponse: [], consent: [], complications: [], ...overrides,
 });
 
 describe("dashboard SQL adapters", () => {
@@ -100,6 +105,23 @@ describe("dashboard SQL adapters", () => {
     const data = buildDashboardData(rows({ patients: [patient({ initial_risk: "high", initial_risk_reason: "Valoración médica registrada" })], nonresponse: [{ unit_id: "unit-a", patient_id: "patient-a", ever_timed_out: 20, currently_unanswered: 2, last_timeout_at: now.toISOString() }] }), scope, now);
     expect(data.patients[0].risk.level).toBe("high");
     expect(data.patients[0].nonresponse).toEqual({ historical: 20, pending: 2 });
+  });
+
+  it("distinguishes an unreviewed complications record (null) from a reviewed one with no active codes", () => {
+    const unreviewed = buildDashboardData(rows(), scope, now);
+    expect(unreviewed.patients[0].complicationCodes).toBeNull();
+
+    const reviewedNone = buildDashboardData(rows({ complications: [complication({ code: "E119" })] }), scope, now);
+    expect(reviewedNone.patients[0].complicationCodes).toEqual(["E119"]);
+  });
+
+  it("reports only active complication codes and ignores resolved/foreign ones", () => {
+    const data = buildDashboardData(rows({ complications: [
+      complication({ code: "E110" }),
+      complication({ id: "resolved", code: "E113", active: false }),
+      complication({ id: "foreign", patient_id: "other-patient", code: "E112" }),
+    ] }), scope, now);
+    expect(data.patients[0].complicationCodes).toEqual(["E110"]);
   });
 
   it("keeps Y/N/U separate, excludes future/cancelled/technical/non-medication interactions", () => {

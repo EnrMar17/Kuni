@@ -55,3 +55,14 @@ Thumbs.db
 
 # TypeScript build info
 *.tsbuildinfo
+
+# Microservicio del modelo (ml-service/) — Python
+ml-service/__pycache__/
+ml-service/**/__pycache__/
+ml-service/*.pyc
+ml-service/.venv/
+ml-service/venv/
+# Datos crudos de entrenamiento y artefactos grandes: no van al repo
+ml-service/hk_database.csv
+ml-service/salidas/dataset_con_riesgo.parquet
+ml-service/salidas/modelo_riesgo_actual.joblib
