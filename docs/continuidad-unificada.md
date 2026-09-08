@@ -66,6 +66,10 @@ rtk npm run verify
 
 El comando ejecuta secuencialmente suite raíz, suite SQL/dominio, ambos typechecks, lint y build; se detiene ante un fallo. No aplica migraciones ni llama al proveedor. Evitar ejecutar una suite con dependencias instaladas para otro sistema operativo.
 
+**Nota de entorno (8 sep 2026, actualizada) — WSL descartado, todo desde Windows nativo:** `next dev`/`next start` fallan con `Error: An IO error occurred while attempting to create and acquire the lockfile` (`.next/dev/lock`) al correr desde WSL contra un checkout en disco de Windows (`/mnt/d/...`) — el puente `DrvFs` no soporta el lock nativo que usa Next, sin importar Turbopack o `--webpack`; ese error es real, no un lock viejo (confirmado borrando `.next` y reintentando). `npm` tampoco soporta tener instalados los binarios nativos de ambas plataformas a la vez en el mismo `node_modules` (cada `npm ci`/`install` sustituye los del sistema operativo contrario, sin importar `--force` por paquete).
+
+En vez de alternar entre WSL y Windows según la tarea, se probó y confirmó que **ya no hace falta WSL para nada**: con `node_modules` reinstalado 100% desde una terminal de Windows nativa (`npm ci` en la raíz y en `domain-core`), typecheck, ESLint, `vitest` (raíz **413/413** y `domain-core` **314/314**), `next build`, `next dev` y el CLI de Supabase (`migration list`, `db push`, `gen types`) funcionan todos sin problema. El motivo original de necesitar WSL (bindings nativos de Rolldown/Vite rotos en Windows con Vitest 2) ya no aplica desde la migración a **Vitest 5.0.0** documentada arriba. Desde esta nota: **todo el flujo (dev, tests, build, CLI de Supabase) corre desde Windows nativo**; WSL queda sin uso para este proyecto salvo que alguien decida lo contrario.
+
 Comprobaciones adicionales:
 
 ```sh

@@ -2017,10 +2017,6 @@ export type Database = {
       }
     }
     Functions: {
-      process_inbound_event: {
-        Args: { p_event_id: string; p_phone_candidates: string[]; p_parsed: Json }
-        Returns: Json
-      }
       adjust_prescription: {
         Args: {
           p_doctor_id: string
@@ -2096,10 +2092,6 @@ export type Database = {
         Returns: Json
       }
       expire_due_interactions: { Args: never; Returns: number }
-      refresh_patient_derivatives: {
-        Args: { p_unit_id: string; p_patient_id: string }
-        Returns: boolean
-      }
       mark_urgent: {
         Args: {
           p_doctor_id: string
@@ -2108,6 +2100,18 @@ export type Database = {
           p_reason: string
         }
         Returns: Json
+      }
+      process_inbound_event: {
+        Args: {
+          p_event_id: string
+          p_parsed: Json
+          p_phone_candidates: string[]
+        }
+        Returns: Json
+      }
+      refresh_patient_derivatives: {
+        Args: { p_patient_id: string; p_unit_id: string }
+        Returns: boolean
       }
       resolve_alert: {
         Args: {
