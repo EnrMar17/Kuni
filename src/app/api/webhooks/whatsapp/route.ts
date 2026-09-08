@@ -116,6 +116,18 @@ export async function POST(request: Request) {
     return new NextResponse(null, { status: 500 });
   }
 
+  // Registra la ventana de sesión de WhatsApp (24h desde el último mensaje
+  // del paciente): `jobs/send.ts` la usa para decidir si puede mandar texto
+  // libre en vez de exigir una plantilla aprobada. No bloquea la respuesta
+  // si falla — es bookkeeping de transporte, no el efecto clínico del
+  // mensaje, que ya quedó guardado arriba.
+  const { error: messagingStateError } = await admin
+    .from("patient_messaging_state")
+    .upsert({ patient_id: patient.id, unit_id: patient.unit_id, last_inbound_at: new Date().toISOString() });
+  if (messagingStateError) {
+    console.error("[whatsapp/inbound] error actualizando patient_messaging_state:", messagingStateError);
+  }
+
   // `processing_status` se queda en 'received' (default de la tabla):
   // guardamos el mensaje ya interpretado, pero el efecto clínico
   // (correlacionar con la interacción pendiente, escribir la medición o la

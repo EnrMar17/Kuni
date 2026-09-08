@@ -19,6 +19,7 @@ import { POST } from "@/app/api/webhooks/whatsapp/route";
 function makeChain(result: { data?: unknown; error?: unknown } = { data: null, error: null }) {
   const chain = {
     insert: vi.fn(() => chain),
+    upsert: vi.fn(() => chain),
     select: vi.fn(() => chain),
     update: vi.fn(() => chain),
     eq: vi.fn(() => chain),
@@ -99,6 +100,7 @@ describe("POST /api/webhooks/whatsapp — paciente resuelto", () => {
     queueFrom({
       webhook_events: [makeChain({ error: null }), persistParsed],
       patients: [makeChain({ data: { id: "patient-1", unit_id: "unit-1" }, error: null })],
+      patient_messaging_state: [makeChain({ error: null })],
     });
 
     const res = await POST(
@@ -126,6 +128,7 @@ describe("POST /api/webhooks/whatsapp — paciente resuelto", () => {
     queueFrom({
       webhook_events: [makeChain({ error: null }), persistParsed],
       patients: [makeChain({ data: { id: "patient-1", unit_id: "unit-1" }, error: null })],
+      patient_messaging_state: [makeChain({ error: null })],
     });
 
     const res = await POST(

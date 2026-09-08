@@ -109,7 +109,7 @@ describe("POST /api/webhooks/whatsapp/status — sin bot_interaction correspondi
 
 describe("POST /api/webhooks/whatsapp/status — progresión aplicada", () => {
   it("delivered con expects_response=true: consulta el timeout del paciente y aplica el patch", async () => {
-    const updateInteraction = makeChain({ error: null });
+    const updateInteraction = makeChain({ data: [{ id: "interaction-1" }], error: null });
     const markProcessed = makeChain({ error: null });
     queueFrom({
       webhook_events: [makeChain({ error: null }), markProcessed],
@@ -196,5 +196,56 @@ describe("POST /api/webhooks/whatsapp/status — progresión aplicada", () => {
 
     expect(res.status).toBe(200);
     expect(mocks.from).not.toHaveBeenCalledWith("patients");
+  });
+});
+
+describe("POST /api/webhooks/whatsapp/status — concurrencia optimista", () => {
+  it("si el update no afecta filas (otro callback ganó la carrera), relee y recalcula en vez de perder el progreso", async () => {
+    // Reproduce lo visto en vivo: este request leyó 'accepted', pero para
+    // cuando intenta escribir, otro callback (ej. 'read') ya avanzó la fila
+    // a 'read'. El .eq("delivery_status", "accepted") del update hace que
+    // ese update no toque ninguna fila (result vacío) — el código debe
+    // releer el estado fresco ('read') y, con eso, no hacer nada (un 'sent'
+    // nunca debe pisar un 'read' ya confirmado), no escribir a ciegas.
+    const staleUpdateAttempt = makeChain({ data: [], error: null }); // 0 filas afectadas
+    const markProcessed = makeChain({ error: null });
+    queueFrom({
+      webhook_events: [makeChain({ error: null }), markProcessed],
+      bot_interactions: [
+        makeChain({
+          data: {
+            id: "interaction-1",
+            unit_id: "unit-1",
+            patient_id: "patient-1",
+            delivery_status: "accepted", // lo que este request leyó primero
+            expects_response: true,
+            delivered_at: null,
+            response_deadline_at: null,
+          },
+          error: null,
+        }),
+        staleUpdateAttempt, // el intento de update es su propio "from" en la cola
+        makeChain({
+          data: {
+            id: "interaction-1",
+            unit_id: "unit-1",
+            patient_id: "patient-1",
+            delivery_status: "read", // estado fresco tras releer
+            expects_response: true,
+            delivered_at: "2026-09-08T12:00:00.000Z",
+            response_deadline_at: "2026-09-08T13:00:00.000Z",
+          },
+          error: null,
+        }),
+      ],
+      patients: [makeChain({ data: { bot_response_timeout_minutes: 60 }, error: null })],
+    });
+
+    const res = await POST(request(twilioForm({ MessageSid: "SM-race", MessageStatus: "sent" })));
+
+    expect(res.status).toBe(200);
+    expect(markProcessed.update).toHaveBeenCalledWith(
+      expect.objectContaining({ processing_status: "processed" }),
+    );
   });
 });

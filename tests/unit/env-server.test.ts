@@ -30,6 +30,7 @@ beforeEach(() => {
     "TWILIO_WHATSAPP_FROM",
     "TWILIO_APPOINTMENT_CONTENT_SID",
     "APP_PUBLIC_URL",
+    "CRON_SECRET",
   ]) {
     delete process.env[key];
   }
@@ -73,5 +74,18 @@ describe("serverEnv — WhatsApp/Twilio", () => {
       APP_PUBLIC_URL: "https://kuni.example.com/",
     });
     await expect(loadServerEnv()).rejects.toThrow(/APP_PUBLIC_URL/);
+  });
+});
+
+describe("serverEnv — CRON_SECRET", () => {
+  it("es opcional: sin definirla, no rompe el arranque", async () => {
+    setEnv({});
+    const { serverEnv } = await loadServerEnv();
+    expect(serverEnv.CRON_SECRET).toBeUndefined();
+  });
+
+  it("rechaza un valor demasiado corto (protección débil no sirve como protección)", async () => {
+    setEnv({ CRON_SECRET: "corto" });
+    await expect(loadServerEnv()).rejects.toThrow(/CRON_SECRET/);
   });
 });

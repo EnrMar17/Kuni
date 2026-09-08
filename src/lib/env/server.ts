@@ -36,6 +36,13 @@ const serverEnvSchema = z
         message: "APP_PUBLIC_URL no debe terminar en '/'.",
       })
       .optional(),
+    // Token Bearer que protege `api/jobs/tick` — solo el Cron de Supabase
+    // (o quien lo invoque manualmente para probar) debe poder dispararlo.
+    // Sin valor, ese endpoint rechaza toda request (fail-safe: nunca "sin
+    // token = público").
+    CRON_SECRET: z.string().min(16, {
+      message: "CRON_SECRET debe tener al menos 16 caracteres si se define.",
+    }).optional(),
   })
   .superRefine((env, ctx) => {
     if (env.WHATSAPP_PROVIDER !== "twilio") return;
@@ -67,6 +74,7 @@ function loadServerEnv() {
     TWILIO_WHATSAPP_FROM: process.env.TWILIO_WHATSAPP_FROM,
     TWILIO_APPOINTMENT_CONTENT_SID: process.env.TWILIO_APPOINTMENT_CONTENT_SID,
     APP_PUBLIC_URL: process.env.APP_PUBLIC_URL,
+    CRON_SECRET: process.env.CRON_SECRET,
   });
 
   if (!parsed.success) {
