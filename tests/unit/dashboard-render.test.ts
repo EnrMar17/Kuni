@@ -14,13 +14,13 @@ function render(data = dashboard()) {
 }
 
 describe("dashboard con datos del servidor", () => {
-  it("muestra ausencia real y conserva deshabilitadas las operaciones aún no construidas", () => {
+  it("muestra ausencia real y dirige las acciones clínicas a sus flujos funcionales", () => {
     const html = render();
     expect(html).toContain("Selecciona un paciente");
     expect(html).toContain("Sin recetas vigentes registradas");
     expect(html).toContain("Sin datos");
     expect(html).toContain('href="/pacientes/nuevo"');
-    expect(html).toContain("Registro de urgencia aún no disponible");
+    expect(html).toContain("Abre las alertas activas para documentar la urgencia");
     expect(html).not.toContain("87%");
     expect(html).not.toContain("40% abandono");
     expect(html).not.toContain("María Elena Vargas");
