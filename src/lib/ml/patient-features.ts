@@ -4,11 +4,12 @@
  * `buildMlFeatureVector()` de `domain-core` (RF29/RF30).
  *
  * Deliberadamente NO recalcula nada que `dashboard.ts` ya calculó (edad,
- * medidas, adherencia general): solo reorganiza lo que ya existe en la
- * forma que pide el contrato del modelo. Las piezas que todavía no se
- * pueden calcular (adherencia por clase terapéutica — B4, complicaciones —
- * B3) se mandan como `null` a propósito: `buildMlFeatureVector()` las
- * declara en `gaps`, nunca las disfraza de dato observado.
+ * medidas, adherencia general, complicaciones RF28): solo reorganiza lo que
+ * ya existe en la forma que pide el contrato del modelo. Adherencia por
+ * clase terapéutica sigue sin poder calcularse (B4, `medications` todavía
+ * no clasifica por clase) y se manda `null` a propósito:
+ * `buildMlFeatureVector()` lo declara en `gaps`, nunca lo disfraza de dato
+ * observado.
  */
 import "server-only";
 import type { Reading } from "../../../domain-core/src/lib/domain/trend";
@@ -43,7 +44,9 @@ export function buildPatientMlFeatureInput(patient: DashboardPatient): MlFeature
     // Gap conocido hasta B4 (clasificación por clase terapéutica en `medications`).
     antidiabeticAdherence: null,
     antihypertensiveAdherence: null,
-    // Gap conocido hasta B3 (migración RF28 `patient_complications`).
-    complications: null,
+    // RF28 ya migrada (B3): `null` real solo cuando el expediente no tiene
+    // revisión (ninguna fila), nunca cuando el médico ya declaró "sin
+    // complicaciones" (`["E119"]`) — esos dos casos no son lo mismo.
+    complications: patient.complicationCodes == null ? null : { codes: patient.complicationCodes },
   };
 }

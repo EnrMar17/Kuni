@@ -62,10 +62,12 @@ describe("dashboard query boundaries", () => {
     const result = await loadDashboardRows({ from } as unknown as SupabaseClient<Database>, { unitId: "unit-a", roomId: "room-a" }, new Date("2026-09-08T18:00:00Z"));
     expect(result.rows.patients).toHaveLength(210);
     expect(result.hasMorePatients).toBe(false);
-    expect(idBatches).toHaveLength(30);
+    // 3 lotes de pacientes (210 / 100) x 11 relaciones por lote (10 + patient_complications, RF28).
+    expect(idBatches).toHaveLength(33);
     expect(idBatches.every((batch) => batch.length <= 100)).toBe(true);
     expect(new Set(idBatches.flat()).size).toBe(210);
-    expect(unitFilters).toHaveLength(31);
+    // +1 por la consulta de pacientes misma.
+    expect(unitFilters).toHaveLength(34);
     expect(unitFilters.every((unit) => unit === "unit-a")).toBe(true);
     expect(timeFilters.every((clause) => clause.includes("response_at.gte."))).toBe(true);
   });
