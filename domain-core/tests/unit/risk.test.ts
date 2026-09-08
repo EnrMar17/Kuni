@@ -15,6 +15,7 @@ function basePatient(overrides: Partial<PatientRiskInput> = {}): PatientRiskInpu
     urgentFlagActive: false,
     initialAssessment: null,
     lastExpectedRequestAt: '2026-09-08T07:00:00.000Z',
+    monitoringRequirements: [{ variable: 'glucose', lastExpectedRequestAt: '2026-09-08T07:00:00.000Z' }],
     ...overrides,
   };
 }
@@ -241,6 +242,108 @@ describe('evaluateRisk', () => {
     ];
     const responses: RespondedInteraction[] = [{ respondedAt: '2026-09-08T08:00:00.000Z' }];
     const result = evaluateRisk(basePatient(), measurements, responses, [], now);
+    expect(result.level).toBe('unknown');
+  });
+
+  it.each([null, {}, { targetMin: null, targetMax: null }, { targetMin: NaN }, { criticalMax: 300 }])(
+    'no infiere bajo sin un objetivo evaluable (%j)', (thresholds) => {
+      const result = evaluateRisk(basePatient(), [{
+        variable: 'glucose', value: 120, observedAt: now.toISOString(), thresholds,
+      }], [], [], now);
+      expect(result.level).toBe('unknown');
+    },
+  );
+
+  it('una respuesta de medicamento no vuelve reciente una medición vieja', () => {
+    const result = evaluateRisk(basePatient(), [{
+      variable: 'glucose', value: 120, observedAt: '2026-09-01T08:00:00Z', thresholds: { targetMax: 140 },
+    }], [{ respondedAt: now.toISOString() }], [], now);
+    expect(result.level).toBe('unknown');
+  });
+
+  it('exige ambas variables del plan aunque una tenga lectura normal', () => {
+    const result = evaluateRisk(basePatient({ monitoringRequirements: [
+      { variable: 'glucose', lastExpectedRequestAt: '2026-09-08T07:00:00Z' },
+      { variable: 'blood_pressure_systolic', lastExpectedRequestAt: '2026-09-08T07:00:00Z' },
+    ] }), [{ variable: 'glucose', value: 120, observedAt: now.toISOString(), thresholds: { targetMax: 140 } }], [], [], now);
+    expect(result.level).toBe('unknown');
+  });
+
+  it('no confunde glucosa en ayuno con el contexto después de comer', () => {
+    const result = evaluateRisk(basePatient({ monitoringRequirements: [
+      { variable: 'glucose', context: 'after_meal', lastExpectedRequestAt: '2026-09-08T07:00:00Z' },
+    ] }), [{ variable: 'glucose', context: 'fasting', value: 120, observedAt: now.toISOString(), thresholds: { targetMax: 140 } }], [], [], now);
+    expect(result.level).toBe('unknown');
+  });
+
+  it('una lectura de otro plan con igual variable/contexto no acredita un plan faltante', () => {
+    const patient = basePatient({ monitoringRequirements: [
+      { monitoringPlanId: 'plan-a', variable: 'glucose', context: 'fasting', lastExpectedRequestAt: '2026-09-08T07:00:00Z' },
+      { monitoringPlanId: 'plan-b', variable: 'glucose', context: 'fasting', lastExpectedRequestAt: '2026-09-08T07:00:00Z' },
+    ] });
+    const reading: EvaluableMeasurement = { monitoringPlanId: 'plan-a', variable: 'glucose', context: 'fasting', value: 120,
+      observedAt: now.toISOString(), thresholds: { targetMax: 140 } };
+    expect(evaluateRisk(patient, [reading], [], [], now).level).toBe('unknown');
+    expect(evaluateRisk(patient, [reading, { ...reading, monitoringPlanId: 'plan-b' }], [], [], now).level).toBe('low');
+  });
+
+  it('un reporte sin plan resuelto no acredita un requisito con ID de plan', () => {
+    const patient = basePatient({ monitoringRequirements: [
+      { monitoringPlanId: 'plan-a', variable: 'glucose', lastExpectedRequestAt: '2026-09-08T07:00:00Z' },
+    ] });
+    const reading: EvaluableMeasurement = { variable: 'glucose', value: 120,
+      observedAt: now.toISOString(), thresholds: { targetMax: 140 } };
+    expect(evaluateRisk(patient, [reading], [], [], now).level).toBe('unknown');
+  });
+
+  it('compara instantes con zonas distintas, no el orden lexicográfico del texto', () => {
+    const result = evaluateRisk(basePatient({ monitoringRequirements: [
+      { variable: 'glucose', lastExpectedRequestAt: '2026-09-08T09:00:00Z' },
+    ] }), [{ variable: 'glucose', value: 120, observedAt: '2026-09-08T04:00:00-06:00', thresholds: { targetMax: 140 } }], [], [], now);
     expect(result.level).toBe('low');
+  });
+
+  it.each(['fecha inválida', '2026-09-09T00:00:00Z'])(
+    'no usa mediciones inválidas o futuras (%s) para señales ni suficiencia', (observedAt) => {
+      const result = evaluateRisk(basePatient(), [{ variable: 'glucose', value: 500, observedAt, thresholds: { targetMax: 140, criticalMax: 250 } }], [], [], now);
+      expect(result.level).toBe('unknown');
+      expect(result.inputsUsed.measurementsConsidered).toBe(0);
+    },
+  );
+
+  it.each(['fecha inválida', '2026-09-09T00:00:00Z'])(
+    'no infiere bajo con fecha de solicitud inválida o futura (%s)', (lastExpectedRequestAt) => {
+      const result = evaluateRisk(basePatient({ monitoringRequirements: [{ variable: 'glucose', lastExpectedRequestAt }] }),
+        [{ variable: 'glucose', value: 120, observedAt: now.toISOString(), thresholds: { targetMax: 140 } }], [], [], now);
+      expect(result.level).toBe('unknown');
+    },
+  );
+
+  it('una fecha global sin planes explícitos no acredita todas las variables', () => {
+    const result = evaluateRisk(basePatient({ monitoringRequirements: undefined }),
+      [{ variable: 'glucose', value: 120, observedAt: now.toISOString(), thresholds: { targetMax: 140 } }], [], [], now);
+    expect(result.level).toBe('unknown');
+  });
+
+  it('una señal crítica prevalece aunque otra variable del plan esté incompleta', () => {
+    const result = evaluateRisk(basePatient({ monitoringRequirements: [
+      { variable: 'blood_pressure_systolic', lastExpectedRequestAt: now.toISOString() },
+    ] }), [{ variable: 'glucose', value: 500, observedAt: now.toISOString(), thresholds: { criticalMax: 250 } }], [], [], now);
+    expect(result.level).toBe('high');
+  });
+
+  it('preserva una valoración baja explícita y vigente, con su procedencia médica', () => {
+    const result = evaluateRisk(basePatient({ initialAssessment: { level: 'low', active: true, evaluatedAt: now.toISOString() } }), [], [], [], now);
+    expect(result.level).toBe('low');
+    expect(result.reasons.join(' ')).toMatch(/Valoración inicial médica/);
+  });
+
+  it('no usa una valoración médica futura ni timeouts futuros o inválidos', () => {
+    const result = evaluateRisk(basePatient({ initialAssessment: { level: 'high', active: true, evaluatedAt: '2026-09-09T12:00:00Z' } }), [], [], [
+      { occurredAt: '2026-09-09T12:00:00Z' }, { occurredAt: 'invalid' },
+    ], now);
+    expect(result.level).toBe('unknown');
+    expect(result.inputsUsed.pendingTimeoutsLast7Days).toBe(0);
+    expect(result.inputsUsed.initialAssessmentLevel).toBeNull();
   });
 });

@@ -98,7 +98,7 @@ function parseDataSufficiency(value: unknown): MlDataSufficiency | null {
 
 /** Valida defensivamente la forma de la respuesta antes de confiar en ella. */
 export function parseMlResponse(json: unknown): MlPredictionResult {
-  if (typeof json !== 'object' || json === null) return emptyResult();
+  if (typeof json !== 'object' || json === null || Array.isArray(json)) return emptyResult();
   const obj = json as Record<string, unknown>;
 
   const probabilidadEmpeoramientoFuturo =
@@ -108,9 +108,17 @@ export function parseMlResponse(json: unknown): MlPredictionResult {
       ? obj.probabilidad_empeoramiento_futuro
       : null;
 
-  const modelVersion = typeof obj.model_version === 'string' ? obj.model_version : null;
+  const modelVersion = typeof obj.model_version === 'string' && obj.model_version.trim().length > 0
+    ? obj.model_version.trim()
+    : null;
 
   const datosSuficientes = parseDataSufficiency(obj.datos_suficientes);
+
+  if (probabilidadEmpeoramientoFuturo == null || datosSuficientes == null) return emptyResult();
+  // Política provisional de Kuni: no publicar un porcentaje con todas las
+  // variables insuficientes. Falta cerrar elegibilidad parcial con el equipo IA.
+  if (!datosSuficientes.glucosaAyuno && !datosSuficientes.glucosaPostprandial
+    && !datosSuficientes.presionArterial) return emptyResult();
 
   return {
     probabilidadEmpeoramientoFuturo,

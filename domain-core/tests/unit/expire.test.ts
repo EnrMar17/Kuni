@@ -10,9 +10,10 @@ const now = new Date('2026-09-08T12:00:00.000Z');
 function candidate(overrides: Partial<DueInteractionCandidate> = {}): DueInteractionCandidate {
   return {
     interactionId: 'i1',
-    kind: 'medication_confirm',
+    kind: 'medication',
     expectsResponse: true,
     deliveryStatus: 'delivered',
+    deliveredAt: '2026-09-08T09:00:00.000Z',
     hasConsent: true,
     respondedAt: null,
     timeoutAt: null,
@@ -39,7 +40,7 @@ describe('evaluateExpirations', () => {
 
   it('no cuenta un recordatorio informativo de cita (expectsResponse=false)', () => {
     const [decision] = evaluateExpirations(
-      [candidate({ kind: 'appointment_reminder', expectsResponse: false })],
+      [candidate({ kind: 'appointment', expectsResponse: false })],
       now,
     );
     expect(decision.action).toBe('skip');
@@ -48,7 +49,7 @@ describe('evaluateExpirations', () => {
 
   it('no cuenta un aviso de resumen (expectsResponse=false)', () => {
     const [decision] = evaluateExpirations(
-      [candidate({ kind: 'summary_notice', expectsResponse: false })],
+      [candidate({ kind: 'nonresponse_summary', expectsResponse: false })],
       now,
     );
     expect(decision.countsAsNonResponse).toBe(false);
@@ -63,7 +64,7 @@ describe('evaluateExpirations', () => {
     expect(decision.countsAsNonResponse).toBe(false);
   });
 
-  it.each(['failed', 'blocked_window', 'unknown'] as const)(
+  it.each(['queued', 'sending', 'accepted', 'failed', 'cancelled', 'blocked_window', 'blocked_template', 'unknown'] as const)(
     'no cuenta un fallo de entrega (%s) como no-respuesta del paciente',
     (deliveryStatus) => {
       const [decision] = evaluateExpirations([candidate({ deliveryStatus })], now);
@@ -72,10 +73,33 @@ describe('evaluateExpirations', () => {
     },
   );
 
-  it('no cuenta si el paciente no tenía consentimiento vigente', () => {
+  it('revocar consentimiento después de entregar no elimina el seguimiento histórico', () => {
     const [decision] = evaluateExpirations([candidate({ hasConsent: false })], now);
-    expect(decision.action).toBe('skip');
-    expect(decision.countsAsNonResponse).toBe(false);
+    expect(decision.action).toBe('mark_timeout');
+    expect(decision.countsAsNonResponse).toBe(true);
+  });
+
+  it('read también acredita entrega al igual que la RPC SQL', () => {
+    const [decision] = evaluateExpirations([candidate({ deliveryStatus: 'read' })], now);
+    expect(decision.action).toBe('mark_timeout');
+  });
+
+  it.each([null, 'invalid', '2026-09-08T11:00:00Z'])(
+    'exige evidencia de entrega válida anterior al plazo (%s)', (deliveredAt) => {
+      expect(evaluateExpirations([candidate({ deliveredAt })], now)[0].action).toBe('skip');
+    },
+  );
+
+  it.each([null, 'invalid'])(
+    'no vence solicitudes sin un plazo válido (%s)', (dueAt) => {
+      expect(evaluateExpirations([candidate({ dueAt })], now)[0].action).toBe('skip');
+    },
+  );
+
+  it('vence en la frontera exacta del plazo y no muta el candidato', () => {
+    const input = candidate({ dueAt: now.toISOString() });
+    expect(evaluateExpirations([input], now)[0].action).toBe('mark_timeout');
+    expect(input.timeoutAt).toBeNull();
   });
 
   it('no marca timeout si todavía no llega la fecha de vencimiento', () => {
@@ -108,7 +132,7 @@ describe('countNonResponses', () => {
     const decisions = evaluateExpirations(
       [
         candidate({ interactionId: 'a' }),
-        candidate({ interactionId: 'b', expectsResponse: false, kind: 'summary_notice' }),
+        candidate({ interactionId: 'b', expectsResponse: false, kind: 'nonresponse_summary' }),
         candidate({ interactionId: 'c', deliveryStatus: 'failed' }),
         candidate({ interactionId: 'd' }),
       ],

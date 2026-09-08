@@ -89,7 +89,7 @@ describe('parseIncomingMessage', () => {
 
   it('reconoce el contexto posprandial', () => {
     const result = parseIncomingMessage('GLUCOSA B9K2 160 POSPRANDIAL');
-    expect(result).toMatchObject({ context: 'postprandial' });
+    expect(result).toMatchObject({ context: 'after_meal' });
   });
 
   it('interpreta un reporte de presión espontáneo sin código', () => {
@@ -118,7 +118,7 @@ describe('parseIncomingMessage', () => {
   });
 
   it('no interpreta un código de referencia demasiado corto como válido', () => {
-    // El formato de referencia es de 3 a 6 caracteres; "SI A" no matchea
+    // El formato de referencia es de 3 a 8 caracteres; "SI A" no matchea
     // ningún patrón conocido y debe quedar como no reconocido en vez de
     // adivinar un código incompleto.
     const result = parseIncomingMessage('SI A');
@@ -128,5 +128,21 @@ describe('parseIncomingMessage', () => {
   it('deja sin interpretar un GLUCOSA sin valor numérico', () => {
     const result = parseIncomingMessage('GLUCOSA B9K2');
     expect(result.kind).toBe('unrecognized');
+  });
+
+  it.each(['SI ABCD1234', 'NO ABCD1234', 'GLUCOSA ABCD1234 120', 'PRESION ABCD1234 120/80'])(
+    'acepta la longitud que genera SQL: %s', (message) => {
+      expect(parseIncomingMessage(message)).toMatchObject({ referenceCode: 'ABCD1234' });
+    },
+  );
+
+  it.each(['SI ABCD12345', 'GLUCOSA ABCD12345 120', 'PRESION ABCD12345 120/80'])(
+    'rechaza referencias mayores que el contrato: %s', (message) => {
+      expect(parseIncomingMessage(message).kind).toBe('unrecognized');
+    },
+  );
+
+  it('traduce POSTPRANDIAL al contexto SQL after_meal', () => {
+    expect(parseIncomingMessage('GLUCOSA ABCD1234 120 POSTPRANDIAL')).toMatchObject({ context: 'after_meal' });
   });
 });

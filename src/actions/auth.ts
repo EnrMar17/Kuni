@@ -4,15 +4,18 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
+import { AppError } from "@/contracts/errors";
 import {
-  FIXTURE_SESSION_COOKIE,
-  SELECTED_ROOM_COOKIE,
-  getFixtureSession,
-} from "@/lib/auth/fixture-session";
-import { fixtureCredentials, fixtureUnit, getFixtureRoom } from "@/lib/queries/fixtures";
+  clearConsultingRoomCookie,
+  findActiveConsultingRoom,
+  getAuthContext,
+  setConsultingRoomCookie,
+} from "@/lib/auth/context";
+import { postLoginRedirect } from "@/lib/auth/navigation";
+import { createClient } from "@/lib/supabase/server";
 
 const loginSchema = z.object({
-  email: z.email(),
+  email: z.string().trim().toLowerCase().pipe(z.email()),
   password: z.string().min(1),
 });
 
@@ -20,7 +23,13 @@ export type LoginState = {
   error: string | null;
 };
 
-export async function loginWithFixture(
+async function clearLegacySessionCookies() {
+  const cookieStore = await cookies();
+  cookieStore.delete("kuni_fixture_session");
+  cookieStore.delete("kuni_selected_room");
+}
+
+export async function login(
   _previousState: LoginState,
   formData: FormData,
 ): Promise<LoginState> {
@@ -33,54 +42,62 @@ export async function loginWithFixture(
     return { error: "Escribe un correo válido y tu contraseña." };
   }
 
-  if (
-    parsed.data.email.toLowerCase() !== fixtureCredentials.email ||
-    parsed.data.password !== fixtureCredentials.password
-  ) {
-    return { error: "Las credenciales no corresponden a la unidad de demostración." };
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase.auth.signInWithPassword(parsed.data);
+    if (error) {
+      return { error: error.status === 400 || error.status === 401
+        ? "El correo o la contraseña no son correctos."
+        : "No pudimos iniciar sesión. Intenta nuevamente." };
+    }
+    await clearConsultingRoomCookie();
+    await clearLegacySessionCookies();
+    await getAuthContext();
+  } catch (error) {
+    return { error: error instanceof AppError && error.code === "FORBIDDEN"
+      ? error.message
+      : "No pudimos verificar tu acceso. Intenta nuevamente." };
   }
 
-  const cookieStore = await cookies();
-  cookieStore.set(FIXTURE_SESSION_COOKIE, fixtureUnit.id, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 60 * 60 * 8,
-  });
-  cookieStore.delete(SELECTED_ROOM_COOKIE);
-
-  redirect("/consultorios");
+  const destination = postLoginRedirect(String(formData.get("redirectTo") ?? ""));
+  redirect(`/consultorios?redirectTo=${encodeURIComponent(destination)}`);
 }
 
-export async function selectFixtureRoom(formData: FormData) {
-  const session = await getFixtureSession();
-
-  if (!session) {
-    redirect("/login");
+export async function selectConsultingRoom(formData: FormData) {
+  const parsed = z.uuid().safeParse(formData.get("roomId"));
+  let failure: string | null = null;
+  try {
+    const context = await getAuthContext();
+    const room = parsed.success ? await findActiveConsultingRoom(context, parsed.data) : null;
+    if (!room) {
+      failure = "/consultorios?error=consultorio-invalido";
+    } else {
+      // Cambia el contexto de lectura, no datos clínicos; viewer también puede elegirlo.
+      await setConsultingRoomCookie(room.id);
+    }
+  } catch (error) {
+    failure = error instanceof AppError && error.code === "UNAUTHENTICATED"
+      ? "/login?error=sesion-vencida"
+      : error instanceof AppError && error.code === "FORBIDDEN"
+        ? "/login?error=sin-membresia"
+        : "/consultorios?error=conexion";
   }
-
-  const roomId = z.uuid().safeParse(formData.get("roomId"));
-  const room = roomId.success ? getFixtureRoom(roomId.data) : null;
-
-  if (!room || room.unitId !== session.unitId) {
-    redirect("/consultorios?error=consultorio-invalido");
-  }
-
-  (await cookies()).set(SELECTED_ROOM_COOKIE, room.id, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 60 * 60 * 8,
-  });
-
-  redirect("/dashboard");
+  if (failure) redirect(failure);
+  const destination = postLoginRedirect(String(formData.get("redirectTo") ?? ""));
+  redirect(destination === "/consultorios" || destination.startsWith("/consultorios?")
+    ? "/dashboard" : destination);
 }
 
 export async function logout() {
-  const cookieStore = await cookies();
-  cookieStore.delete(FIXTURE_SESSION_COOKIE);
-  cookieStore.delete(SELECTED_ROOM_COOKIE);
-  redirect("/login");
+  let failed = false;
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase.auth.signOut({ scope: "local" });
+    failed = Boolean(error);
+  } catch {
+    failed = true;
+  }
+  await clearConsultingRoomCookie();
+  await clearLegacySessionCookies();
+  redirect(failed ? "/login?error=salida-fallida" : "/login");
 }

@@ -20,7 +20,7 @@ export const patientSummarySchema = z.object({
 
 export const patientDetailSchema = patientSummarySchema.extend({
   birthDate: z.iso.date(),
-  sex: z.enum(["female", "male", "other", "unknown"]),
+  sex: z.enum(["female", "male", "intersex", "unknown"]),
   curp: z.string().nullable(),
   whatsappE164: z.e164(),
   bloodType: z.string().nullable(),
@@ -31,7 +31,7 @@ export const createPatientInputSchema = z.object({
   roomId: z.uuid(),
   fullName: z.string().trim().min(3),
   birthDate: z.iso.date(),
-  sex: z.enum(["female", "male", "other", "unknown"]),
+  sex: z.enum(["female", "male", "intersex", "unknown"]),
   clinicalRecord: z.string().trim().min(1),
   curp: z.string().trim().nullable(),
   whatsappE164: z.e164(),
@@ -58,7 +58,7 @@ export const measurementInputSchema = z.discriminatedUnion("kind", [
     patientId: z.uuid(),
     observedAt: z.iso.datetime(),
     glucoseMgDl: z.number().positive(),
-    context: z.enum(["fasting", "postprandial", "unspecified"]),
+    context: z.enum(["fasting", "before_meal", "after_meal", "random", "unspecified"]),
   }),
   z.object({
     kind: z.literal("blood_pressure"),

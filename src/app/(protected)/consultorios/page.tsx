@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 
-import { logout, selectFixtureRoom } from "@/actions/auth";
+import { logout, selectConsultingRoom } from "@/actions/auth";
 import { KuniMark } from "@/components/kuni-mark";
-import { fixtureRooms, fixtureUnit } from "@/lib/queries/fixtures";
+import { getPageAuthContext } from "@/lib/auth/context";
+import { postLoginRedirect } from "@/lib/auth/navigation";
+import { getConsultingRooms, type ConsultingRoomSummary } from "@/lib/queries/consulting-rooms";
 
 export const metadata: Metadata = {
   title: "Seleccionar consultorio",
@@ -10,11 +12,20 @@ export const metadata: Metadata = {
 };
 
 type PageProps = {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; redirectTo?: string }>;
 };
 
 export default async function ConsultingRoomsPage({ searchParams }: PageProps) {
-  const { error } = await searchParams;
+  const { error, redirectTo } = await searchParams;
+  const context = await getPageAuthContext();
+  let rooms: ConsultingRoomSummary[] = [];
+  let loadError = false;
+  try {
+    ({ rooms } = await getConsultingRooms());
+  } catch {
+    loadError = true;
+  }
+  const destination = postLoginRedirect(typeof redirectTo === "string" ? redirectTo : null);
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-[#e8ebf2] p-3 text-slate-800 md:p-6 lg:p-8">
@@ -23,8 +34,8 @@ export default async function ConsultingRoomsPage({ searchParams }: PageProps) {
           <KuniMark />
           <div className="flex items-center gap-3">
             <div className="hidden text-right sm:block">
-              <p className="text-xs font-bold text-slate-800">{fixtureUnit.name}</p>
-              <p className="text-[10px] font-medium text-slate-400">{fixtureUnit.code} · Datos ficticios</p>
+              <p className="text-xs font-bold text-slate-800">{context.unitName}</p>
+              <p className="text-[10px] font-medium text-slate-400">{context.unitCode ?? "Unidad de salud"} · {context.role === "viewer" ? "Solo lectura" : "Acceso clínico"}</p>
             </div>
             <form action={logout}>
               <button className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50" type="submit">
@@ -37,7 +48,7 @@ export default async function ConsultingRoomsPage({ searchParams }: PageProps) {
         <section className="mx-auto max-w-5xl py-10 sm:py-14">
           <div className="text-center">
             <span className="inline-flex rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-indigo-600">
-              {fixtureUnit.code}
+              {context.unitCode ?? "Unidad de salud"}
             </span>
             <h1 className="mt-4 text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">
               Selecciona tu consultorio
@@ -47,14 +58,14 @@ export default async function ConsultingRoomsPage({ searchParams }: PageProps) {
             </p>
           </div>
 
-          {error ? (
+          {error || loadError ? (
             <p className="mx-auto mt-6 max-w-2xl rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-center text-sm font-medium text-rose-700" role="alert">
-              No pudimos seleccionar ese consultorio. Intenta nuevamente.
+              {loadError || error === "conexion" ? "No pudimos cargar los consultorios. Actualiza la página para intentar nuevamente." : "No pudimos seleccionar ese consultorio. Elige uno habilitado para tu unidad."}
             </p>
           ) : null}
 
           <div className="mt-10 grid gap-5 md:grid-cols-2">
-            {fixtureRooms.map((room, index) => {
+            {rooms.map((room, index) => {
               const initials = room.doctor.fullName
                 .split(" ")
                 .filter((part) => !part.includes("."))
@@ -69,7 +80,7 @@ export default async function ConsultingRoomsPage({ searchParams }: PageProps) {
                     <div>
                       <p className="text-xs font-bold uppercase tracking-[0.14em] text-indigo-600">{room.name}</p>
                       <h2 className="mt-3 text-xl font-extrabold text-slate-900">{room.doctor.fullName}</h2>
-                      <p className="mt-1 text-xs font-medium text-slate-400">{room.doctor.professionalLicense}</p>
+                      <p className="mt-1 text-xs font-medium text-slate-400">{room.doctor.professionalLicense ? `Céd. ${room.doctor.professionalLicense}` : "Cédula no registrada"}</p>
                     </div>
                     <span className={`grid size-12 shrink-0 place-items-center rounded-2xl text-sm font-extrabold shadow-sm ${index === 0 ? "bg-indigo-100 text-indigo-700" : "bg-sky-100 text-sky-700"}`}>
                       {initials}
@@ -87,8 +98,9 @@ export default async function ConsultingRoomsPage({ searchParams }: PageProps) {
                     </div>
                   </dl>
 
-                  <form action={selectFixtureRoom} className="relative mt-5">
+                  <form action={selectConsultingRoom} className="relative mt-5">
                     <input name="roomId" type="hidden" value={room.id} />
+                    <input name="redirectTo" type="hidden" value={destination} />
                     <button className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-[#001d39] px-4 text-sm font-bold text-white shadow-lg shadow-slate-900/10 transition hover:bg-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600">
                       Entrar al consultorio <span aria-hidden="true">→</span>
                     </button>
@@ -98,10 +110,16 @@ export default async function ConsultingRoomsPage({ searchParams }: PageProps) {
             })}
           </div>
 
+          {!loadError && rooms.length === 0 ? (
+            <p className="mt-8 text-center text-sm leading-6 text-slate-500" role="status">
+              No hay consultorios habilitados con un médico activo. Contacta a quien administra tu unidad.
+            </p>
+          ) : null}
+
           <div className="mt-8 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-[10px] font-medium text-slate-400">
             <span className="flex items-center gap-1.5"><i className="size-1.5 rounded-full bg-emerald-500" />Sesión activa</span>
             <span>Aislamiento por unidad</span>
-            <span>Entorno de demostración</span>
+            <span>{context.role === "viewer" ? "Permiso de solo lectura" : "Acceso clínico autorizado"}</span>
           </div>
         </section>
       </div>

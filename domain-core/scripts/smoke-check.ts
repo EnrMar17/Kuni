@@ -16,6 +16,7 @@ function basePatient(overrides: Partial<PatientRiskInput> = {}): PatientRiskInpu
     urgentFlagActive: false,
     initialAssessment: null,
     lastExpectedRequestAt: '2026-09-08T07:00:00.000Z',
+    monitoringRequirements: [{ variable: 'glucose', lastExpectedRequestAt: '2026-09-08T07:00:00.000Z' }],
     ...overrides,
   };
 }
@@ -171,7 +172,8 @@ await check('parses spontaneous PRESION without code', () => {
 
 await check('recognizes postprandial context', () => {
   const r = parseIncomingMessage('GLUCOSA B9K2 160 POSPRANDIAL');
-  assert.equal((r as any).context, 'postprandial');
+  assert.ok(r.kind === 'measurement_report' && r.variable === 'glucose');
+  assert.equal(r.context, 'after_meal');
 });
 
 // --- risk.ts edge cases ---
@@ -341,7 +343,8 @@ await check('requestMlPrediction: valid response (new simplified contract) parse
 });
 
 await check('parseMlResponse: no longer exposes nivel_riesgo_actual / alerta_roja even if sent', () => {
-  const r = parseMlResponse({ nivel_riesgo_actual: 'alto', alerta_roja: true, probabilidad_empeoramiento_futuro: 0.5 });
+  const r = parseMlResponse({ nivel_riesgo_actual: 'alto', alerta_roja: true, probabilidad_empeoramiento_futuro: 0.5,
+    datos_suficientes: { glucosa_ayuno: true, glucosa_postprandial: false, presion_arterial: true } });
   assert.equal('nivelRiesgoActual' in r, false);
   assert.equal('alertaRoja' in r, false);
   assert.equal(r.probabilidadEmpeoramientoFuturo, 0.5);
@@ -357,9 +360,10 @@ await check('parseMlResponse: never throws on malformed input', () => {
 function expireCandidate(overrides: Partial<DueInteractionCandidate> = {}): DueInteractionCandidate {
   return {
     interactionId: 'i1',
-    kind: 'medication_confirm',
+    kind: 'medication',
     expectsResponse: true,
     deliveryStatus: 'delivered',
+    deliveredAt: '2026-09-08T09:00:00.000Z',
     hasConsent: true,
     respondedAt: null,
     timeoutAt: null,
@@ -382,7 +386,7 @@ await check('evaluateExpirations: idempotent — does not double-count an alread
 
 await check('evaluateExpirations: informational reminders never count', () => {
   const [d] = evaluateExpirations(
-    [expireCandidate({ kind: 'appointment_reminder', expectsResponse: false })],
+    [expireCandidate({ kind: 'appointment', expectsResponse: false })],
     now,
   );
   assert.equal(d.countsAsNonResponse, false);
@@ -393,9 +397,9 @@ await check('evaluateExpirations: delivery failures never count as patient non-r
   assert.equal(d.countsAsNonResponse, false);
 });
 
-await check('evaluateExpirations: missing consent never counts', () => {
+await check('evaluateExpirations: consent revoked after delivery preserves follow-up', () => {
   const [d] = evaluateExpirations([expireCandidate({ hasConsent: false })], now);
-  assert.equal(d.countsAsNonResponse, false);
+  assert.equal(d.countsAsNonResponse, true);
 });
 
 await check('evaluateExpirations: not yet due -> skip', () => {
@@ -407,7 +411,7 @@ await check('countNonResponses: counts only mark_timeout decisions', () => {
   const decisions = evaluateExpirations(
     [
       expireCandidate({ interactionId: 'a' }),
-      expireCandidate({ interactionId: 'b', expectsResponse: false, kind: 'summary_notice' }),
+      expireCandidate({ interactionId: 'b', expectsResponse: false, kind: 'nonresponse_summary' }),
       expireCandidate({ interactionId: 'c', deliveryStatus: 'failed' }),
       expireCandidate({ interactionId: 'd' }),
     ],

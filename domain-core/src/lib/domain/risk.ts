@@ -1,179 +1,160 @@
 /**
- * Motor de riesgo de descompensación — evaluateRisk()
- *
- * Implementa la sección 3 ("Riesgo para la demo") de kuni-plan-tecnico.md.
- * Es una función PURA a propósito: sin llamadas a red/DB adentro, para
- * poder probarla con objetos en memoria y un reloj inyectable (`now`).
- *
- * IMPORTANTE — declarar esto al jurado: las reglas de "≥3 no-respuestas en
- * 7 días" y "medición fuera de objetivo" son reglas OPERATIVAS propuestas
- * para el prototipo, no criterios médicos validados. No se agregan pesos,
- * entrenamiento, probabilidades ni recomendaciones automáticas de dosis.
+ * Prioridad actual por reglas operativas del prototipo, no predicción clínica.
+ * Función pura con reloj inyectable. Quien consulta los datos aporta mediciones
+ * válidas/no anuladas, sus rangos personalizados y los planes que siguen vigentes.
+ * No se definen aquí límites clínicos ni caducidad universal de señales.
  */
+import type { GlucoseContext, MeasurementThresholds, RiskLevel, RiskResult } from '../../contracts/dto';
+import { parseInstant } from './time';
+export type { MeasurementThresholds } from '../../contracts/dto';
 
-import type { RiskLevel, RiskResult } from '../../contracts/dto';
-
-export const RISK_RULE_VERSION = 'risk-rules-v1-hackathon-2026-09';
+export const RISK_RULE_VERSION = 'risk-rules-v2-hackathon-2026-09';
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 const MIN_PENDING_TIMEOUTS_FOR_MEDIUM = 3;
+const LEVEL_RANK: Record<RiskLevel, number> = { unknown: 0, low: 1, medium: 2, high: 3 };
 
-/** Orden de severidad para poder tomar "la mayor prioridad". unknown es la más baja. */
-const LEVEL_RANK: Record<RiskLevel, number> = {
-  unknown: 0,
-  low: 1,
-  medium: 2,
-  high: 3,
-};
-
-export interface MeasurementThresholds {
-  targetMin?: number | null;
-  targetMax?: number | null;
-  criticalMin?: number | null;
-  criticalMax?: number | null;
-}
-
-/** Una medición ya validada (glucosa o un componente de presión) lista para evaluar riesgo. */
 export interface EvaluableMeasurement {
   variable: 'glucose' | 'blood_pressure_systolic' | 'blood_pressure_diastolic';
   value: number;
-  observedAt: string; // ISO
-  /** null si el médico no configuró rangos para esta variable/contexto todavía (RF12). */
+  observedAt: string;
+  /** El contexto de glucosa no se infiere a partir del valor; ausencia = unspecified. */
+  context?: GlucoseContext;
+  /** Plan explícito o resuelto sin ambigüedad por el adaptador de persistencia. */
+  monitoringPlanId?: string | null;
   thresholds: MeasurementThresholds | null;
 }
 
-/** Una no-respuesta que sigue pendiente (vencida, sin contestación válida). */
 export interface PendingTimeout {
-  occurredAt: string; // ISO — timeout_at
+  occurredAt: string;
 }
 
-/** Una interacción (medición o toma) que sí recibió respuesta, usada para juzgar "reciente". */
+/** Las respuestas permiten registrar actividad, pero no sustituyen una medición. */
 export interface RespondedInteraction {
-  respondedAt: string; // ISO
+  respondedAt: string;
 }
 
 export interface InitialAssessment {
   level: RiskLevel;
   reason?: string | null;
-  evaluatedAt: string; // ISO
-  /** false si el médico ya revisó/actualizó la valoración y ya no debe pesar. */
+  evaluatedAt: string;
   active: boolean;
+}
+
+export interface MonitoringRequirement {
+  variable: EvaluableMeasurement['variable'];
+  context?: GlucoseContext;
+  /** Si se especifica, otra pauta de la misma variable/contexto no acredita este plan. */
+  monitoringPlanId?: string;
+  /** Última solicitud esperada del plan, calculada con su horario/zona. */
+  lastExpectedRequestAt: string;
 }
 
 export interface PatientRiskInput {
   patientId: string;
   urgentFlagActive: boolean;
   initialAssessment: InitialAssessment | null;
-  /**
-   * Referencia de "reciente" según el plan de monitoreo del paciente: la
-   * fecha/hora de la última solicitud de medición esperada. Si es null, no
-   * hay plan de monitoreo activo y no se puede afirmar que la información
-   * esté al día.
-   */
-  lastExpectedRequestAt: string | null;
+  /** Sin una lista explícita no se puede acreditar suficiencia para prioridad baja. */
+  monitoringRequirements?: MonitoringRequirement[];
+  /** @deprecated Una fecha global no acredita cobertura de todas las variables. */
+  lastExpectedRequestAt?: string | null;
 }
 
-function isWithinLast7Days(iso: string, now: Date): boolean {
-  const t = new Date(iso).getTime();
-  return now.getTime() - t <= SEVEN_DAYS_MS && t <= now.getTime();
+function validPastInstant(iso: string, nowMs: number): number | null {
+  const value = parseInstant(iso);
+  return value != null && value <= nowMs ? value : null;
 }
 
-function exceedsCritical(m: EvaluableMeasurement): boolean {
-  if (!m.thresholds) return false;
-  const { criticalMin, criticalMax } = m.thresholds;
-  if (criticalMin != null && m.value < criticalMin) return true;
-  if (criticalMax != null && m.value > criticalMax) return true;
-  return false;
+function hasBound(value: number | null | undefined): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
 }
 
-function isOutOfTarget(m: EvaluableMeasurement): boolean {
-  if (!m.thresholds) return false; // sin rango configurado, no se puede juzgar
-  const { targetMin, targetMax } = m.thresholds;
-  if (targetMin == null && targetMax == null) return false;
-  if (targetMin != null && m.value < targetMin) return true;
-  if (targetMax != null && m.value > targetMax) return true;
-  return false;
+function exceedsCritical(measurement: EvaluableMeasurement): boolean {
+  const { criticalMin, criticalMax } = measurement.thresholds ?? {};
+  return (hasBound(criticalMin) && measurement.value < criticalMin)
+    || (hasBound(criticalMax) && measurement.value > criticalMax);
 }
 
-function higherLevel(a: RiskLevel, b: RiskLevel): RiskLevel {
-  return LEVEL_RANK[a] >= LEVEL_RANK[b] ? a : b;
+function isOutOfTarget(measurement: EvaluableMeasurement): boolean {
+  const { targetMin, targetMax } = measurement.thresholds ?? {};
+  return (hasBound(targetMin) && measurement.value < targetMin)
+    || (hasBound(targetMax) && measurement.value > targetMax);
 }
 
-/**
- * Evalúa el nivel de riesgo de un paciente según las reglas operativas del
- * prototipo. Ver `RISK_RULE_VERSION` — si cambian las reglas, subir la
- * versión para no mezclar evaluaciones antiguas con nuevas en el histórico.
- */
+function hasUsableTarget(measurement: EvaluableMeasurement): boolean {
+  const thresholds = measurement.thresholds;
+  if (!thresholds) return false;
+  // Un límite opcional es válido; uno presente pero no finito no lo es.
+  if (Object.values(thresholds).some((value) => value != null && !hasBound(value))) return false;
+  const { targetMin, targetMax, criticalMin, criticalMax } = thresholds;
+  if (!hasBound(targetMin) && !hasBound(targetMax)) return false;
+  if (hasBound(targetMin) && hasBound(targetMax) && targetMin > targetMax) return false;
+  return !(hasBound(criticalMin) && hasBound(criticalMax) && criticalMin > criticalMax);
+}
+
+function hasRecentCoverage(
+  requirements: MonitoringRequirement[] | undefined,
+  measurements: EvaluableMeasurement[],
+  nowMs: number,
+): boolean {
+  return requirements != null && requirements.length > 0 && requirements.every((requirement) => {
+    const expectedAt = validPastInstant(requirement.lastExpectedRequestAt, nowMs);
+    if (expectedAt == null) return false;
+    return measurements.some((measurement) =>
+      measurement.variable === requirement.variable
+      && (requirement.monitoringPlanId == null || measurement.monitoringPlanId === requirement.monitoringPlanId)
+      && (measurement.variable !== 'glucose'
+        || (measurement.context ?? 'unspecified') === (requirement.context ?? 'unspecified'))
+      && Date.parse(measurement.observedAt) >= expectedAt
+      && hasUsableTarget(measurement));
+  });
+}
+
 export function evaluateRisk(
   patient: PatientRiskInput,
   validMeasurements: EvaluableMeasurement[],
-  responses: RespondedInteraction[],
+  _responses: RespondedInteraction[],
   timeouts: PendingTimeout[],
   now: Date = new Date(),
 ): RiskResult {
+  const nowMs = now.getTime();
+  if (!Number.isFinite(nowMs)) throw new RangeError('El reloj de evaluación debe ser una fecha válida.');
   const reasons: string[] = [];
-
-  const pendingTimeoutsLast7Days = timeouts.filter((t) =>
-    isWithinLast7Days(t.occurredAt, now),
-  ).length;
-
-  const hasThresholdedMeasurements = validMeasurements.some(
-    (m) => m.thresholds != null,
-  );
-  const hasAnyMeasurement = validMeasurements.length > 0;
-
-  const hasCriticalExceeded = validMeasurements.some(exceedsCritical);
-  const hasOutOfTarget = validMeasurements.some(isOutOfTarget);
-
-  // "Reciente" depende del plan de monitoreo del paciente, no de un plazo fijo.
-  const hasRecentInfo =
-    patient.lastExpectedRequestAt != null &&
-    (responses.some((r) => r.respondedAt >= patient.lastExpectedRequestAt!) ||
-      validMeasurements.some((m) => m.observedAt >= patient.lastExpectedRequestAt!));
+  const measurements = validMeasurements.filter((measurement) =>
+    Number.isFinite(measurement.value) && validPastInstant(measurement.observedAt, nowMs) != null);
+  const pendingTimeoutsLast7Days = timeouts.filter((timeout) => {
+    const occurredAt = validPastInstant(timeout.occurredAt, nowMs);
+    return occurredAt != null && nowMs - occurredAt <= SEVEN_DAYS_MS;
+  }).length;
 
   let computed: RiskLevel;
-
   if (patient.urgentFlagActive) {
     computed = 'high';
     reasons.push('Marca de urgencia activa registrada por el médico.');
-  } else if (hasCriticalExceeded) {
+  } else if (measurements.some(exceedsCritical)) {
     computed = 'high';
     reasons.push('Medición fuera del límite crítico personalizado del paciente.');
-  } else if (hasOutOfTarget) {
+  } else if (measurements.some(isOutOfTarget)) {
     computed = 'medium';
     reasons.push('Medición fuera del rango objetivo personalizado del paciente.');
   } else if (pendingTimeoutsLast7Days >= MIN_PENDING_TIMEOUTS_FOR_MEDIUM) {
     computed = 'medium';
-    reasons.push(
-      `${pendingTimeoutsLast7Days} no-respuestas pendientes en los últimos 7 días (regla operativa, no criterio médico validado).`,
-    );
-  } else if (!hasThresholdedMeasurements && !hasAnyMeasurement) {
-    computed = 'unknown';
-    reasons.push('Sin mediciones ni rangos configurados: datos insuficientes para evaluar.');
-  } else if (hasRecentInfo) {
+    reasons.push(pendingTimeoutsLast7Days + ' no-respuestas pendientes en los últimos 7 días (regla operativa, no criterio médico validado).');
+  } else if (hasRecentCoverage(patient.monitoringRequirements, measurements, nowMs)) {
     computed = 'low';
-    reasons.push('Sin señales activas y con información reciente suficiente.');
+    reasons.push('Sin señales activas y con mediciones recientes evaluables para cada variable y contexto del plan.');
   } else {
     computed = 'unknown';
-    reasons.push(
-      'Sin señales activas, pero no hay información reciente suficiente según el plan de monitoreo.',
-    );
+    reasons.push('Datos insuficientes: faltan planes, rangos objetivo o mediciones recientes para alguna variable o contexto esperado.');
   }
 
-  // Conservar la valoración inicial médica y tomar la mayor prioridad
-  // mientras siga vigente (nunca inferir "bajo" por defecto si el médico
-  // marcó algo más alto y sigue activo).
+  // La falta de otra variable nunca degrada una señal activa ni la valoración médica.
+  const initial = patient.initialAssessment;
+  const initialIsCurrent = initial?.active === true && validPastInstant(initial.evaluatedAt, nowMs) != null;
   let finalLevel = computed;
-  if (patient.initialAssessment?.active) {
-    const initialLevel = patient.initialAssessment.level;
-    if (LEVEL_RANK[initialLevel] > LEVEL_RANK[computed]) {
-      finalLevel = initialLevel;
-      reasons.push(
-        `Valoración inicial médica vigente ("${initialLevel}") tiene mayor prioridad que el cálculo automático.`,
-      );
-    } else {
-      finalLevel = higherLevel(computed, initialLevel);
-    }
+  if (initialIsCurrent && LEVEL_RANK[initial.level] > LEVEL_RANK[computed]) {
+    finalLevel = initial.level;
+    reasons.push('Valoración inicial médica vigente ("' + initial.level + '") tiene mayor prioridad que el cálculo automático.');
   }
 
   return {
@@ -182,10 +163,10 @@ export function evaluateRisk(
     reasons,
     evaluatedAt: now.toISOString(),
     inputsUsed: {
-      measurementsConsidered: validMeasurements.length,
+      measurementsConsidered: measurements.length,
       pendingTimeoutsLast7Days,
       urgentFlagActive: patient.urgentFlagActive,
-      initialAssessmentLevel: patient.initialAssessment?.level ?? null,
+      initialAssessmentLevel: initialIsCurrent ? initial.level : null,
     },
   };
 }

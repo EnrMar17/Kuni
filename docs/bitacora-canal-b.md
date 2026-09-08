@@ -91,3 +91,16 @@ Verificado después de cada cambio: `tsc --noEmit`, `npm run lint`, `npm run bui
 - `jobs/materialize.ts`, `jobs/send.ts`.
 - Manual: apagar el proveedor SMS de Twilio en el dashboard de Supabase (Authentication → Providers → Phone).
 - Evaluar un Content-Security-Policy para `next.config.ts` con tiempo suficiente para probarlo bien.
+
+## 2026-09-08 — Correcciones de integración: lectura clínica real
+
+- Se añadió `src/lib/queries/dashboard.ts`: cliente SSR con RLS, consultorio revalidado, filtros de unidad/paciente en todas las relaciones y consultas agrupadas. El censo se lee completo hasta 1,000 pacientes; las relaciones se solicitan en grupos de 100 pacientes y páginas de 500 registros con conteo exacto. Un volumen superior al soportado falla explícitamente, sin porcentajes parciales.
+- Se añadió `src/lib/domain/dashboard.ts`: DTO seguro de dashboard y adaptación al `evaluateRisk()` y `computeAdherence()` canónicos de C. Se calculan Y/N/U, cobertura y agregados por numeradores/denominadores, sin promediar porcentajes de pacientes.
+- Se muestran lecturas válidas de 90 días, métricas de 30 días, citas futuras de 90 días, recetas vigentes, alertas activas y conteos históricos. No se inventan mediciones, estadísticas, stock, conversación del bot ni predicciones. La media de glucosa se limita a ayuno para no mezclar contextos.
+- El riesgo se calcula al leer a partir de las últimas lecturas por plan/variable/contexto, umbrales individualizados vigentes, horarios reales del plan, marca urgente e inicial médica. La lectura de un plan no borra señales ni acredita la cobertura de otro. No se persiste un cálculo con el cliente administrativo. Guardar evaluaciones, corregir de manera atómica y recalcular alertas sigue siendo trabajo de las RPC/worker.
+- Los tests añadidos cubren autorización de consultas, paginación por encima de un límite de respuesta, errores sin fallback ficticio, unidades/consultorios mezclados, mediciones anuladas/futuras, ausencia/ambigüedad de umbrales, calendario local, adherencia ponderada y respuesta válida anterior al callback.
+- Se creó `docs/documentacionB.md` con el mismo esquema de responsabilidades/avance/archivos/decisiones/verificación/pendientes usado en la documentación de A.
+- La revisión posterior corrigió la coexistencia de varios planes con el mismo contexto, la media descriptiva a partir de una lectura con conteo de muestra y la última respuesta calculada sobre todo el histórico disponible antes del recorte visual. Los recordatorios informativos llevan `expectsResponse=false`; la consulta también recupera respuestas recientes a solicitudes de más de 90 días.
+- Verificado tras la revisión: 18 tests de adaptadores/queries aprobados, ESLint de los cuatro archivos añadidos sin errores y `tsc --noEmit` sin errores. Las pruebas no utilizaron base de datos ni credenciales reales.
+
+Esta entrega modifica código y documentación localmente. No ejecutó SQL remoto, no leyó secretos, no corrió semillas ni envió mensajes. La prueba histórica de Twilio Console permanece como evidencia de viabilidad del canal, no como prueba end-to-end del bot de Kuni. Los pendientes de transporte anteriores y la migración de IA continúan abiertos.

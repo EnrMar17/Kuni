@@ -1,12 +1,10 @@
 /**
  * Criterios de vencimiento de interacciones sin respuesta — jobs/expire.ts
  *
- * Implementa la sección 3.2 ("Reglas de no-respuesta") de
- * `persona-c-tareas.md` / `kuni-plan-tecnico.md`. Esta pieza es la lógica de
- * NEGOCIO que decide, para cada interacción "vencida" que B ya identificó
- * con sus funciones SQL (`claim_due_interactions` / `expire_due_interactions`,
- * ver sección 5 de `persona-c-tareas.md`), si esa interacción realmente
- * cuenta como no-respuesta o debe ignorarse.
+ * Refleja las reglas de no-respuesta de kuni-plan-tecnico.md sobre candidatos
+ * leídos para pruebas o previsualización. La RPC expire_due_interactions
+ * persiste timeout y alerta de forma atómica y devuelve un conteo, no candidatos.
+ * claim_due_interactions solo reclama mensajes por enviar.
  *
  * Función PURA a propósito: recibe candidatos ya extraídos de la base de
  * datos (B se encarga de la extracción real vía Supabase/Twilio) y un
@@ -14,16 +12,19 @@
  * que risk.ts/adherence.ts/trend.ts, para poder probarla con datos en
  * memoria.
  *
- * Reglas clave (verbatim de la sección 3.2):
+ * Reglas operativas:
  * - Solo cuentan solicitudes con `expects_response=true`, entregadas,
  *   vencidas y sin contestación válida.
  * - `timeout_at` se registra una sola vez por interacción (idempotente).
  * - NO incrementan el contador: recordatorios informativos de cita, avisos
- *   de resumen, fallos de entrega, falta de consentimiento, bloqueo por
- *   ventana/plantilla.
+ *   de resumen, fallos de entrega y bloqueo por ventana/plantilla.
+ * - Consentimiento controla el envío; una revocación posterior no borra el
+ *   seguimiento histórico de una solicitud ya entregada.
  */
 
-export type DeliveryStatus = 'delivered' | 'failed' | 'blocked_window' | 'unknown';
+import type { DeliveryStatus, InteractionKind } from '../../contracts/dto';
+import { parseInstant } from '../domain/time';
+export type { DeliveryStatus, InteractionKind } from '../../contracts/dto';
 
 /**
  * Tipos de interacción relevantes para decidir si "espera respuesta" por
@@ -31,24 +32,21 @@ export type DeliveryStatus = 'delivered' | 'failed' | 'blocked_window' | 'unknow
  * decide B al crear la interacción) — `kind` es solo para trazabilidad en
  * la razón devuelta.
  */
-export type InteractionKind =
-  | 'medication_confirm'
-  | 'measurement_request'
-  | 'appointment_reminder'
-  | 'summary_notice';
-
 export interface DueInteractionCandidate {
   interactionId: string;
   kind: InteractionKind;
   expectsResponse: boolean;
   deliveryStatus: DeliveryStatus;
-  hasConsent: boolean;
+  /** @deprecated No interviene en expiración; validar consentimiento antes del envío. */
+  hasConsent?: boolean;
+  /** Evidencia de entrega. Un estado delivered/read sin esta fecha no acredita entrega. */
+  deliveredAt: string | null;
   /** ISO — null si el paciente todavía no responde de forma válida. */
   respondedAt: string | null;
   /** ISO — no-null si esta interacción YA fue marcada como vencida antes (evita doble conteo). */
   timeoutAt: string | null;
   /** ISO — momento en el que se considera vencida si no hay respuesta. */
-  dueAt: string;
+  dueAt: string | null;
 }
 
 export interface ExpireDecision {
@@ -89,7 +87,7 @@ function decide(candidate: DueInteractionCandidate, now: Date): ExpireDecision {
     };
   }
 
-  if (candidate.deliveryStatus !== 'delivered') {
+  if (candidate.deliveryStatus !== 'delivered' && candidate.deliveryStatus !== 'read') {
     return {
       interactionId,
       action: 'skip',
@@ -98,16 +96,19 @@ function decide(candidate: DueInteractionCandidate, now: Date): ExpireDecision {
     };
   }
 
-  if (!candidate.hasConsent) {
+  const deliveredAt = candidate.deliveredAt == null ? null : parseInstant(candidate.deliveredAt);
+  const dueAt = candidate.dueAt == null ? null : parseInstant(candidate.dueAt);
+  if (deliveredAt == null || dueAt == null
+    || !Number.isFinite(now.getTime()) || dueAt < deliveredAt) {
     return {
       interactionId,
       action: 'skip',
-      reason: 'sin consentimiento vigente — no debió haberse enviado, no cuenta como no-respuesta.',
+      reason: 'falta evidencia de entrega o una fecha de vencimiento válida posterior a la entrega.',
       countsAsNonResponse: false,
     };
   }
 
-  if (new Date(candidate.dueAt).getTime() > now.getTime()) {
+  if (dueAt > now.getTime()) {
     return {
       interactionId,
       action: 'skip',
@@ -127,9 +128,10 @@ function decide(candidate: DueInteractionCandidate, now: Date): ExpireDecision {
 /**
  * Evalúa un lote de candidatos "vencidos" (ya extraídos por B de la base de
  * datos) y decide cuáles deben marcarse como timeout real. El job que corre
- * cada tick (de B) debe: 1) llamar `claim_due_interactions`, 2) mapear cada
- * fila al `DueInteractionCandidate` de aquí, 3) llamar `evaluateExpirations`,
- * 4) persistir `timeout_at` solo para las decisiones `mark_timeout`.
+ * cada tick (de B) persiste vencimiento y alerta de forma atómica mediante
+ * `expire_due_interactions`. Esta función pura refleja sus criterios para
+ * pruebas y previsualización; no es otra escritura que compita con la RPC.
+ * `claim_due_interactions` queda reservado a la cola de ENVÍO.
  */
 export function evaluateExpirations(
   candidates: DueInteractionCandidate[],

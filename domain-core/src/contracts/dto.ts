@@ -56,7 +56,13 @@ export type ApiResult<T> =
 /** Variable clínica medible. La presión se registra como un par sistólica/diastólica. */
 export type MeasurementVariable = 'glucose' | 'blood_pressure';
 
-export type GlucoseContext = 'fasting' | 'postprandial' | 'unspecified';
+export type GlucoseContext = 'fasting' | 'before_meal' | 'after_meal' | 'random' | 'unspecified';
+
+export type InteractionKind = 'medication' | 'measurement' | 'appointment' | 'nonresponse_summary';
+
+export type DeliveryStatus =
+  | 'queued' | 'sending' | 'accepted' | 'delivered' | 'read' | 'failed'
+  | 'cancelled' | 'blocked_window' | 'blocked_template' | 'unknown';
 
 /** Entrada para registrar/corregir una medición (usado por correctMeasurement). */
 export interface MeasurementInput {
@@ -72,7 +78,7 @@ export interface MeasurementInput {
   };
   observedAt: string; // ISO, cuándo ocurrió la medición (no cuándo se recibió)
   receivedAt: string; // ISO, cuándo llegó al sistema
-  source: 'bot' | 'manual';
+  source: 'whatsapp' | 'manual' | 'image_reviewed';
   interactionId?: string | null; // referencia al bot_interaction si vino del bot
   correctionReason?: string | null; // obligatorio si es una corrección
 }

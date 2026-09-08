@@ -1,28 +1,26 @@
 # Kuni — dominio de negocio (Persona C)
 
-Funciones puras de riesgo, adherencia y parser de WhatsApp, listas para
-copiarse tal cual dentro de la app Next.js una vez que A la escafolde
-(las rutas ya coinciden con `src/lib/domain/`, `src/lib/whatsapp/` y
-`src/contracts/` del plan técnico).
+Funciones puras compartidas de riesgo, adherencia, parser de WhatsApp,
+vencimientos, tendencias y cliente predictivo. El adaptador de lectura de
+la aplicación en `src/lib/domain/dashboard.ts` importa riesgo/adherencia
+desde este paquete; no mantener copias de los mismos algoritmos en Next.js.
 
 ## Cómo correr las pruebas
 
-Este paquete es independiente de Next.js a propósito, para poder
-desarrollarlo y probarlo sin esperar al scaffold de A ni a que B tenga
-Supabase/Twilio en vivo.
+El dominio no necesita Supabase/Twilio en vivo. Ejecutar desde el repositorio
+con sus dependencias ya instaladas: las pruebas de contrato también comparan
+los esquemas Zod de la aplicación con la migración SQL.
 
 ```sh
-npm install
-npm test          # corre las pruebas con vitest
-npm run typecheck # tsc --noEmit
+rtk npm --prefix domain-core test
+rtk npm --prefix domain-core run typecheck
 ```
 
-Si por algún motivo no tienes acceso a instalar `vitest` (por ejemplo, una
-red restringida), `scripts/smoke-check.ts` corre las mismas aserciones
-clave usando solo `node:assert` y `tsx` (sin dependencias extra):
+El script complementario ejecuta 47 comprobaciones básicas usando
+`node:assert` y `tsx` instalados en el repositorio:
 
 ```sh
-npx tsx scripts/smoke-check.ts
+rtk proxy node --import tsx domain-core/scripts/smoke-check.ts
 ```
 
 ## Qué hay aquí
@@ -32,6 +30,8 @@ npx tsx scripts/smoke-check.ts
 - `src/lib/domain/risk.ts` — `evaluateRisk()`: motor de riesgo con
   precedencia urgencia > crítico > fuera de objetivo / no-respuestas >
   bajo/desconocido, y respeto a la valoración inicial médica vigente.
+  Inferir bajo requiere `monitoringRequirements` explícitos por variable/contexto
+  y mediciones recientes con límites objetivo; una confirmación de toma no los sustituye.
 - `src/lib/domain/adherence.ts` — `computeAdherence()` /
   `aggregateAdherence()`: fórmulas de adherencia confirmada, cobertura de
   respuesta y agregación correcta (suma numeradores, no promedia %).
@@ -40,16 +40,19 @@ npx tsx scripts/smoke-check.ts
 - `src/lib/whatsapp/parser.ts` — `parseIncomingMessage()`: interpreta
   `SI/NO [código]`, `GLUCOSA [código] valor [contexto]`,
   `PRESION [código] sistólica/diastólica`.
+- `src/lib/jobs/expire.ts` — criterios puros acordes a la RPC SQL de expiración;
+  distingue reclamar envíos de vencer interacciones y conserva historial tras BAJA.
+- `src/lib/domain/trend.ts`, `time.ts` — ventanas, suficiencia temporal e instantes válidos.
+- `src/lib/ml/client.ts` — contrato de salida experimental, timeout y fallback vacío.
 
-## Lo que falta (siguiente en la lista de persona-c-tareas.md)
+## Lo que falta
 
-- `jobs/expire.ts` (vencimiento de interacciones) — depende de que B tenga
-  el esquema migrado en Supabase.
+- Conectar parser/vencimientos con el worker, callbacks y persistencia transaccional.
 - Las 5 RPC transaccionales (`correctMeasurement`, `correctMedicationResponse`,
   `adjustPrescription`, `markUrgent`, `resolveAlert`) — igual, sobre tablas
   reales una vez migradas.
-- Conectar `evaluateRisk`/`computeAdherence` a datos reales para que el
-  dashboard de A deje de usar fixtures.
+- Persistir evaluaciones/recalcular después de comandos clínicos; el adaptador
+  de lectura por sí solo no implementa ese circuito.
+- Vector ML tipado, diccionario de 17 features, endpoint real, elegibilidad y caducidad.
 
-Ver `persona-c-tareas.md` en la raíz del repo para el detalle completo y el
-orden sugerido.
+Ver `docs/documentacionC.md` y `kuni-plan-tecnico.md` para el avance y los pendientes.

@@ -3,17 +3,37 @@ import { redirect } from "next/navigation";
 
 import { KuniMark } from "@/components/kuni-mark";
 import { LoginForm } from "@/components/login-form";
-import { getFixtureSession } from "@/lib/auth/fixture-session";
+import { logout } from "@/actions/auth";
+import { AppError } from "@/contracts/errors";
+import { getAuthContext } from "@/lib/auth/context";
+import { loginErrors, postLoginRedirect } from "@/lib/auth/navigation";
 
 export const metadata: Metadata = {
   title: "Iniciar sesión",
   description: "Acceso al centro de monitoreo remoto Kuni.",
 };
 
-export default async function LoginPage() {
-  if (await getFixtureSession()) {
-    redirect("/consultorios");
+export default async function LoginPage({ searchParams }: {
+  searchParams: Promise<{ error?: string; redirectTo?: string }>;
+}) {
+  const params = await searchParams;
+  const redirectTo = postLoginRedirect(typeof params.redirectTo === "string" ? params.redirectTo : null);
+  let initialError = typeof params.error === "string" && Object.hasOwn(loginErrors, params.error)
+    ? loginErrors[params.error] : null;
+  let destination: string | null = null;
+  try {
+    const context = await getAuthContext();
+    if (!initialError) {
+      destination = context.consultingRoom ? redirectTo : `/consultorios?redirectTo=${encodeURIComponent(redirectTo)}`;
+    }
+  } catch (error) {
+    if (error instanceof AppError && error.code === "FORBIDDEN") {
+      initialError = error.message;
+    } else if (!(error instanceof AppError && error.code === "UNAUTHENTICATED")) {
+      initialError = loginErrors.conexion;
+    }
   }
+  if (destination) redirect(destination);
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-[#e8ebf2] p-3 text-slate-800 md:p-6 lg:p-8">
@@ -37,20 +57,20 @@ export default async function LoginPage() {
           <div className="relative">
             <div className="grid grid-cols-3 gap-3">
               <article className="rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur-sm">
-                <p className="font-mono-data text-2xl font-bold">24/7</p>
-                <p className="mt-1 text-[10px] font-medium leading-4 text-slate-300">Seguimiento automatizado</p>
+                <p className="font-mono-data text-2xl font-bold">RPM</p>
+                <p className="mt-1 text-[10px] font-medium leading-4 text-slate-300">Monitoreo de pacientes</p>
               </article>
               <article className="rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur-sm">
-                <p className="font-mono-data text-2xl font-bold text-emerald-300">84%</p>
-                <p className="mt-1 text-[10px] font-medium leading-4 text-slate-300">Respuesta al bot</p>
+                <p className="font-mono-data text-2xl font-bold text-emerald-300">WA</p>
+                <p className="mt-1 text-[10px] font-medium leading-4 text-slate-300">Canal de WhatsApp</p>
               </article>
               <article className="rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur-sm">
-                <p className="font-mono-data text-2xl font-bold text-rose-300">14</p>
-                <p className="mt-1 text-[10px] font-medium leading-4 text-slate-300">Casos prioritarios</p>
+                <p className="font-mono-data text-2xl font-bold text-rose-300">Unidad</p>
+                <p className="mt-1 text-[10px] font-medium leading-4 text-slate-300">Acceso autorizado</p>
               </article>
             </div>
             <p className="mt-6 text-[10px] font-medium uppercase tracking-[0.16em] text-slate-500">
-              SSM Michoacán · Entorno de demostración
+              SSM Michoacán · Seguimiento clínico
             </p>
           </div>
         </section>
@@ -70,10 +90,15 @@ export default async function LoginPage() {
             <p className="mt-3 text-sm leading-6 text-slate-500">
               Ingresa con las credenciales asignadas a tu unidad de salud.
             </p>
-            <LoginForm />
+            <LoginForm redirectTo={redirectTo} initialError={initialError} />
+            {params.error === "salida-fallida" ? (
+              <form action={logout} className="mt-4">
+                <button type="submit" className="text-xs font-bold text-indigo-600">Cerrar sesión nuevamente</button>
+              </form>
+            ) : null}
             <div className="mt-8 flex items-center justify-center gap-2 text-[10px] font-medium text-slate-400">
               <span className="size-1.5 rounded-full bg-emerald-500" />
-              Sesión protegida · Datos clínicos ficticios
+              Acceso con Supabase Auth · Credenciales de la unidad
             </div>
           </div>
         </section>

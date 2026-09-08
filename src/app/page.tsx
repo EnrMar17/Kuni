@@ -1,9 +1,8 @@
 import { redirect } from "next/navigation";
 
-import { getFixtureSession } from "@/lib/auth/fixture-session";
+import { getPageAuthContext } from "@/lib/auth/context";
 
 export default async function Home() {
-  const session = await getFixtureSession();
-
-  redirect(session ? "/consultorios" : "/login");
+  const context = await getPageAuthContext();
+  redirect(context.consultingRoom ? "/dashboard" : "/consultorios");
 }

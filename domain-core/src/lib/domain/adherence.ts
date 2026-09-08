@@ -3,7 +3,7 @@
  *
  * Implementa la sección 3 ("Adherencia") de kuni-plan-tecnico.md.
  *
- * Cohorte: tomas/mediciones cuyo seguimiento ya CONCLUYÓ (por respuesta o
+ * Cohorte: tomas de medicamento cuyo seguimiento ya CONCLUYÓ (por respuesta o
  * por vencimiento), con entrega acreditada o respuesta manual vinculada.
  * Quien arma el arreglo `concluded` (en jobs/ o queries/) es responsable de
  * excluir: interacciones futuras, canceladas y fallos técnicos — esta

@@ -4,14 +4,9 @@ import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/types/database.types";
 import { serverEnv } from "@/lib/env/server";
 
-// Rutas que no requieren sesión. Todo lo demás bajo `(protected)` sí.
-// "/" es el placeholder de scaffold (sin datos clínicos); cuando A construya
-// las vistas reales, lo normal es que redirija a /login o /dashboard y esta
-// lista se reduzca solo a "/login". OJO: "/" usa match exacto — con
-// startsWith("/") cualquier ruta "empieza con /" y la protección quedaría
-// anulada por completo.
+// Login debe poder mostrar también errores de membresía de una sesión válida.
 function isPublicPath(pathname: string): boolean {
-  return pathname === "/" || pathname.startsWith("/login");
+  return pathname === "/" || pathname === "/login";
 }
 
 /**
@@ -37,7 +32,9 @@ export async function updateSession(request: NextRequest) {
         },
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+          const previousCookies = response.cookies.getAll();
           response = NextResponse.next({ request });
+          previousCookies.forEach((cookie) => response.cookies.set(cookie));
           cookiesToSet.forEach(({ name, value, options }) =>
             response.cookies.set(name, value, options)
           );
@@ -49,29 +46,27 @@ export async function updateSession(request: NextRequest) {
   // No quitar esta llamada: valida el JWT y, si hace falta, renueva el token
   // (escribiendo las cookies nuevas vía setAll de arriba). Sin esto las
   // sesiones expiran de forma impredecible.
-  const { data } = await supabase.auth.getClaims();
-  const isAuthenticated = Boolean(data?.claims);
+  let isAuthenticated = false;
+  try {
+    const { data, error } = await supabase.auth.getClaims();
+    isAuthenticated = !error && Boolean(data?.claims?.sub);
+  } catch {
+    // Login puede mostrar el error de conexión y permite volver a intentarlo.
+  }
 
   const { pathname } = request.nextUrl;
 
   if (!isAuthenticated && !isPublicPath(pathname)) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
-    // `pathname` sale de request.nextUrl (siempre relativo, nunca una URL
-    // externa completa), así que ESTE redirect es seguro. Pero cuando A
-    // construya /login y lea este query param para volver a mandar al
-    // usuario tras autenticarse, DEBE pasarlo por
-    // `safeRedirectPath()` (src/lib/utils/safe-redirect.ts) antes de
-    // redirigir — un link a `/login?redirectTo=https://evil.com` es un
-    // open redirect (OWASP A01) si se usa el valor sin validar.
-    url.searchParams.set("redirectTo", pathname);
-    return NextResponse.redirect(url);
-  }
-
-  if (isAuthenticated && pathname === "/login") {
-    const url = request.nextUrl.clone();
-    url.pathname = "/dashboard";
-    return NextResponse.redirect(url);
+    // Login y selección vuelven a validar este destino mediante
+    // postLoginRedirect antes de usarlo; el query param puede ser manipulado.
+    url.search = "";
+    url.searchParams.set("redirectTo", `${pathname}${request.nextUrl.search}`);
+    const redirectResponse = NextResponse.redirect(url);
+    // setAll puede haber renovado o eliminado cookies antes del redirect.
+    response.cookies.getAll().forEach((cookie) => redirectResponse.cookies.set(cookie));
+    return redirectResponse;
   }
 
   return response;

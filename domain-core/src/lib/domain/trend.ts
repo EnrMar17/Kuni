@@ -13,7 +13,7 @@
  *     3. y = valor de cada lectura
  *     4. pendiente = regresión_lineal(x, y).coeficiente
  *     5. Recortar (winsorizar) la pendiente a un rango razonable
- *     Con menos de 2 lecturas -> pendiente = 0
+ *     Con menos de 3 lecturas o sin variación temporal -> pendiente = 0
  *
  * Función PURA a propósito (mismo criterio que risk.ts/adherence.ts): sin
  * red/DB adentro, reloj inyectable, para poder probarla con datos en
@@ -34,6 +34,8 @@
  * provisionales del equipo de modelado, no un estándar clínico citado.
  */
 
+import { parseInstant } from './time';
+
 export interface Reading {
   value: number;
   observedAt: string; // ISO
@@ -51,7 +53,7 @@ export interface TrendResult {
   count: number;
   /** true si count >= 2 (CONFIRMADO por el equipo de IA — mínimo para confiar en el promedio). */
   sufficientForMean: boolean;
-  /** true si count >= 3 (CONFIRMADO por el equipo de IA — mínimo para confiar en la tendencia). */
+  /** true si count >= 3 y hay variación temporal; el mínimo de conteo lo reportó el equipo de IA. */
   sufficientForTrend: boolean;
   /** Promedio simple de los valores en la ventana. null si no hay lecturas. */
   mean: number | null;
@@ -79,8 +81,8 @@ export function filterWindow(readings: Reading[], windowDays: number, now: Date)
   const cutoff = now.getTime() - windowDays * MS_PER_DAY;
   return readings
     .filter((r) => {
-      const t = new Date(r.observedAt).getTime();
-      return t >= cutoff && t <= now.getTime();
+      const t = parseInstant(r.observedAt);
+      return Number.isFinite(r.value) && t != null && t >= cutoff && t <= now.getTime();
     })
     .sort((a, b) => new Date(a.observedAt).getTime() - new Date(b.observedAt).getTime());
 }
@@ -99,8 +101,8 @@ function winsorize(value: number, maxAbs: number): number {
 
 /**
  * Pendiente de regresión lineal simple (mínimos cuadrados) de `value` contra
- * "días desde la primera lectura de la ventana". Devuelve 0 con menos de 2
- * lecturas, o si todas las lecturas cayeron el mismo día (sin dispersión en
+ * "días desde la primera lectura de la ventana". Devuelve 0 con menos de 3
+ * lecturas, o si todas las lecturas cayeron en el mismo instante (sin dispersión en
  * x, la pendiente no es calculable de forma confiable).
  */
 export function computeTrendSlope(readings: Reading[], maxAbsSlope: number = DEFAULT_WINSORIZE_BOUND): number {
@@ -143,7 +145,8 @@ export function evaluateTrend(
 
   const windowed = filterWindow(readings, windowDays, now);
   const sufficientForMean = windowed.length >= MIN_READINGS_FOR_MEAN;
-  const sufficientForTrend = windowed.length >= MIN_READINGS_FOR_SLOPE;
+  const sufficientForTrend = windowed.length >= MIN_READINGS_FOR_SLOPE
+    && Date.parse(windowed[0].observedAt) !== Date.parse(windowed[windowed.length - 1].observedAt);
 
   let rawSlope = 0;
   if (sufficientForTrend) {

@@ -2,6 +2,7 @@ import "server-only";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { AppError } from "@/contracts/errors";
+import { redirect } from "next/navigation";
 
 /** Cookie de preferencia de consultorio. Nunca es prueba de autoridad por sí
  * sola: siempre se revalida contra la unidad real del usuario abajo. */
@@ -41,9 +42,16 @@ export type AuthContext = {
   email: string | null;
   unitId: string;
   unitName: string;
+  unitCode: string | null;
   timezone: string;
   role: MembershipRole;
-  consultingRoom: { id: string; name: string; doctorId: string } | null;
+  consultingRoom: {
+    id: string;
+    name: string;
+    doctorId: string;
+    doctorName: string;
+    doctorProfessionalLicense: string | null;
+  } | null;
 };
 
 /**
@@ -64,12 +72,15 @@ export async function getAuthContext(): Promise<AuthContext> {
     throw new AppError("UNAUTHENTICATED", "Sesión inválida o expirada.");
   }
 
-  const claims = claimsData.claims as { sub: string; email?: string };
+  const claims = claimsData.claims;
+  if (typeof claims.sub !== "string" || !claims.sub) {
+    throw new AppError("UNAUTHENTICATED", "Sesión inválida o expirada.");
+  }
   const userId = claims.sub;
 
   const { data: membership, error: membershipError } = await supabase
     .from("unit_memberships")
-    .select("unit_id, role, active, health_units(id, name, timezone, active)")
+    .select("unit_id, role, active, health_units(id, name, institutional_code, timezone, active)")
     .eq("user_id", userId)
     .eq("active", true)
     .maybeSingle();
@@ -89,11 +100,16 @@ export async function getAuthContext(): Promise<AuthContext> {
 
   const consultingRoom = await getValidatedConsultingRoom(supabase, unit.id);
 
+  if (!["shared_clinician", "clinician", "viewer"].includes(membership.role)) {
+    throw new AppError("FORBIDDEN", "Tu cuenta no tiene un rol habilitado.");
+  }
+
   return {
     userId,
-    email: claims.email ?? null,
+    email: typeof claims.email === "string" ? claims.email : null,
     unitId: unit.id,
     unitName: unit.name,
+    unitCode: unit.institutional_code,
     timezone: unit.timezone,
     role: membership.role as MembershipRole,
     consultingRoom,
@@ -116,22 +132,46 @@ async function getValidatedConsultingRoom(
   // pertenezca a ESTA unidad y siga activo. Si no valida, se ignora en
   // silencio — no se lanza error aquí; el caller decide (normalmente
   // redirigir a /consultorios).
-  const { data: room } = await supabase
+  return queryActiveConsultingRoom(supabase, unitId, roomId);
+}
+
+async function queryActiveConsultingRoom(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  unitId: string,
+  roomId: string,
+): Promise<AuthContext["consultingRoom"]> {
+  const { data: room, error } = await supabase
     .from("consulting_rooms")
-    .select("id, name, doctor_id")
+    .select("id, name, doctor_id, doctors!inner(full_name, professional_license, active)")
     .eq("unit_id", unitId)
     .eq("id", roomId)
     .eq("active", true)
+    .eq("doctors.active", true)
     .maybeSingle();
 
-  if (!room) return null;
-  return { id: room.id, name: room.name, doctorId: room.doctor_id };
+  if (error) {
+    throw new AppError("INTERNAL", "No se pudo verificar el consultorio. Intenta nuevamente.");
+  }
+  if (!room?.doctors?.active) return null;
+  return {
+    id: room.id,
+    name: room.name,
+    doctorId: room.doctor_id,
+    doctorName: room.doctors.full_name,
+    doctorProfessionalLicense: room.doctors.professional_license,
+  };
+}
+
+/** El contexto debe obtenerse de getAuthContext, nunca del formulario. */
+export async function findActiveConsultingRoom(context: AuthContext, roomId: string) {
+  if (!UUID_RE.test(roomId)) return null;
+  return queryActiveConsultingRoom(await createClient(), context.unitId, roomId);
 }
 
 /**
  * Igual que getAuthContext, pero además exige que ya haya un consultorio
- * válido seleccionado. Úsalo en acciones que operan sobre un consultorio
- * concreto (altas de paciente, recetas, citas...).
+ * válido seleccionado. Para lecturas de un consultorio concreto; las
+ * mutaciones clínicas deben usar requireClinicalWriteContext abajo.
  */
 export async function requireConsultingRoom(): Promise<
   AuthContext & { consultingRoom: NonNullable<AuthContext["consultingRoom"]> }
@@ -141,4 +181,27 @@ export async function requireConsultingRoom(): Promise<
     throw new AppError("VALIDATION", "Selecciona un consultorio antes de continuar.");
   }
   return ctx as AuthContext & { consultingRoom: NonNullable<AuthContext["consultingRoom"]> };
+}
+
+/** Para mutaciones clínicas: el rol viewer puede consultar, pero no escribir. */
+export async function requireClinicalWriteContext() {
+  const context = await requireConsultingRoom();
+  if (context.role === "viewer") {
+    throw new AppError("FORBIDDEN", "Tu cuenta tiene acceso de solo lectura.");
+  }
+  return context;
+}
+
+/** Solo para páginas. Las acciones usan getAuthContext y devuelven su error. */
+export async function getPageAuthContext() {
+  try {
+    return await getAuthContext();
+  } catch (error) {
+    const reason = error instanceof AppError && error.code === "FORBIDDEN"
+      ? "sin-membresia"
+      : error instanceof AppError && error.code === "UNAUTHENTICATED"
+        ? "sesion-vencida"
+        : "conexion";
+    redirect(`/login?error=${reason}`);
+  }
 }

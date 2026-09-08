@@ -112,16 +112,56 @@ describe('evaluateTrend', () => {
 
   it('combina promedio y pendiente sobre la ventana dada, con 3 lecturas ya es suficiente para tendencia', () => {
     const readings = [
-      { value: 100, observedAt: '2026-08-10T00:00:00.000Z' },
+      { value: 100, observedAt: '2026-08-08T00:00:00.000Z' },
       { value: 110, observedAt: '2026-09-05T00:00:00.000Z' },
       { value: 120, observedAt: '2026-09-06T00:00:00.000Z' },
       { value: 130, observedAt: '2026-09-07T00:00:00.000Z' },
     ];
-    // La primera lectura (10 de agosto) cae fuera de la ventana de 30 días respecto a "now".
+    // La primera lectura (8 de agosto) cae fuera de la ventana de 30 días respecto a "now".
     const result = evaluateTrend(readings, { windowDays: 30 }, now);
     expect(result.count).toBe(3);
     expect(result.sufficientForMean).toBe(true);
     expect(result.sufficientForTrend).toBe(true);
     expect(result.slope).toBeCloseTo(10, 5);
+  });
+
+  it('tres lecturas del mismo instante no acreditan una tendencia estable', () => {
+    const result = evaluateTrend([100, 200, 300].map((value) => ({ value, observedAt: now.toISOString() })), {}, now);
+    expect(result.sufficientForMean).toBe(true);
+    expect(result.sufficientForTrend).toBe(false);
+    expect(result.slope).toBe(0);
+  });
+
+  it('usa instantes equivalentes con distinto offset para decidir dispersión temporal', () => {
+    const result = evaluateTrend([
+      { value: 100, observedAt: '2026-09-08T12:00:00Z' },
+      { value: 110, observedAt: '2026-09-08T06:00:00-06:00' },
+      { value: 120, observedAt: '2026-09-08T14:00:00+02:00' },
+    ], {}, now);
+    expect(result.sufficientForTrend).toBe(false);
+  });
+
+  it('excluye fechas futuras/invalidas y valores no finitos antes de contar suficiencia', () => {
+    const result = evaluateTrend([
+      { value: 120, observedAt: now.toISOString() },
+      { value: 120, observedAt: 'invalid' },
+      { value: 120, observedAt: '2026-09-09T00:00:00Z' },
+      { value: NaN, observedAt: '2026-09-07T00:00:00Z' },
+      { value: Infinity, observedAt: '2026-09-06T00:00:00Z' },
+    ], {}, now);
+    expect(result.count).toBe(1);
+    expect(result.sufficientForMean).toBe(false);
+    expect(result.sufficientForTrend).toBe(false);
+  });
+
+  it('incluye exactamente los extremos de la ventana de 30 días', () => {
+    const cutoff = now.getTime() - 30 * 24 * 60 * 60 * 1000;
+    const result = evaluateTrend([
+      { value: 110, observedAt: new Date(cutoff - 1).toISOString() },
+      { value: 120, observedAt: new Date(cutoff).toISOString() },
+      { value: 130, observedAt: now.toISOString() },
+    ], {}, now);
+    expect(result.count).toBe(2);
+    expect(result.mean).toBe(125);
   });
 });

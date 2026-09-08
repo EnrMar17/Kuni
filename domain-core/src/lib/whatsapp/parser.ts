@@ -24,7 +24,8 @@
  *   de la capa que llama, que sí conoce al paciente).
  */
 
-export type GlucoseContext = 'fasting' | 'postprandial' | 'unspecified';
+import type { GlucoseContext } from '../../contracts/dto';
+export type { GlucoseContext } from '../../contracts/dto';
 
 export interface ParsedMedicationConfirm {
   kind: 'medication_confirm';
@@ -62,7 +63,8 @@ export type ParsedMessage =
   | ParsedMeasurementReport
   | ParsedUnrecognized;
 
-const REFERENCE_CODE_PATTERN = '[A-Z0-9]{3,6}';
+// SQL genera 8 caracteres; los ejemplos cortos conservan compatibilidad.
+const REFERENCE_CODE_PATTERN = '[A-Z0-9]{3,8}';
 
 const CONFIRM_WITH_CODE_RE = new RegExp(
   `^\\s*(SI|NO)\\s+(${REFERENCE_CODE_PATTERN})\\s*$`,
@@ -84,7 +86,7 @@ function normalizeContext(raw: string | undefined): GlucoseContext {
   if (!raw) return 'unspecified';
   const upper = raw.toUpperCase();
   if (upper === 'AYUNO') return 'fasting';
-  if (upper === 'POSPRANDIAL' || upper === 'POSTPRANDIAL') return 'postprandial';
+  if (upper === 'POSPRANDIAL' || upper === 'POSTPRANDIAL') return 'after_meal';
   return 'unspecified';
 }
 

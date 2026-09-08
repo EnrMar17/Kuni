@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Local assistant scratch files are not application source or versioned.
+    ".codex/**",
+    ".claude/**",
   ]),
 ]);
 

@@ -1,5 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { parseMlResponse, requestMlPrediction } from '../../src/lib/ml/client';
+
+const sufficient = { glucosa_ayuno: true, glucosa_postprandial: false, presion_arterial: true };
 
 describe('requestMlPrediction — regla de oro: nunca tumba el dashboard', () => {
   it('devuelve todo null sin llamar a la red cuando no hay endpointUrl configurado', async () => {
@@ -86,6 +88,32 @@ describe('requestMlPrediction — regla de oro: nunca tumba el dashboard', () =>
     expect((capturedInit?.headers as Record<string, string>).Authorization).toBe('Bearer secreto123');
     expect(capturedInit?.body).toBe(JSON.stringify({ edad: 58 }));
   });
+
+  it('aborta al alcanzar el timeout y devuelve el resultado vacío', async () => {
+    vi.useFakeTimers();
+    try {
+      let observedSignal: AbortSignal | null | undefined;
+      const fetchImpl: typeof fetch = async (_url, init) => {
+        observedSignal = init?.signal;
+        return new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+        });
+      };
+      const pending = requestMlPrediction({}, { endpointUrl: 'https://modelo.example/predict', timeoutMs: 50, fetchImpl });
+      await vi.advanceTimersByTimeAsync(50);
+      expect((await pending).probabilidadEmpeoramientoFuturo).toBeNull();
+      expect(observedSignal?.aborted).toBe(true);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('un cuerpo JSON inválido tampoco deja escapar excepción', async () => {
+    const fetchImpl: typeof fetch = async () => new Response('no es JSON', { status: 200 });
+    const result = await requestMlPrediction({}, { endpointUrl: 'https://modelo.example/predict', fetchImpl });
+    expect(result.probabilidadEmpeoramientoFuturo).toBeNull();
+  });
 });
 
 describe('parseMlResponse — validación defensiva de forma', () => {
@@ -94,6 +122,7 @@ describe('parseMlResponse — validación defensiva de forma', () => {
       nivel_riesgo_actual: 'alto',
       alerta_roja: true,
       probabilidad_empeoramiento_futuro: 0.5,
+      datos_suficientes: sufficient,
     });
     expect(result).not.toHaveProperty('nivelRiesgoActual');
     expect(result).not.toHaveProperty('alertaRoja');
@@ -118,5 +147,36 @@ describe('parseMlResponse — validación defensiva de forma', () => {
     expect(() => parseMlResponse('texto plano')).not.toThrow();
     expect(() => parseMlResponse([])).not.toThrow();
     expect(parseMlResponse(null).probabilidadEmpeoramientoFuturo).toBeNull();
+  });
+
+  it('no publica probabilidad si falta suficiencia aunque el número sea válido', () => {
+    expect(parseMlResponse({ probabilidad_empeoramiento_futuro: 0.8 })).toEqual({
+      probabilidadEmpeoramientoFuturo: null, modelVersion: null, datosSuficientes: null,
+    });
+  });
+
+  it.each([NaN, Infinity, -0.1, 1.01, null, '0.8'])(
+    'descarta todo el resultado con probabilidad inválida (%s)', (probability) => {
+      expect(parseMlResponse({ probabilidad_empeoramiento_futuro: probability, datos_suficientes: sufficient }).datosSuficientes).toBeNull();
+    },
+  );
+
+  it.each([0, 1])('acepta una probabilidad límite %s con contrato suficiente', (probability) => {
+    const result = parseMlResponse({ probabilidad_empeoramiento_futuro: probability, datos_suficientes: sufficient });
+    expect(result.probabilidadEmpeoramientoFuturo).toBe(probability);
+    expect(result.modelVersion).toBeNull();
+  });
+
+  it('mantiene nullable una versión no informada sin inventar identificación', () => {
+    const result = parseMlResponse({ probabilidad_empeoramiento_futuro: 0.8, datos_suficientes: sufficient, model_version: ' ' });
+    expect(result.modelVersion).toBeNull();
+    expect(result.probabilidadEmpeoramientoFuturo).toBe(0.8);
+  });
+
+  it('oculta allfalse como política provisional de Kuni', () => {
+    const result = parseMlResponse({ probabilidad_empeoramiento_futuro: 0.8, datos_suficientes: {
+      glucosa_ayuno: false, glucosa_postprandial: false, presion_arterial: false,
+    } });
+    expect(result.probabilidadEmpeoramientoFuturo).toBeNull();
   });
 });

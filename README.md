@@ -4,7 +4,7 @@ Proyecto desarrollado en el **Innovation Fest 2026**.
 
 Plataforma de monitoreo remoto de pacientes (RPM) para enfermedades crónico-degenerativas (diabetes e hipertensión), dirigida a unidades de primer nivel de atención (IMSS-Bienestar). Combina un bot de WhatsApp que da seguimiento a tomas de medicamentos, mediciones y citas, con un tablero clínico que prioriza el seguimiento mediante reglas explicables (sin predicción clínica inventada).
 
-> Los documentos completos de requerimientos y plan técnico son de trabajo interno del equipo y **no se suben al repositorio** (ver `.gitignore`). Este README resume lo necesario para que los tres integrantes tengan contexto compartido; para el detalle completo, consultar los archivos locales `requerimientos-rpm-cronicos.md` y `kuni-plan-tecnico.md` compartidos fuera de Git.
+> Los documentos completos de requerimientos y plan técnico son de trabajo interno del equipo y **no se suben al repositorio** (ver `.gitignore`). La revisión funcional versionada está en `docs/plan-integracion.md` y el avance por integrante en `docs/documentacionA.md`, `docs/documentacionB.md` y `docs/documentacionC.md`. Este README resume lo necesario para que los tres integrantes tengan contexto compartido; para el detalle completo, consultar los archivos locales `requerimientos-rpm-cronicos.md` y `kuni-plan-tecnico.md` compartidos fuera de Git.
 
 ---
 
@@ -71,7 +71,7 @@ kuni/
   .env.example            # Plantilla de variables de entorno (sin datos reales)
 ```
 
-> Las carpetas se crearon vacías con un archivo `.gitkeep` para que Git las preserve hasta que tengan contenido.
+> El árbol anterior es el objetivo del plan: no todas sus rutas están implementadas. Actualmente operan login, selección de consultorio y dashboard de lectura. Las reglas compartidas viven en `domain-core/` y la app las consume mediante `src/lib/domain/dashboard.ts`; no se duplican en otro motor.
 
 ## 4. Reparto del equipo (3 integrantes)
 
@@ -86,12 +86,12 @@ Reglas de coordinación clave:
 - A no espera a B: trabaja sobre fixtures con los contratos acordados.
 - C prueba reglas/parser con objetos en memoria y reloj inyectable.
 - B y C acuerdan la interfaz `WhatsAppProvider.send()` y la tabla de outbox en la primera hora.
-- Solo B edita la migración base; C agrega migraciones posteriores para RPC.
+- La migración base ya está aplicada. B y C agregan migraciones posteriores de datos/RLS y RPC, respectivamente, coordinando su orden y tipos.
 - Cada persona revisa una prueba crítica de otra (A -> flujo bot, B -> autorización de acciones, C -> formularios y métricas).
 
 ## 5. Modelo de datos (resumen)
 
-El esquema vive en `kuni-schema.sql` (fuera del repo, ver `.gitignore`) y debe copiarse como primera migración en `supabase/migrations/`. Contiene **20 tablas y 6 vistas**.
+El esquema base versionado vive en `supabase/migrations/0001_kuni.sql` y contiene **20 tablas y 6 vistas**. Su aplicación previa está documentada en la bitácora B. No volver a aplicar la base sobre una BD inicializada; usar migraciones incrementales para RF28 y las RPC pendientes.
 
 Convenciones: PK `uuid`, tiempos absolutos en `timestamptz` (UTC), fechas civiles en `date`, horarios de recurrencia en `time`, cantidades en `numeric`, estados restringidos con `check`. Todo dato clínico está delimitado por `unit_id` y aislado mediante RLS.
 
@@ -118,7 +118,7 @@ Estados a usar tal cual del SQL: citas `scheduled/completed/missed/cancelled`; a
 
 ## 7. Variables de entorno
 
-Copiar la plantilla de ejemplo (fuera del repo) a `.env.local` una vez creada la app. Resumen de lo esencial:
+Copiar `.env.example` a `.env.local` y completar las variables documentadas en `src/lib/env/client.ts` y `src/lib/env/server.ts`; `.env.local` es local y no se versiona. Resumen de lo esencial:
 
 - URL y clave publicable de Supabase: pueden viajar al navegador (`NEXT_PUBLIC_*`).
 - Clave secreta de Supabase, secreto del cron y credenciales del proveedor de WhatsApp: **solo servidor**, nunca como variable pública.
@@ -128,7 +128,7 @@ Copiar la plantilla de ejemplo (fuera del repo) a `.env.local` una vez creada la
 ## 8. Alcance de la demo (ajustes respecto al planteamiento original)
 
 - Botones nativos de WhatsApp: mejora posterior; el core usa menú textual y comandos con referencia (contrato de texto siempre disponible como respaldo).
-- Riesgo: reglas explicables versionadas, **no** un modelo predictivo validado ni porcentajes de probabilidad clínica.
+- Riesgo actual: reglas explicables versionadas con suficiencia por plan/variable/contexto y valoración médica. Predicción futura RF29–RF30: integración opcional aún pendiente; no se muestra un segundo riesgo actual ni porcentajes inventados.
 - Retención de 90 días: ventana de visualización/análisis, no eliminación automática de historia clínica.
 - RF18 (OCR de mediciones) y RF19 (aviso al médico) son **extras**, apagados por defecto y no bloquean el MVP.
 
@@ -137,8 +137,27 @@ Copiar la plantilla de ejemplo (fuera del repo) a `.env.local` una vez creada la
 - [x] Requerimientos y plan técnico definidos (documentos internos, no versionados).
 - [x] Estructura de carpetas del repositorio.
 - [x] Inicialización de la app Next.js (`create-next-app`) + dependencias del plan instaladas.
-- [ ] Esquema aplicado en proyecto Supabase de demo.
-- [ ] Canal de WhatsApp validado (Sandbox de Twilio).
+- [x] Esquema aplicado y tipos generados, según la bitácora B (no reejecutado durante esta integración).
+- [x] Viabilidad del Sandbox validada desde Twilio Console, según bitácora B.
+- [x] Login/logout y selección de consultorio conectados a Supabase SSR.
+- [x] Dashboard de lectura conectado a consultas por unidad/consultorio y al dominio común.
+- [x] Correcciones de riesgo, referencias, contratos, tendencias y cliente ML con regresiones.
+- [ ] Transporte WhatsApp integrado a Kuni (proveedor, firma, webhook, callbacks, jobs y Cron).
+- [ ] Alta/edición y acciones clínicas transaccionales.
+- [ ] Migración RF28, vector final y endpoint predictivo RF29–RF30.
 - [ ] Ciclo completo (alta -> WhatsApp -> alerta -> revisión médica) funcionando en demo.
 
 La documentación de avance del equipo (decisiones, bitácora, notas de integración) vive en `docs/`.
+
+## 10. Verificación y continuidad
+
+```sh
+rtk npm test
+rtk npm run typecheck
+rtk npm run lint
+rtk npm run build
+```
+
+La suite raíz reúne dominio, contratos SQL, autenticación, adaptadores/queries y presentación. Las pruebas usan mocks/datos sintéticos; no ejecutan migraciones ni envían WhatsApp. La validación alojada sigue pendiente.
+
+Consultar [plan de integración](docs/plan-integracion.md), [A](docs/documentacionA.md), [B](docs/documentacionB.md) y [C](docs/documentacionC.md) para conocer qué está implementado y qué entrega cada miembro a continuación.
