@@ -55,6 +55,15 @@ describe("acciones de autenticación y selección", () => {
     expect(mocks.redirect).not.toHaveBeenCalled();
   });
 
+  it("distingue el límite de intentos (429) de una credencial incorrecta", async () => {
+    mocks.signIn.mockResolvedValue({ error: { status: 429, message: "rate limited" } });
+    expect(await login({ error: null }, loginForm())).toEqual({
+      error: "Demasiados intentos. Espera unos minutos antes de volver a intentar.",
+    });
+    expect(mocks.getAuthContext).not.toHaveBeenCalled();
+    expect(mocks.redirect).not.toHaveBeenCalled();
+  });
+
   it("muestra falta de membresía sin volver a redirigir al área protegida", async () => {
     mocks.getAuthContext.mockRejectedValue(new AppError("FORBIDDEN", "Unidad no habilitada."));
     expect(await login({ error: null }, loginForm())).toEqual({ error: "Unidad no habilitada." });
