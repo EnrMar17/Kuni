@@ -50,6 +50,17 @@ export type DashboardPatient = {
   complicationCodes: string[] | null;
   consentGranted: boolean;
   initialRiskReason: string | null; risk: RiskResult; adherence: AdherenceResult;
+  /**
+   * Adherencia agregada por clase terapéutica (C8), solo sobre prescripciones
+   * ACTIVAS ya clasificadas por B4 (`medications.therapeutic_class`). Un
+   * medicamento sin clasificar (`null`) o clasificado como `"other"` nunca
+   * contribuye aquí — no se trata como "sin adherencia" (que sería 0%), sino
+   * que simplemente no entra a la cohorte, dejando `hasData: false` /
+   * `confirmedAdherencePct: null` cuando no hay ninguna prescripción
+   * clasificada de esa clase. `buildMlFeatureVector()` (domain-core) declara
+   * el hueco en `gaps` exactamente en ese caso, sin disfrazarlo de 0.
+   */
+  therapeuticAdherence: { antidiabetic: AdherenceResult; antihypertensive: AdherenceResult };
   lastResponseAt: string | null;
   nonresponse: { historical: number; pending: number };
   measurements: DashboardMeasurement[]; latestGlucose: DashboardMeasurement | null; latestBloodPressure: DashboardMeasurement | null;
@@ -236,6 +247,13 @@ export function buildDashboardData(rows: DashboardRows, scope: { unitId: string;
     const responseById = new Map(patientResponses.filter((r) => isPast(r.reported_at, now)).map((r) => [r.interaction_id, r.taken]));
     const lastResponseAt = patientInteractions.filter((r) => r.expects_response && isPast(r.response_at, now) && Date.parse(r.response_at!) >= now.getTime() - 90 * DAY_MS)
       .map((r) => r.response_at!).sort((a, b) => Date.parse(b) - Date.parse(a))[0] ?? null;
+    const patientPrescriptions = prescriptions.get(patient.id) ?? [];
+    // Cada prescripción activa suma su propia cohorte Y/N/U (aggregateAdherence) —
+    // nunca se promedian los `confirmedAdherencePct` ya calculados por prescripción.
+    const byClass = (cls: "antidiabetic" | "antihypertensive") =>
+      aggregateAdherence(patientPrescriptions.filter((p) => therapeuticClass(p.medications?.therapeutic_class) === cls)
+        .map((p) => toAdherenceInput(patientInteractions.filter((i) => i.prescription_id === p.id), patientResponses, now)));
+    const therapeuticAdherence = { antidiabetic: byClass("antidiabetic"), antihypertensive: byClass("antihypertensive") };
     return { id: patient.id, fullName: patient.full_name, clinicalRecord: patient.record_number ?? patient.affiliation_number ?? patient.curp ?? "Sin expediente",
       curp: patient.curp, birthDate: patient.birth_date, age, sex: patient.sex, bloodType: patient.blood_type, whatsappE164: patient.whatsapp_e164,
       diagnoses: (diagnoses.get(patient.id) ?? []).map((r) => r.description || diagnosisLabels[r.condition_code] || r.condition_code),
@@ -243,11 +261,12 @@ export function buildDashboardData(rows: DashboardRows, scope: { unitId: string;
       // Sin `.get()` -> undefined -> null: "expediente sin revisar", nunca `[]` (eso confundiría con "revisado, sin nada que reportar").
       complicationCodes: complications.get(patient.id)?.map((r) => r.code) ?? null,
       consentGranted: consent.get(patient.id) ?? false, initialRiskReason: patient.initial_risk_reason, risk, adherence: computeAdherence(input),
+      therapeuticAdherence,
       lastResponseAt,
       nonresponse: { historical: counts.get(patient.id)?.ever_timed_out ?? 0, pending: counts.get(patient.id)?.currently_unanswered ?? 0 },
       measurements: patientMeasurements, latestGlucose: patientMeasurements.find((m) => m.kind === "glucose") ?? null,
       latestBloodPressure: patientMeasurements.find((m) => m.kind === "blood_pressure") ?? null,
-      prescriptions: (prescriptions.get(patient.id) ?? []).map((p) => ({ id: p.id, medicationId: p.medication_id,
+      prescriptions: patientPrescriptions.map((p) => ({ id: p.id, medicationId: p.medication_id,
         therapeuticClass: therapeuticClass(p.medications?.therapeutic_class),
         version: p.version, updatedAt: p.updated_at, medicationName: p.medications?.name ?? "Medicamento sin nombre disponible", doseText: p.dose_text,
         route: p.route, instructions: p.instructions, startDate: p.start_date, endDate: p.end_date,

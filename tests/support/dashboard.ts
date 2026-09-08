@@ -10,9 +10,11 @@ export function patient(id: string, name: string, level: DashboardPatient["risk"
     whatsappE164: "+525500000000", diagnoses: [], diagnosisCodes: [], complicationCodes: null, consentGranted: false, lastResponseAt: null,
     initialRiskReason: null,
     risk: { level, reasons: ["Sin evaluación suficiente"], ruleVersion: "test", evaluatedAt: testNow, inputsUsed: { measurementsConsidered: 0, pendingTimeoutsLast7Days: 0, urgentFlagActive: false, initialAssessmentLevel: null } },
-    adherence: computeAdherence({ concluded: [] }), nonresponse: { historical: 0, pending: 0 },
+    adherence: computeAdherence({ concluded: [] }),
+    therapeuticAdherence: { antidiabetic: computeAdherence({ concluded: [] }), antihypertensive: computeAdherence({ concluded: [] }) },
+    nonresponse: { historical: 0, pending: 0 },
     measurements: [], latestGlucose: null, latestBloodPressure: null,
-    prescriptions: [], appointments: [], alerts: [], complications: [], interactions: [],
+    prescriptions: [], appointments: [], alerts: [], interactions: [], complications: [],
   };
 }
 

@@ -4,12 +4,17 @@
  * `buildMlFeatureVector()` de `domain-core` (RF29/RF30).
  *
  * Deliberadamente NO recalcula nada que `dashboard.ts` ya calculó (edad,
- * medidas, adherencia general, complicaciones RF28): solo reorganiza lo que
- * ya existe en la forma que pide el contrato del modelo. Adherencia por
- * clase terapéutica sigue sin poder calcularse (B4, `medications` todavía
- * no clasifica por clase) y se manda `null` a propósito:
- * `buildMlFeatureVector()` lo declara en `gaps`, nunca lo disfraza de dato
- * observado.
+ * medidas, adherencia general, complicaciones RF28, y desde C8 también la
+ * adherencia por clase terapéutica): solo reorganiza lo que ya existe en la
+ * forma que pide el contrato del modelo.
+ *
+ * `therapeuticAdherence.{antidiabetic,antihypertensive}` ya viene calculado
+ * por `buildDashboardData()` (B4 clasifica `medications.therapeutic_class`;
+ * un medicamento sin clasificar u `"other"` nunca entra a esa cohorte). Se
+ * manda el `AdherenceResult` completo tal cual — `buildMlFeatureVector()` es
+ * quien decide, con `confirmedAdherencePct == null`, si declara el hueco en
+ * `gaps`; este adaptador no debe adelantarse a rellenar ese caso con `null`
+ * ni con 0.
  */
 import "server-only";
 import type { Reading } from "../../../domain-core/src/lib/domain/trend";
@@ -41,9 +46,9 @@ export function buildPatientMlFeatureInput(patient: DashboardPatient): MlFeature
     postprandialGlucose: readings(patient, "glucose", "after_meal"),
     systolic: readings(patient, "blood_pressure", undefined, "systolic"),
     diastolic: readings(patient, "blood_pressure", undefined, "diastolic"),
-    // Gap conocido hasta B4 (clasificación por clase terapéutica en `medications`).
-    antidiabeticAdherence: null,
-    antihypertensiveAdherence: null,
+    // C8: cohortes ya agregadas por clase terapéutica en dashboard.ts.
+    antidiabeticAdherence: patient.therapeuticAdherence.antidiabetic,
+    antihypertensiveAdherence: patient.therapeuticAdherence.antihypertensive,
     // RF28 ya migrada (B3): `null` real solo cuando el expediente no tiene
     // revisión (ninguna fila), nunca cuando el médico ya declaró "sin
     // complicaciones" (`["E119"]`) — esos dos casos no son lo mismo.
