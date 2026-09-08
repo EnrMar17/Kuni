@@ -10,6 +10,7 @@ import {
   resolveAlert,
   correctMeasurement,
   adjustPrescription,
+  setMedicationTherapeuticClass,
 } from "@/actions/clinical";
 import type { DashboardAlert, DashboardComplication, DashboardMeasurement, DashboardPrescription } from "@/lib/domain/dashboard";
 
@@ -93,4 +94,107 @@ export function PrescriptionAdjustment({ patientId, prescription }: { patientId:
     if (result.error) return setMessage(result.error.message); setMessage("Ajuste de receta registrado."); router.refresh();
   });
   return <div className="mt-3 border-t border-indigo-100 pt-3"><label className="block text-xs font-bold text-slate-600">Dosis<input className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-1" disabled={isPending} onChange={(event) => setDoseText(event.target.value)} value={doseText} /></label><label className="mt-2 block text-xs font-bold text-slate-600">Indicaciones<textarea className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-1" disabled={isPending} onChange={(event) => setInstructions(event.target.value)} rows={2} value={instructions} /></label><label className="mt-2 block text-xs font-bold text-slate-600">Motivo del ajuste<textarea className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-1" disabled={isPending} onChange={(event) => setReason(event.target.value)} rows={2} value={reason} /></label><button className="mt-2 text-sm font-bold text-indigo-700" disabled={isPending || !reason.trim() || !doseText.trim() || !instructions.trim()} onClick={save} type="button">{isPending ? "Guardando…" : "Ajustar receta"}</button><ActionMessage message={message} /></div>;
+}
+
+const therapeuticClasses = [
+  {
+    value: "antidiabetic",
+    label: "Antidiabético",
+    description: "Medicamentos para el control de glucosa.",
+  },
+  {
+    value: "antihypertensive",
+    label: "Antihipertensivo",
+    description: "Medicamentos para el control de presión arterial.",
+  },
+  {
+    value: "other",
+    label: "Otra clase",
+    description: "No se usa para esas dos cohortes de adherencia.",
+  },
+] as const;
+
+type TherapeuticClass = (typeof therapeuticClasses)[number]["value"];
+
+export function MedicationClassification({
+  patientId,
+  prescription,
+}: {
+  patientId: string;
+  prescription: DashboardPrescription;
+}) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const [therapeuticClass, setTherapeuticClass] = useState<TherapeuticClass | "">("");
+  const [message, setMessage] = useState<string | null>(null);
+
+  const save = () => {
+    if (!therapeuticClass) return;
+    startTransition(async () => {
+      const result = await setMedicationTherapeuticClass({
+        patientId,
+        prescriptionId: prescription.id,
+        medicationId: prescription.medicationId,
+        therapeuticClass,
+      });
+      if (result.error) return setMessage(result.error.message);
+      setMessage("Clasificación guardada y registrada en la auditoría.");
+      router.refresh();
+    });
+  };
+
+  return (
+    <section
+      aria-labelledby={`medication-class-${prescription.id}`}
+      className="mt-4 rounded-2xl border border-sky-100 bg-sky-50/70 p-3 transition duration-200 hover:border-sky-200"
+    >
+      <div className="flex items-start gap-2">
+        <span aria-hidden="true" className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-lg bg-sky-600 text-xs font-black text-white">✓</span>
+        <div>
+          <h3 id={`medication-class-${prescription.id}`} className="text-sm font-extrabold text-slate-900">
+            Clase terapéutica
+          </h3>
+          <p className="mt-0.5 text-xs leading-relaxed text-slate-600">
+            Permite separar la adherencia del modelo sin modificar la receta.
+          </p>
+        </div>
+      </div>
+      <label className="mt-3 block text-xs font-bold text-slate-700" htmlFor={`therapeutic-class-${prescription.id}`}>
+        Clasificar {prescription.medicationName}
+      </label>
+      <select
+        className="mt-1 w-full rounded-xl border border-sky-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
+        disabled={isPending}
+        id={`therapeutic-class-${prescription.id}`}
+        onChange={(event) => {
+          setTherapeuticClass(event.target.value as TherapeuticClass | "");
+          setMessage(null);
+        }}
+        value={therapeuticClass}
+      >
+        <option value="">Selecciona una clase</option>
+        {therapeuticClasses.map((item) => (
+          <option key={item.value} value={item.value}>{item.label}</option>
+        ))}
+      </select>
+      {therapeuticClass ? (
+        <p className="mt-2 text-xs text-sky-800">
+          {therapeuticClasses.find((item) => item.value === therapeuticClass)?.description}
+        </p>
+      ) : null}
+      <button
+        className="mt-3 inline-flex min-h-10 items-center rounded-xl bg-sky-700 px-3 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-sky-800 disabled:cursor-not-allowed disabled:opacity-60"
+        disabled={isPending || !therapeuticClass}
+        onClick={save}
+        type="button"
+      >
+        {isPending ? "Guardando clasificación…" : "Guardar clasificación"}
+      </button>
+      {message ? (
+        <p aria-live="polite" className={`mt-3 text-xs font-semibold ${message.includes("guardada") ? "text-emerald-700" : "text-rose-700"}`} role={message.includes("guardada") ? "status" : "alert"}>
+          {message}
+        </p>
+      ) : null}
+    </section>
+  );
 }

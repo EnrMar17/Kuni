@@ -49,12 +49,18 @@ const adjustPrescriptionInputSchema = z.object({
   schedules: z.array(z.object({ weekday: z.number().int().min(1).max(7), localTime: z.iso.time({ precision: 0 }) })).min(1).max(168),
   reason: z.string().trim().min(1).max(2_000),
 });
+export const medicationTherapeuticClassInputSchema = patientIdSchema.extend({
+  prescriptionId: z.uuid(),
+  medicationId: z.uuid(),
+  therapeuticClass: z.enum(["antidiabetic", "antihypertensive", "other"]),
+});
 
 export type UrgentInput = z.infer<typeof urgentInputSchema>;
 export type ComplicationInput = z.infer<typeof complicationInputSchema>;
 export type DeactivateComplicationInput = z.infer<typeof deactivateComplicationInputSchema>;
 export type CorrectMeasurementInput = z.infer<typeof correctMeasurementInputSchema>;
 export type AdjustPrescriptionInput = z.infer<typeof adjustPrescriptionInputSchema>;
+export type MedicationTherapeuticClassInput = z.infer<typeof medicationTherapeuticClassInputSchema>;
 
 function readResolvedAlert(payload: unknown): ResolvedAlert {
   const parsed = z
@@ -233,4 +239,62 @@ export async function adjustPrescription(input: AdjustPrescriptionInput): Promis
     refreshClinicalViews();
     return ok({ id });
   } catch (error) { return toApiError(error); }
+}
+
+/**
+ * Classifies the medication used by an active prescription. The prescription
+ * lookup prevents a clinician from changing a medication outside the selected
+ * patient's room; the database trigger records the change in the audit trail.
+ */
+export async function setMedicationTherapeuticClass(
+  input: MedicationTherapeuticClassInput,
+): Promise<ApiResult<{ id: string }>> {
+  const parsed = medicationTherapeuticClassInputSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      data: null,
+      error: {
+        code: "VALIDATION",
+        message: "Selecciona una clase terapéutica válida.",
+      },
+    };
+  }
+
+  try {
+    const { context, supabase } = await assertPatientInSelectedRoom(parsed.data.patientId);
+    const { data: prescription, error: prescriptionError } = await supabase
+      .from("prescriptions")
+      .select("id")
+      .eq("id", parsed.data.prescriptionId)
+      .eq("unit_id", context.unitId)
+      .eq("patient_id", parsed.data.patientId)
+      .eq("medication_id", parsed.data.medicationId)
+      .eq("status", "active")
+      .maybeSingle();
+    if (prescriptionError) throw mapClinicalRpcFailure(prescriptionError);
+    if (!prescription) {
+      throw new AppError(
+        "FORBIDDEN",
+        "El medicamento no corresponde a una receta activa de este paciente.",
+      );
+    }
+
+    const { data: medication, error: medicationError } = await supabase
+      .from("medications")
+      .update({ therapeutic_class: parsed.data.therapeuticClass })
+      .eq("id", parsed.data.medicationId)
+      .eq("unit_id", context.unitId)
+      .select("id")
+      .maybeSingle();
+    if (medicationError) throw mapClinicalRpcFailure(medicationError);
+    if (!medication) {
+      throw new AppError("CONFLICT", "El medicamento cambió o ya no está disponible. Actualiza la ficha.");
+    }
+
+    revalidatePath(`/pacientes/${parsed.data.patientId}`);
+    refreshClinicalViews();
+    return ok({ id: medication.id });
+  } catch (error) {
+    return toApiError(error);
+  }
 }
