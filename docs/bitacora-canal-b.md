@@ -179,3 +179,38 @@ Tras la auditoría (`docs/auditoria-integracion.md`, `docs/pendientes-y-modelo.m
 - **Qué desbloquea:** tres de las cinco variables que `buildMlFeatureVector()` reportaba en `gaps` (`num_complicaciones_dm`, `tiene_complicacion_dm`, `complicacion_grave_dm`) ya tienen una tabla real que las respalda — falta que A capture datos y que C escriba el adaptador (C2/C7). A puede construir la UI de captura/edición de RF28 contra esta tabla ya mismo. Las otras dos variables de adherencia siguen esperando B4.
 
 **Siguiente en la cola de B:** B4 (clase terapéutica en `medications`), después B2 (Cron), B6, B7, B8 y B5 al final.
+
+## 2026-09-08 — B4: clase terapéutica de `medications` diseñada, validada y aplicada
+
+- **Diseño:** `supabase/migrations/0005_medication_therapeutic_class.sql`. A diferencia de B3, no es una tabla nueva: `medications` ya participaba en los genéricos de `0001` (`immutable_identity`, `clinical_audit`, RLS de lectura/escritura por unidad), así que el `ALTER TABLE` no necesitó tocar triggers, RLS ni grants — todos ya cubren cualquier columna nueva de la tabla.
+- `therapeutic_class text` con `check (... in ('antidiabetic','antihypertensive','other'))`, **sin `NOT NULL` ni default**. Decisión deliberada: un default en `'other'` escondería un medicamento real de antidiabético/antihipertensivo detrás de un valor que parece una clasificación ya hecha — mismo criterio que ya usa el esquema (`monitoring_plans`: "NULL en un límite significa no configurado. No clasificar como normal por ausencia de rango"). `MlFeatureInput.antidiabeticAdherence`/`antihypertensiveAdherence` en `domain-core/src/lib/ml/features.ts` ya aceptan `null` como "no se puede separar por clase": es exactamente ese estado mientras el medicamento no se clasifique.
+- **Validada en PGlite antes de tocar el remoto**: `domain-core/tests/integration/medication-therapeutic-class.test.ts` (nuevo, 5 pruebas) — un medicamento insertado antes de clasificar queda `NULL` (no `'other'`), el catálogo acepta los tres valores válidos, rechaza uno inválido, se puede clasificar por UPDATE, y la RLS ya existente (de `0001`) impide que otra unidad lo modifique.
+- Suite completa de `domain-core`: **253 pruebas en 13 archivos** (antes 248), sin regresión en las 63 de C ni en las 12 de B3.
+- **Aplicada al proyecto Supabase real**: `db push` (solo `0005_medication_therapeutic_class.sql`) y `gen types typescript --linked` — `medications.therapeutic_class` ya aparece en `src/types/database.types.ts`. Verificado después: `tsc --noEmit` y ESLint de la raíz sin errores.
+- **Con esto, B1+B3+B4 juntas cierran las cinco variables que `buildMlFeatureVector()` reportaba en `gaps`.** Falta que A capture/clasifique los datos desde la UI y que C escriba los adaptadores (C2/C7/C8): complicaciones hacia `MlComplicationsCapture.codes` y adherencia por clase terapéutica hacia `antidiabeticAdherence`/`antihypertensiveAdherence`. Aviso importante para C: `therapeutic_class = NULL` es "sin clasificar", no debe tratarse como `'other'` ni excluirse silenciosamente sin dejarlo en `gaps`.
+
+**Siguiente en la cola de B:** B2 (programar el Cron), después B6 (RLS real de dos unidades), B7 (`appointment`/`nonresponse_summary` en el materializador), B8 (CSP, apagar SMS de Twilio) y B5 al final.
+
+## 2026-09-08 — B2: Cron programado con Supabase Cron (`pg_cron`+`pg_net`+Vault)
+
+- **Decisión:** Supabase Cron en vez de un cron externo (GitHub Actions, cron-job.org, etc.) porque vive dentro del mismo proyecto Supabase que ya se administra, y porque el propio `0001_kuni.sql` ya lo anticipaba en su comentario final ("Programar cron externo/Supabase Cron -> endpoint Next.js protegido").
+- **No se versionó como migración SQL.** El `cron.schedule(...)` necesita el `CRON_SECRET` real y la URL pública de la app — meter eso en un archivo `.sql` en git habría filtrado un secreto en el historial. En vez de eso, el secreto y la URL se guardaron cifrados en **Supabase Vault** (`vault.create_secret`), y el cron los lee por nombre en cada corrida (`vault.decrypted_secrets`), nunca en texto plano dentro de `cron.job`.
+- Extensiones habilitadas por el equipo desde el dashboard: `pg_cron`, `pg_net`.
+- Dos secretos en Vault: `kuni_cron_secret` (el `CRON_SECRET` de `.env.local`) y `kuni_tick_endpoint_url` (`APP_PUBLIC_URL` + `/api/jobs/tick`).
+- Cron programado (`jobname = 'kuni-jobs-tick'`) cada minuto (`* * * * *`, `jobid = 2` — se reprogramó una vez desde cada 5 minutos, que fue el `jobid = 1` inicial), haciendo `net.http_post` con `Authorization: Bearer <kuni_cron_secret>` hacia `kuni_tick_endpoint_url`.
+- **Tropiezos reales durante la puesta en marcha (documentados para que no se repitan):**
+  1. Los dos secretos de Vault se guardaron la primera vez con los símbolos `<` `>` incluidos literalmente (copiados del placeholder de la instrucción en vez del valor real) — la URL quedó como `<https://...>/...`. Síntoma: `cron.job_run_details` marcaba `failed` con `ERROR: invalid URL`. Corregido con `vault.update_secret(...)` pasando el valor limpio.
+  2. Con la URL corregida pero el secreto del `CRON_SECRET` todavía con `<>`, `net._http_response` mostraba `status_code = NULL` y `error_msg = 'A libcurl function was given a bad argument'` — consistente con un header mal formado (`Authorization` con un valor no válido para pg_net). Corregido igual, con `vault.update_secret`.
+  3. Una corrida aislada devolvió `status_code = 404` con URL y secreto ya correctos — no reproducible; probablemente `next dev`/`ngrok` no estaban listos en ese instante exacto o la sesión de `ngrok` se había reiniciado momentáneamente. Verificado aparte con `curl -i -X POST <url> -H "Authorization: Bearer <secreto-invalido>"` desde la misma máquina → `401 No autorizado`, confirmando que la ruta y el proxy (`src/proxy.ts`, que ya excluye `api/jobs/*` de su matcher) funcionaban bien en ese momento.
+  4. Corrida siguiente: `status_code = 200`, `content = {"expire":{"expired":1},"materialize":{"candidates":1,"created":0},"send":{"claimed":0,"sent":0,"failed":0}}` — **una interacción real venció automáticamente sin intervención manual**, confirmando el circuito completo (Vault → `pg_net` → `ngrok` → Next.js → RPC/jobs) de punta a punta.
+- **Riesgo operativo real, no técnico, de cara a la demo:** `kuni_tick_endpoint_url` apunta hoy a un túnel de `ngrok` (plan gratuito), que **rota su URL cada vez que se reinicia**. Si eso pasa antes de la demo, el Cron le pega a una URL muerta hasta que se actualice el secreto:
+  ```sql
+  select vault.update_secret(
+    (select id from vault.secrets where name = 'kuni_tick_endpoint_url'),
+    '<NUEVA_URL_DE_NGROK>/api/jobs/tick'
+  );
+  ```
+  Si se consigue un despliegue con dominio estable antes de la demo, actualizar el secreto una sola vez y este riesgo desaparece por completo.
+- No se versionó ningún archivo de migración para esto (es configuración operativa con secretos reales, no DDL del esquema); queda documentado aquí como la referencia si hay que repetirlo o depurarlo.
+
+**Siguiente en la cola de B:** B6 (RLS real de dos unidades), después B7 (`appointment`/`nonresponse_summary` en el materializador), B8 (CSP, apagar SMS de Twilio) y B5 al final.

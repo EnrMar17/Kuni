@@ -878,6 +878,7 @@ export type Database = {
           name: string
           pharmaceutical_form: string | null
           strength: string | null
+          therapeutic_class: string | null
           unit_id: string
           updated_at: string
         }
@@ -889,6 +890,7 @@ export type Database = {
           name: string
           pharmaceutical_form?: string | null
           strength?: string | null
+          therapeutic_class?: string | null
           unit_id: string
           updated_at?: string
         }
@@ -900,6 +902,7 @@ export type Database = {
           name?: string
           pharmaceutical_form?: string | null
           strength?: string | null
+          therapeutic_class?: string | null
           unit_id?: string
           updated_at?: string
         }
