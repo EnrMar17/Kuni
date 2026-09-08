@@ -5,6 +5,7 @@ Esta carpeta concentra la documentación viva de Kuni: lo que no está en el có
 ## Contenido
 
 - [`decisiones.md`](decisiones.md) — Bitácora de decisiones técnicas y de alcance tomadas durante el desarrollo (fecha, decisión, motivo, quién la tomó).
+- [`bitacora-canal-b.md`](bitacora-canal-b.md) — Bitácora operativa de B (persistencia y transporte): Supabase, datos de prueba y canal de WhatsApp.
 
 ## Convención de uso
 
