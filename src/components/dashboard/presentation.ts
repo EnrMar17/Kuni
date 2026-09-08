@@ -46,15 +46,24 @@ export function filterPatients(
   query: string,
   priority: keyof typeof riskRank | "all",
   order: "risk" | "name",
+  diagnosis = "all",
+  pendingOnly = false,
 ): DashboardPatient[] {
   const search = normalizeSearch(query);
   return patients.filter((patient) =>
     (priority === "all" || patient.risk.level === priority) &&
+    (diagnosis === "all" || patient.diagnoses.some((item) => normalizeSearch(item) === normalizeSearch(diagnosis))) &&
+    (!pendingOnly || patient.nonresponse.pending > 0) &&
     normalizeSearch(`${patient.fullName} ${patient.clinicalRecord} ${patient.curp ?? ""} ${patient.diagnoses.join(" ")}`).includes(search),
   ).sort((a, b) => {
     const severity = order === "risk" ? riskRank[a.risk.level] - riskRank[b.risk.level] : 0;
     return severity || a.fullName.localeCompare(b.fullName, "es-MX");
   });
+}
+
+export function availableDiagnoses(patients: DashboardPatient[]): string[] {
+  return [...new Set(patients.flatMap((patient) => patient.diagnoses))]
+    .sort((a, b) => a.localeCompare(b, "es-MX"));
 }
 
 type PlotPoint = { x: number; y: number; value: number; observedAt: string };

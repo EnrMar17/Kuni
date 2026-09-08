@@ -36,7 +36,7 @@ export async function loadDashboardRows(client: SupabaseClient<Database>, scope:
     .eq("unit_id", scope.unitId).eq("consulting_room_id", scope.roomId).eq("active", true)
     .order("id").range(from, to), PATIENT_LIMIT);
   const hasMorePatients = false;
-  const emptyRows: DashboardRows = { patients, diagnoses: [], plans: [], measurements: [], interactions: [], responses: [], prescriptions: [], appointments: [], alerts: [], nonresponse: [], consent: [], complications: [] };
+  const emptyRows: DashboardRows = { patients, diagnoses: [], plans: [], measurements: [], interactions: [], responses: [], prescriptions: [], appointments: [], alerts: [], complications: [], nonresponse: [], consent: [] };
   if (!patients.length) return { rows: emptyRows, hasMorePatients };
   // Bound URL length and request concurrency; batches are by patients, never one query per patient.
   for (let offset = 0; offset < patients.length; offset += 100) {
@@ -50,9 +50,9 @@ export async function loadDashboardRows(client: SupabaseClient<Database>, scope:
     appendRows(emptyRows.prescriptions, related.prescriptions);
     appendRows(emptyRows.appointments, related.appointments);
     appendRows(emptyRows.alerts, related.alerts);
+    appendRows(emptyRows.complications, related.complications);
     appendRows(emptyRows.nonresponse, related.nonresponse);
     appendRows(emptyRows.consent, related.consent);
-    appendRows(emptyRows.complications, related.complications);
   }
   return { rows: emptyRows, hasMorePatients };
 }
@@ -68,7 +68,7 @@ async function loadRelatedRows(client: SupabaseClient<Database>, scope: { unitId
   const until90 = new Date(now.getTime() + 90 * DAY_MS).toISOString();
   const nowIso = now.toISOString();
   // A fixed set of batched reads; every relation keeps the unit and authorized patient ids.
-  const [diagnoses, plans, measurements, interactions, responses, prescriptions, appointments, alerts, nonresponse, consent, complications] = await Promise.all([
+  const [diagnoses, plans, measurements, interactions, responses, prescriptions, appointments, alerts, complications, nonresponse, consent] = await Promise.all([
     readAllDashboardRows((from, to) => client.from("patient_diagnoses").select("*", { count: "exact" }).eq("unit_id", scope.unitId).in("patient_id", ids).eq("active", true).order("id").range(from, to)),
     readAllDashboardRows((from, to) => client.from("monitoring_plans").select("*", { count: "exact" }).eq("unit_id", scope.unitId).in("patient_id", ids).order("id").range(from, to)),
     readAllDashboardRows((from, to) => client.from("measurements").select("*", { count: "exact" }).eq("unit_id", scope.unitId).in("patient_id", ids).is("voided_at", null).gte("measured_at", since90).lte("measured_at", nowIso).order("id").range(from, to)),
@@ -77,12 +77,11 @@ async function loadRelatedRows(client: SupabaseClient<Database>, scope: { unitId
     readAllDashboardRows((from, to) => client.from("prescriptions").select("*, medications(name, strength), prescription_schedules(local_time, weekdays)", { count: "exact" }).eq("unit_id", scope.unitId).in("patient_id", ids).eq("status", "active").order("id").range(from, to)),
     readAllDashboardRows((from, to) => client.from("appointments").select("*", { count: "exact" }).eq("unit_id", scope.unitId).in("patient_id", ids).eq("consulting_room_id", scope.roomId).eq("status", "scheduled").gte("starts_at", nowIso).lte("starts_at", until90).order("id").range(from, to)),
     readAllDashboardRows((from, to) => client.from("alerts").select("*", { count: "exact" }).eq("unit_id", scope.unitId).in("patient_id", ids).in("status", ["open", "acknowledged"]).order("id").range(from, to)),
+    readAllDashboardRows((from, to) => client.from("patient_complications").select("*", { count: "exact" }).eq("unit_id", scope.unitId).in("patient_id", ids).eq("active", true).order("id").range(from, to)),
     readAllDashboardRows((from, to) => client.from("patient_nonresponse_counts").select("*", { count: "exact" }).eq("unit_id", scope.unitId).in("patient_id", ids).order("patient_id").range(from, to)),
     readAllDashboardRows((from, to) => client.from("patient_consent_status").select("*", { count: "exact" }).eq("unit_id", scope.unitId).in("patient_id", ids).order("patient_id").range(from, to)),
-    // Fila ausente = expediente sin revisar; solo importan las vigentes (`active`), igual que diagnósticos.
-    readAllDashboardRows((from, to) => client.from("patient_complications").select("*", { count: "exact" }).eq("unit_id", scope.unitId).in("patient_id", ids).eq("active", true).order("id").range(from, to)),
   ]);
-  return { diagnoses, plans, measurements, interactions, responses, prescriptions, appointments, alerts, nonresponse, consent, complications };
+  return { diagnoses, plans, measurements, interactions, responses, prescriptions, appointments, alerts, complications, nonresponse, consent };
 }
 
 /** Per-request session/RLS client: no administrative key, writes, or fixture fallback. */

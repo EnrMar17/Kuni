@@ -2,6 +2,12 @@
 
 ## Continuidad de interfaz — 8 septiembre 2026
 
+- Se añadieron fronteras de error recuperables a censo, ficha, alta, alertas, citas y estadísticas, más un `global-error.tsx`. Todas usan el mismo fallback accesible y no exponen detalles internos al navegador.
+- El censo ahora combina búsqueda y prioridad con filtros por diagnóstico y por pacientes con interacciones pendientes. La paginación sigue siendo de presentación sobre la respuesta ya acotada del servidor.
+- Se conectaron las acciones clínicas ya aplicadas en Supabase: resolución de alertas, marca de urgencia, corrección de mediciones y ajuste de receta. Cada una valida la entrada, exige contexto de escritura, conserva su token de concurrencia y traduce `PT401/PT403/PT409/PT422` al envelope `{ data, error }`.
+- La ficha incorpora RF28: registro y retiro de complicaciones E110–E119. La acción valida que el paciente pertenezca al consultorio seleccionado, usa RLS y respeta la exclusión de E119 frente a otros códigos vigentes.
+- Se formatearon los componentes clínicos que tenían líneas kilométricas, con Prettier, para que los diffs vuelvan a ser revisables.
+- El árbol de dependencias se reinstaló desde Windows y se añadió el binding opcional de Rolldown para Windows. Vitest vuelve a arrancar; las pruebas unitarias de filtros y del adaptador de alerta pasan.
 - Estadísticas vive en `/estadisticas`, accesible desde la cabecera compartida. Genera reportes agregados de resumen, prioridad y adherencia con vista previa, CSV e impresión/PDF local. Los reportes identifican corte, unidad, consultorio y ventanas de lectura; no exportan nombres ni identificadores de pacientes.
 - Programar cita usa React Hook Form y valida paciente del censo, motivo y horario futuro en la zona del consultorio. Ofrece resumen y limpieza de campos; permanece sin guardar hasta conectar la operación transaccional e invalidación de recordatorios.
 - Se retiraron los enlaces redundantes «Volver al dashboard» y el botón separado de Indicadores.
@@ -67,16 +73,16 @@ Esta continuidad de A no modificó el esquema SQL, los tipos generados, el cron 
 - La prioridad actual procede de `evaluateRisk()`; la adherencia y cobertura proceden de `computeAdherence()` con cohortes de tomas. Se muestran desconocidos y valores «Sin datos».
 - La gráfica utiliza fechas y valores observados, con ventanas de 7/14/30/90 días, glucosa en ayuno y presión sistólica/diastólica. No se inventan curvas ni bandas objetivo. Otros contextos de glucosa permanecen en el DTO para la ficha completa pendiente.
 - Las próximas citas son las registradas para el consultorio dentro de 90 días; no se afirma que el bot las haya confirmado.
-- «Abrir WhatsApp» abre contacto manual con el paciente que tiene consentimiento vigente; no envía mensajes ni sustituye el bot automatizado. «Nuevo paciente» abre el formulario de preparación; guardar, urgencia y ajuste de dosis siguen pendientes de sus flujos transaccionales.
+- «Abrir WhatsApp» abre contacto manual con el paciente que tiene consentimiento vigente; no envía mensajes ni sustituye el bot automatizado. «Nuevo paciente» abre el formulario de preparación; el alta persistente sigue pendiente de su comando transaccional.
 
 ### Vistas clínicas y reportes
 
 | Ruta | Disponible | Límite actual |
 |---|---|---|
-| `/pacientes` | Censo real, búsqueda por nombre/expediente/CURP/diagnóstico, filtro de prioridad, orden por prioridad y enlaces a ficha. Páginas de 12 pacientes. | Paginación de presentación sobre el censo cargado, no paginación de servidor. Faltan filtros dedicados por diagnóstico, pendientes y periodo. |
+| `/pacientes` | Censo real, búsqueda por nombre/expediente/CURP/diagnóstico, filtro de prioridad, diagnóstico y pacientes con interacciones pendientes; enlaces a ficha y páginas de 12 pacientes. | Paginación de presentación sobre el censo cargado, no paginación de servidor. Falta filtro por periodo y consultas especializadas para mayor volumen. |
 | `/pacientes/nuevo` | React Hook Form, errores por campo, identificación, contacto, grupo sanguíneo, códigos de diagnóstico, valoración inicial y datos de consentimiento. | Solo revisión en memoria. No crea paciente ni evento de consentimiento; faltan objetivos, monitoreo, receta y horarios. |
-| `/pacientes/[patientId]` | Resumen, diagnósticos, prioridad y motivos, últimas mediciones, contacto, estado del consentimiento y tratamiento vigente. Solo encuentra pacientes dentro del censo autorizado. | No es ficha completa ni editable; faltan historial detallado, versiones y acciones clínicas. |
-| `/alertas` | Listado real de alertas abiertas/en revisión, paciente, fecha y severidad. | Atención y resolución deshabilitadas; faltan filtros y flujo transaccional. |
+| `/pacientes/[patientId]` | Resumen, diagnósticos, prioridad y motivos, últimas mediciones, contacto, consentimiento, tratamiento vigente y complicaciones RF28. Permite corregir la última glucosa/presión, ajustar una receta y registrar o retirar complicaciones. | No es ficha completa ni editable en todos sus campos; faltan historial de versiones y mediciones, así como corrección de respuestas de medicamento. |
+| `/alertas` | Listado real de alertas abiertas/en revisión, paciente, fecha y severidad. Permite reconocer, resolver o descartar con motivo, y marcar urgencia. | Requiere comprobación autenticada contra Supabase; no hay filtros dedicados ni historial completo de atención. |
 | `/citas` | Agenda de citas programadas para los próximos 90 días. Formulario con paciente del consultorio, fecha/hora, rutina/prioritaria, motivo, resumen y limpieza. | No guarda, edita ni cancela. Valida horario futuro en la zona del consultorio; no comprueba disponibilidad ni conflictos de agenda. |
 | `/estadisticas` | Resumen del consultorio, prioridad actual y adherencia/cobertura. Vista previa, descarga CSV e impresión/guardar como PDF desde el navegador. | Reportes agregados de ventanas fijas; no hay periodos arbitrarios, archivo de reportes ni PDF generado por servidor. |
 
@@ -97,6 +103,8 @@ Los reportes identifican unidad, consultorio, zona horaria y corte. Prioridad y 
 ## Archivos principales trabajados
 
 - `src/actions/auth.ts`
+- `src/actions/clinical.ts`
+- `src/lib/clinical/rpc-errors.ts`
 - `src/app/(auth)/login/page.tsx`
 - `src/app/(protected)/layout.tsx`
 - `src/app/(protected)/consultorios/page.tsx`
@@ -112,10 +120,12 @@ Los reportes identifican unidad, consultorio, zona horaria y corte. Prioridad y 
 - `src/lib/queries/consulting-rooms.ts`
 - `src/lib/queries/dashboard.ts`
 - `src/lib/domain/dashboard.ts`
-- `src/app/(protected)/dashboard/error.tsx`
+- `src/app/global-error.tsx` y los `error.tsx` de dashboard, censo, ficha, alta, alertas, citas y estadísticas.
 - `src/app/globals.css`
 - `src/components/clinical-header.tsx`
 - `src/components/clinical-workspace.tsx`
+- `src/components/route-error.tsx`
+- `src/components/clinical-actions.tsx`
 - `src/components/clinical-skeleton.tsx`
 - `src/components/patient-create-form.tsx`
 - `src/components/appointment-form.tsx`
@@ -144,11 +154,13 @@ Los reportes identifican unidad, consultorio, zona horaria y corte. Prioridad y 
 ### Continuidad de frontend — estado de la última comprobación
 
 - `npm run typecheck`, `npm run lint` y `git diff --check`: aprobados al cerrar los cambios de interfaz, citas y estadísticas.
+- Tras reinstalar dependencias desde Windows y añadir el binding de Rolldown correspondiente, Vitest volvió a arrancar. `tests/unit/dashboard-presentation.test.ts` y `tests/unit/clinical-action.test.ts`: 8 pruebas aprobadas.
+- `npm run typecheck`, `npm run lint` y `git diff --check` aprobaron después de conectar las acciones de alerta, urgencia, RF28, corrección de mediciones y ajuste de receta. La verificación de las 15 pruebas relevantes precede a los dos últimos formularios; falta una prueba de mock específica para esas dos RPC.
 - Se ajustó la prueba existente de render para el pathname de la cabecera compartida y el enlace de alta.
-- La ejecución más reciente de `npm test` no arrancó por el binding nativo faltante de Rolldown/Vitest. No se acredita una nueva suite aprobada.
+- Antes de esta continuidad, `npm test` no arrancaba por el binding nativo faltante de Rolldown/Vitest. El problema de inicio está resuelto; falta volver a ejecutar y acreditar la suite completa después de estos cambios.
 - El intento de comprobación adicional de reportes mediante `tsx` tampoco arrancó: el entorno devolvió `uv_os_get_passwd / ENOMEM`. Los cálculos y exportaciones nuevos requieren prueba ejecutada.
 - El último build intentado compiló y pasó TypeScript, pero se detuvo al recolectar páginas por ausencia de variables obligatorias de Supabase. No acredita un build completo de esta versión.
-- No se hizo una nueva revisión visual en navegador de las vistas, formularios, skeletons, navegación responsive o impresión. Tampoco se ejecutaron escrituras remotas, envío de WhatsApp ni validación alojada de RLS.
+- La pantalla de acceso local se comprobó sin transmitir credenciales. Falta iniciar sesión con una cuenta de prueba y revisar visualmente las vistas protegidas, formularios, skeletons, navegación responsive e impresión. No se ejecutaron escrituras remotas, envío de WhatsApp ni validación alojada de RLS.
 
 ### Evidencia histórica de la integración visual original
 
@@ -181,15 +193,15 @@ El resultado final de A debe permitir recorrer la operación clínica completa d
 
 ## Qué falta de A
 
-1. Completar los flujos de las rutas ya creadas. Alta y citas tienen preparación sin guardar; ficha y alertas son de consulta; estadísticas genera reportes agregados con ventanas fijas. Añadir estados de error/recuperación específicos donde faltan.
-2. Conectar alta y edición persistentes: paciente, diagnósticos y consentimiento como evento, más objetivos, frecuencia de control, planes de monitoreo, receta y horarios. Añadir complicaciones y fases médicas (RF28) cuando B entregue la migración.
-3. Completar ficha con edición, todos los contextos de glucosa, fechas observadas/recibidas, correcciones, historial de versiones de receta y acciones de alerta.
+1. Completar los flujos de las rutas ya creadas. Alta y citas tienen preparación sin guardar; ficha y alertas son de consulta; estadísticas genera reportes agregados con ventanas fijas. La recuperación de errores ya cubre las rutas protegidas.
+2. Conectar alta y edición persistentes: paciente, diagnósticos y consentimiento como evento, más objetivos, frecuencia de control, planes de monitoreo, receta y horarios. Falta el comando atómico de captura.
+3. Completar ficha con edición, todos los contextos de glucosa, fechas observadas/recibidas, corrección de respuestas de medicamento e historial de versiones de receta.
 4. Conectar crear, editar, cancelar y actualizar estado de citas, conservando la conversión horaria y acordando conflictos de agenda e invalidación de pendientes con el backend.
-5. Habilitar alta, urgencia, ajuste de dosis y resolución de alertas solo al conectarlos con acciones/RPC de C, motivo, autorización, concurrencia y auditoría.
+5. Probar en Supabase las acciones ya conectadas: urgencia, ajuste de dosis, resolución de alertas, corrección de mediciones y RF28; completar la corrección de respuestas de medicamento cuando exista un `schedule_id` recuperable.
 6. Completar la integración clínica y comprobar el acceso Supabase SSR alojado con dos unidades, roles de lectura y una cuenta sin membresía; login y selección de consultorio ya usan contexto real.
-7. Implementar Server Actions clínicas con Zod, autorización y resultados de error consistentes.
-8. Completar filtros avanzados del censo por diagnóstico, pendientes y periodos. La navegación y paginación visual ya existen; para mayor volumen, acordar con B paginación de servidor sin convertir una muestra en métricas del consultorio. Acordar también consultas de reportes si se necesitan otros periodos.
-9. Reparar el entorno de pruebas y verificar formularios, horarios, reportes, autorización de acciones y métricas. Probar CSV e impresión/PDF. Las pruebas históricas de acceso no cubren estas incorporaciones. A también debe revisar el flujo crítico del bot.
+7. Añadir pruebas con mocks para `correctMeasurement` y `adjustPrescription`; el patrón de Zod, autorización y envelope ya se aplica a las acciones disponibles.
+8. Completar filtro del censo por periodo. La navegación, paginación visual, diagnóstico y pendientes ya existen; para mayor volumen, acordar con B paginación de servidor sin convertir una muestra en métricas del consultorio. Acordar también consultas de reportes si se necesitan otros periodos.
+9. Ejecutar y acreditar la suite completa ya recuperada; verificar formularios, horarios, reportes, autorización de acciones y métricas. Probar CSV e impresión/PDF. A también debe revisar el flujo crítico del bot.
 10. Revisar en navegador accesibilidad, teclado, foco, errores por campo, adaptación móvil, barra con Estadísticas, cambios de página, skeletons y movimiento reducido. La implementación visual está hecha; su comprobación integral sigue pendiente.
 11. Mostrar RF30 únicamente después del contrato real de IA: probabilidad futura, versión y suficiencia por variable, con ausencia segura; no añadir otro riesgo actual ni cambiar la frecuencia del bot.
 
@@ -202,4 +214,4 @@ Dependencias: B entrega esquema/tipos, transporte y configuración; C entrega la
 - Mantener los valores SQL de sexo, diagnósticos, estados y contextos. La captura actual de consentimiento debe transformarse en un evento con evidencia, no en una actualización de un booleano.
 - Cambios de cita, plan o receta deben invalidar/regenerar pendientes sin modificar mensajes entregados. El front no debe implementar una cola alternativa.
 - La ficha ampliada necesita consultas de mediciones y recetas históricas; el DTO de dashboard actual no entrega toda esa historia. Los estados del canal deben venir del worker/webhooks de B/C.
-- RF28 necesita migración incremental y tipos de B; RF29/RF30 necesitan contrato y servicio real de C/IA. Estos pendientes no bloquean cerrar el circuito principal del plan de integración.
+- RF28 ya está aplicada y conectada en la ficha. RF29/RF30 necesitan contrato y servicio real de C/IA. Estos pendientes no bloquean cerrar el circuito principal del plan de integración.

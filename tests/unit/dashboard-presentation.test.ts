@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { patient } from "../support/dashboard";
 import type { DashboardMeasurement } from "@/lib/domain/dashboard";
-import { filterPatients, measurementChart, percent } from "@/components/dashboard/presentation";
+import { availableDiagnoses, filterPatients, measurementChart, percent } from "@/components/dashboard/presentation";
 
 const now = "2026-09-08T12:00:00.000Z";
 
@@ -29,6 +29,16 @@ describe("presentación del dashboard", () => {
     expect(filterPatients(people, "", "all", "risk").map((p) => p.id)).toEqual(["2", "3", "1"]);
     expect(filterPatients(people, "", "high", "name").map((p) => p.id)).toEqual(["2"]);
     expect(people.map((p) => p.id)).toEqual(["1", "2", "3"]);
+  });
+
+  it("filtra por diagnóstico y pendientes sin tratar ausencia de respuesta como una respuesta", () => {
+    const diabetes = patient("1", "Ana", "low");
+    diabetes.diagnoses = ["Diabetes tipo 2"];
+    diabetes.nonresponse.pending = 1;
+    const hypertension = patient("2", "Bea", "high");
+    hypertension.diagnoses = ["Hipertensión"];
+    expect(filterPatients([diabetes, hypertension], "", "all", "risk", "Diabetes tipo 2", true).map((item) => item.id)).toEqual(["1"]);
+    expect(availableDiagnoses([hypertension, diabetes])).toEqual(["Diabetes tipo 2", "Hipertensión"]);
   });
 
   it("grafica solo datos de la ventana sin juntar glucosa en ayuno y posprandial", () => {

@@ -14,6 +14,7 @@ export type PrescriptionRow = Row<"prescriptions"> & {
 
 export type DashboardMeasurement = {
   id: string; kind: string; context: string; observedAt: string; receivedAt: string;
+  updatedAt?: string;
   monitoringPlanId: string | null;
   glucoseMgDl: number | null; systolicMmHg: number | null; diastolicMmHg: number | null;
   source: string; correctionReason: string | null;
@@ -23,10 +24,12 @@ export type DashboardAppointment = {
   id: string; patientId: string; patientName: string; startsAt: string; reason: string | null; status: string; urgency: string;
 };
 export type DashboardAlert = {
-  id: string; patientId: string; patientName: string; kind: string; severity: string; status: string; title: string; createdAt: string;
+  id: string; patientId: string; patientName: string; kind: string; severity: string; status: string; title: string; createdAt: string; updatedAt: string;
 };
+export type DashboardComplication = { id: string; code: string; diagnosedOn: string | null; notes: string | null; updatedAt: string };
 export type DashboardPrescription = {
   id: string; medicationName: string; doseText: string; route: string | null; instructions: string | null;
+  medicationId: string; version: number; updatedAt: string;
   startDate: string; endDate: string | null; schedules: { localTime: string; weekdays: number[] }[]; adherence: AdherenceResult;
 };
 export type DashboardInteraction = {
@@ -50,7 +53,7 @@ export type DashboardPatient = {
   lastResponseAt: string | null;
   nonresponse: { historical: number; pending: number };
   measurements: DashboardMeasurement[]; latestGlucose: DashboardMeasurement | null; latestBloodPressure: DashboardMeasurement | null;
-  prescriptions: DashboardPrescription[]; appointments: DashboardAppointment[]; alerts: DashboardAlert[]; interactions: DashboardInteraction[];
+  prescriptions: DashboardPrescription[]; appointments: DashboardAppointment[]; alerts: DashboardAlert[]; interactions: DashboardInteraction[]; complications: DashboardComplication[];
 };
 export type DashboardData = {
   generatedAt: string; timezone: string; hasMorePatients: boolean; patients: DashboardPatient[];
@@ -61,7 +64,7 @@ export type DashboardRows = {
   patients: Row<"patients">[]; diagnoses: Row<"patient_diagnoses">[]; plans: Row<"monitoring_plans">[];
   measurements: Row<"measurements">[]; interactions: Row<"bot_interactions">[]; responses: Row<"medication_responses">[];
   prescriptions: PrescriptionRow[]; appointments: Row<"appointments">[]; alerts: Row<"alerts">[];
-  nonresponse: NonresponseRow[]; consent: ConsentRow[]; complications: Row<"patient_complications">[];
+  complications: Row<"patient_complications">[]; nonresponse: NonresponseRow[]; consent: ConsentRow[];
 };
 
 const DAY_MS = 86_400_000;
@@ -176,7 +179,7 @@ export function buildDashboardData(rows: DashboardRows, scope: { unitId: string;
     .map((r) => ({ id: r.id, patientId: r.patient_id, patientName: names.get(r.patient_id)!, startsAt: r.starts_at, reason: r.reason, status: r.status, urgency: r.urgency }))
     .sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt));
   const alerts: DashboardAlert[] = rows.alerts.filter((r) => inScope(r) && ["open", "acknowledged"].includes(r.status))
-    .map((r) => ({ id: r.id, patientId: r.patient_id, patientName: names.get(r.patient_id)!, kind: r.kind, severity: r.severity, status: r.status, title: r.title, createdAt: r.created_at }));
+    .map((r) => ({ id: r.id, patientId: r.patient_id, patientName: names.get(r.patient_id)!, kind: r.kind, severity: r.severity, status: r.status, title: r.title, createdAt: r.created_at, updatedAt: r.updated_at }));
   const adherenceInputs: AdherenceInput[] = [];
   const patients: DashboardPatient[] = scopedPatients.map((patient) => {
     const patientInteractions = interactions.get(patient.id) ?? [];
@@ -188,7 +191,7 @@ export function buildDashboardData(rows: DashboardRows, scope: { unitId: string;
     const patientMeasurements = (measurements.get(patient.id) ?? []).sort((a, b) => Date.parse(b.measured_at) - Date.parse(a.measured_at)).map((row): DashboardMeasurement => {
       const plan = measurementPlan(row, patientPlans, now, timezone);
       effectivePlanIds.set(row.id, plan?.id ?? row.monitoring_plan_id);
-      return { id: row.id, kind: row.kind, context: row.measurement_context ?? "unspecified", observedAt: row.measured_at, receivedAt: row.created_at,
+      return { id: row.id, kind: row.kind, context: row.measurement_context ?? "unspecified", observedAt: row.measured_at, receivedAt: row.created_at, updatedAt: row.updated_at,
         monitoringPlanId: row.monitoring_plan_id,
         glucoseMgDl: row.glucose_mg_dl, systolicMmHg: row.systolic_mm_hg, diastolicMmHg: row.diastolic_mm_hg, source: row.source, correctionReason: row.correction_reason,
         thresholds: { glucose: thresholds(plan, "glucose"), systolic: thresholds(plan, "systolic"), diastolic: thresholds(plan, "diastolic") } };
@@ -240,11 +243,13 @@ export function buildDashboardData(rows: DashboardRows, scope: { unitId: string;
       nonresponse: { historical: counts.get(patient.id)?.ever_timed_out ?? 0, pending: counts.get(patient.id)?.currently_unanswered ?? 0 },
       measurements: patientMeasurements, latestGlucose: patientMeasurements.find((m) => m.kind === "glucose") ?? null,
       latestBloodPressure: patientMeasurements.find((m) => m.kind === "blood_pressure") ?? null,
-      prescriptions: (prescriptions.get(patient.id) ?? []).map((p) => ({ id: p.id, medicationName: p.medications?.name ?? "Medicamento sin nombre disponible", doseText: p.dose_text,
+      prescriptions: (prescriptions.get(patient.id) ?? []).map((p) => ({ id: p.id, medicationId: p.medication_id, version: p.version, updatedAt: p.updated_at, medicationName: p.medications?.name ?? "Medicamento sin nombre disponible", doseText: p.dose_text,
         route: p.route, instructions: p.instructions, startDate: p.start_date, endDate: p.end_date,
         schedules: p.prescription_schedules.map((s) => ({ localTime: s.local_time, weekdays: s.weekdays })),
         adherence: computeAdherence(toAdherenceInput(patientInteractions.filter((i) => i.prescription_id === p.id), patientResponses, now)) })),
       appointments: appointments.filter((a) => a.patientId === patient.id), alerts: patientAlerts,
+      complications: (rows.complications ?? []).filter((item) => inScope(item) && item.patient_id === patient.id && item.active)
+        .map((item) => ({ id: item.id, code: item.code, diagnosedOn: item.diagnosed_on, notes: item.notes, updatedAt: item.updated_at })),
       interactions: [...patientInteractions].sort((a, b) => Date.parse(b.scheduled_at) - Date.parse(a.scheduled_at)).slice(0, 20).map((r) => ({ id: r.id, kind: r.kind,
         scheduledAt: r.scheduled_at, deliveredAt: r.delivered_at, responseAt: r.response_at, timeoutAt: r.timeout_at, deliveryStatus: r.delivery_status,
         replyCode: r.reply_code, medicationTaken: responseById.get(r.id) ?? null, expectsResponse: r.expects_response })) };
