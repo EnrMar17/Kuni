@@ -21,10 +21,21 @@ const serverEnvSchema = z
     TWILIO_AUTH_TOKEN: z.string().optional(),
     // Admite con o sin el prefijo "whatsapp:"; el adaptador lo normaliza.
     TWILIO_WHATSAPP_FROM: z.string().optional(),
-    // Content SID de la plantilla aprobada de Twilio para recordatorios de
-    // cita (fuera de la ventana de sesión de 24h). Opcional: sin él, ese
-    // tipo de envío queda deshabilitado en vez de fallar el arranque.
+    // B5 — Content SIDs de las plantillas aprobadas de Twilio, una por
+    // "forma" de mensaje (cada plantilla de WhatsApp tiene texto y variables
+    // fijas; no se puede reutilizar una para contenido distinto). Todas
+    // opcionales a propósito: sin el SID de un tipo, `send.ts` sigue
+    // fallando explícito con `template_not_configured` para ESE tipo en vez
+    // de inventar una plantilla o mandar texto libre que WhatsApp rechazaría
+    // fuera de la ventana de sesión — activar cada una es tan simple como
+    // rellenar la variable una vez que Twilio la aprueba. Ver
+    // docs/bitacora-canal-b.md 2026-09-08 (B5) para el texto exacto enviado
+    // a revisión.
+    TWILIO_MEDICATION_CONTENT_SID: z.string().optional(),
+    TWILIO_MEASUREMENT_GLUCOSE_CONTENT_SID: z.string().optional(),
+    TWILIO_MEASUREMENT_BP_CONTENT_SID: z.string().optional(),
     TWILIO_APPOINTMENT_CONTENT_SID: z.string().optional(),
+    TWILIO_NONRESPONSE_CONTENT_SID: z.string().optional(),
     // URL pública exacta (sin "/" final) que Twilio ve al llamar los
     // webhooks. Debe coincidir con la configurada en el panel de Twilio:
     // la validación de firma recalcula la firma sobre esta URL + los
@@ -83,7 +94,11 @@ function loadServerEnv() {
     TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
     TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
     TWILIO_WHATSAPP_FROM: process.env.TWILIO_WHATSAPP_FROM,
+    TWILIO_MEDICATION_CONTENT_SID: process.env.TWILIO_MEDICATION_CONTENT_SID,
+    TWILIO_MEASUREMENT_GLUCOSE_CONTENT_SID: process.env.TWILIO_MEASUREMENT_GLUCOSE_CONTENT_SID,
+    TWILIO_MEASUREMENT_BP_CONTENT_SID: process.env.TWILIO_MEASUREMENT_BP_CONTENT_SID,
     TWILIO_APPOINTMENT_CONTENT_SID: process.env.TWILIO_APPOINTMENT_CONTENT_SID,
+    TWILIO_NONRESPONSE_CONTENT_SID: process.env.TWILIO_NONRESPONSE_CONTENT_SID,
     APP_PUBLIC_URL: process.env.APP_PUBLIC_URL,
     CRON_SECRET: process.env.CRON_SECRET,
     ML_ENDPOINT_URL: process.env.ML_ENDPOINT_URL,

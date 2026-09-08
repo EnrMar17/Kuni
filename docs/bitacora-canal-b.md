@@ -282,3 +282,35 @@ Tests nuevos: `tests/unit/auth-proxy.test.ts` — 3 casos (`Content-Security-Pol
 Con esto, **B8 queda completo.**
 
 **Siguiente en la cola de B:** B5 (plantillas aprobadas de Twilio), el último punto de la lista original — depende de aprobación externa (Twilio/Meta), fuera del control directo de B.
+
+## 2026-09-08 — B5: código listo, plantillas diseñadas, en espera de aprobación externa
+
+**Código (terminado, verificado):**
+- `serverEnv` (`src/lib/env/server.ts`) gana cinco Content SID opcionales: `TWILIO_MEDICATION_CONTENT_SID`, `TWILIO_MEASUREMENT_GLUCOSE_CONTENT_SID`, `TWILIO_MEASUREMENT_BP_CONTENT_SID`, `TWILIO_APPOINTMENT_CONTENT_SID`, `TWILIO_NONRESPONSE_CONTENT_SID`. Cada una vacía = ese `kind` sigue fallando explícito con `template_not_configured` fuera de la ventana de sesión, exactamente el comportamiento de antes de B5.
+- `send.ts`: `templateFor(interaction)` resuelve el Content SID + variables por `kind` (y por variable de medición, glucosa/presión cada una con su propio SID — son plantillas de WhatsApp distintas, no se puede reutilizar una). Cuando no hay sesión reciente, intenta `sendTemplateMessage()` si hay SID configurado; si no, cae al mismo `markFailed("template_not_configured", ...)` de siempre. `sendAndRecord()` factoriza el registro de éxito/error para no duplicarlo entre la ruta de plantilla y la de texto libre.
+- 4 pruebas nuevas en `jobs-send.test.ts`: envío por plantilla cuando no hay sesión pero sí SID, glucosa/presión usan SID distintos, y presión sin su propio SID sigue fallando aunque glucosa sí lo tenga configurado (nadie hereda el SID de otro `kind`).
+- Verificado: `tsc --noEmit`, ESLint, **361 pruebas en 33 archivos** (antes 357), `next build` de producción — todo sin errores.
+
+**Plantillas — 5 diseñadas y creadas en Twilio Content Template Builder** (categoría Utility, español MEX), con emojis/negritas para verse mejor que texto plano puro:
+
+| Nombre en Twilio | Variable env | Uso |
+|---|---|---|
+| `kuni_medication_reminder` | `TWILIO_MEDICATION_CONTENT_SID` | Recordatorio de medicamento (`{{1}}`=medicamento+dosis, `{{2}}`=código) |
+| `kuni_measurement_glucose_reminder` | `TWILIO_MEASUREMENT_GLUCOSE_CONTENT_SID` | Solicitud de glucosa (`{{1}}`=código) |
+| `kuni_measurement_bp_reminder` | `TWILIO_MEASUREMENT_BP_CONTENT_SID` | Solicitud de presión (`{{1}}`=código) |
+| `kuni_appointment_reminder` | `TWILIO_APPOINTMENT_CONTENT_SID` | Recordatorio de cita (`{{1}}`=consultorio, `{{2}}`=fecha/hora local) |
+| `kuni_nonresponse_checkin` | `TWILIO_NONRESPONSE_CONTENT_SID` | Check-in de no-respuesta, sin variables |
+
+**Bloqueo real encontrado (documentado, no inventado):** el Sandbox de Twilio (número compartido) no deja someter plantillas propias a aprobación de Meta — exige un **WhatsApp Sender propio**, y crear uno exige **cuenta de Twilio de pago** (no solo Trial). El usuario decidió pagar el upgrade mínimo y avanzar. Trámite en curso, iniciado hoy:
+1. Cuenta de Twilio actualizada a de pago.
+2. Número propio (chip sin WhatsApp activo, formato `+52` + 10 dígitos) registrado como candidato a WhatsApp Sender.
+3. Cuenta de WhatsApp Business y Meta Business Manager creadas para "Kuni" vía el flujo de Twilio ("Continue with Facebook").
+4. Estado actual: **cuenta de WhatsApp Business en revisión de Meta** ("Cuenta restringida" — estado normal para una cuenta nueva sin verificar, no una sanción); se solicitó la revisión explícitamente ("Solicitar revisión" en Meta Business Support). Meta indica que las revisiones típicamente tardan 24 horas.
+5. Las 5 plantillas quedaron creadas y guardadas en Twilio (`Not Submitted` — todavía no se pueden enviar a aprobación de WhatsApp hasta que el Sender quede verificado).
+
+**Siguiente, una vez llegue la confirmación de Meta (por correo):**
+1. Confirmar en Twilio Console que el WhatsApp Sender quedó activo (ya no "Pendiente").
+2. Someter las 5 plantillas a aprobación de WhatsApp desde el Content Template Builder ("Save and submit for WhatsApp approval" — es una revisión aparte, por plantilla).
+3. Copiar cada Content SID aprobado (`HX...`) a `.env.local`. Sin más cambios de código: `templateFor()` ya sabe usarlos en cuanto detecta el valor.
+
+No se aplicó nada al proyecto Supabase durante esta entrega; todo lo de Twilio/Meta se hizo en la cuenta real del usuario, con su decisión explícita de pagar el upgrade.
