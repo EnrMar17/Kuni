@@ -35,7 +35,9 @@ export type DashboardInteraction = {
 };
 export type DashboardPatient = {
   id: string; fullName: string; clinicalRecord: string; curp: string | null; birthDate: string; age: number;
-  sex: string; bloodType: string | null; whatsappE164: string; diagnoses: string[]; consentGranted: boolean;
+  sex: string; bloodType: string | null; whatsappE164: string; diagnoses: string[];
+  /** `condition_code` crudo (DDL), sin etiquetas de UI — lo necesita el vector de features del modelo (RF29). */
+  diagnosisCodes: string[]; consentGranted: boolean;
   initialRiskReason: string | null; risk: RiskResult; adherence: AdherenceResult;
   lastResponseAt: string | null;
   nonresponse: { historical: number; pending: number };
@@ -221,6 +223,7 @@ export function buildDashboardData(rows: DashboardRows, scope: { unitId: string;
     return { id: patient.id, fullName: patient.full_name, clinicalRecord: patient.record_number ?? patient.affiliation_number ?? patient.curp ?? "Sin expediente",
       curp: patient.curp, birthDate: patient.birth_date, age, sex: patient.sex, bloodType: patient.blood_type, whatsappE164: patient.whatsapp_e164,
       diagnoses: (diagnoses.get(patient.id) ?? []).map((r) => r.description || diagnosisLabels[r.condition_code] || r.condition_code),
+      diagnosisCodes: (diagnoses.get(patient.id) ?? []).map((r) => r.condition_code),
       consentGranted: consent.get(patient.id) ?? false, initialRiskReason: patient.initial_risk_reason, risk, adherence: computeAdherence(input),
       lastResponseAt,
       nonresponse: { historical: counts.get(patient.id)?.ever_timed_out ?? 0, pending: counts.get(patient.id)?.currently_unanswered ?? 0 },

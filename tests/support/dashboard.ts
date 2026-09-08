@@ -7,7 +7,7 @@ export function patient(id: string, name: string, level: DashboardPatient["risk"
   return {
     id, fullName: name, clinicalRecord: `EXP-${id}`, curp: null,
     birthDate: "1970-01-01", age: 56, sex: "unknown", bloodType: null,
-    whatsappE164: "+525500000000", diagnoses: [], consentGranted: false, lastResponseAt: null,
+    whatsappE164: "+525500000000", diagnoses: [], diagnosisCodes: [], consentGranted: false, lastResponseAt: null,
     initialRiskReason: null,
     risk: { level, reasons: ["Sin evaluación suficiente"], ruleVersion: "test", evaluatedAt: testNow, inputsUsed: { measurementsConsidered: 0, pendingTimeoutsLast7Days: 0, urgentFlagActive: false, initialAssessmentLevel: null } },
     adherence: computeAdherence({ concluded: [] }), nonresponse: { historical: 0, pending: 0 },
