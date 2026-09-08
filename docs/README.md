@@ -4,6 +4,8 @@ Esta carpeta concentra la documentación viva de Kuni: lo que no está en el có
 
 ## Contenido
 
+- [`documentacionA.md`](documentacionA.md) — Avance del integrante A: flujo de acceso, dashboard sobre fixtures, alcance y pendientes.
+
 - [`decisiones.md`](decisiones.md) — Bitácora de decisiones técnicas y de alcance tomadas durante el desarrollo (fecha, decisión, motivo, quién la tomó).
 
 ## Convención de uso
