@@ -26,13 +26,14 @@ async function main() {
     .single();
   if (unitError) throw unitError;
 
-  let { data: doctor, error: findDoctorError } = await admin
+  const { data: existingDoctor, error: findDoctorError } = await admin
     .from("doctors")
     .select("id, full_name")
     .eq("unit_id", unit.id)
     .eq("full_name", DOCTOR_FULL_NAME)
     .maybeSingle();
   if (findDoctorError) throw findDoctorError;
+  let doctor = existingDoctor;
 
   if (!doctor) {
     const { data: created, error: insertDoctorError } = await admin
@@ -51,13 +52,14 @@ async function main() {
     console.log("Médico ya existía:", doctor);
   }
 
-  let { data: room, error: findRoomError } = await admin
+  const { data: existingRoom, error: findRoomError } = await admin
     .from("consulting_rooms")
     .select("id, name, doctor_id")
     .eq("unit_id", unit.id)
     .eq("name", ROOM_NAME)
     .maybeSingle();
   if (findRoomError) throw findRoomError;
+  let room = existingRoom;
 
   if (!room) {
     const { data: createdRoom, error: insertRoomError } = await admin

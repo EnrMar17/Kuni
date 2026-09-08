@@ -40,13 +40,14 @@ const DEMO_UNIT_CODE = "IMSSB-MICH-MORELIA-JMGU";
 async function main() {
   const authUserId = process.argv[2];
 
-  let { data: unit, error: findError } = await admin
+  const { data: existingUnit, error: findError } = await admin
     .from("health_units")
     .select("id, name, institutional_code")
     .eq("institutional_code", DEMO_UNIT_CODE)
     .maybeSingle();
 
   if (findError) throw findError;
+  let unit = existingUnit;
 
   if (!unit) {
     const { data: created, error: insertError } = await admin

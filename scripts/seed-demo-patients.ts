@@ -102,13 +102,14 @@ async function main() {
   if (roomError) throw roomError;
 
   for (const p of PATIENTS) {
-    let { data: patient, error: findError } = await admin
+    const { data: existingPatient, error: findError } = await admin
       .from("patients")
       .select("id, full_name")
       .eq("unit_id", unit.id)
       .eq("curp", p.curp)
       .maybeSingle();
     if (findError) throw findError;
+    let patient = existingPatient;
 
     if (!patient) {
       const { data: created, error: insertError } = await admin

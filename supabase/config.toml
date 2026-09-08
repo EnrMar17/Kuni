@@ -10,7 +10,10 @@ enabled = true
 port = 54321
 # Schemas to expose in your API. Tables, views and stored procedures in this schema will get API
 # endpoints. `public` and `graphql_public` schemas are included by default.
-schemas = ["public", "graphql_public"]
+# Kuni: se quita "graphql_public" a propósito — no usamos GraphQL (solo REST
+# vía supabase-js/PostgREST), y exponer un endpoint que no se usa es
+# superficie de ataque innecesaria sin ningún beneficio (OWASP A05).
+schemas = ["public"]
 # Extra schemas to add to the search_path of every request.
 extra_search_path = ["public", "extensions"]
 # The maximum number of rows returns from a view, table, or stored procedure. Limits payload size
@@ -20,7 +23,11 @@ max_rows = 1000
 # `postgres` are reachable through the Data API roles (`anon`, `authenticated`, `service_role`)
 # without explicit GRANTs, matching the cloud default. Set to `false` to require explicit GRANTs
 # instead. Left unset, a fresh project falls back to `true`.
-# auto_expose_new_tables = true
+# Kuni: explícitamente en `false` — cada tabla del DDL ya otorga sus GRANTs a
+# propósito (kuni-schema.sql); una tabla nueva que alguien agregue después
+# NO debe quedar accesible por accidente solo por existir (secure by default,
+# OWASP A01/A05).
+auto_expose_new_tables = false
 
 [api.tls]
 # Enable HTTPS endpoints locally using a self-signed certificate.
@@ -48,9 +55,11 @@ port = 54329
 # Configure one of the supported pooler modes: `transaction`, `session`.
 pool_mode = "transaction"
 # How many server connections to allow per user/database pair.
-default_pool_size = 20
+# Alineado al valor ya configurado en el proyecto remoto (no se toca; fuera
+# del alcance de esta revisión de seguridad).
+default_pool_size = 15
 # Maximum number of client connections allowed.
-max_client_conn = 100
+max_client_conn = 200
 
 # [db.vault]
 # secret_key = "env(SECRET_VALUE)"
@@ -134,8 +143,10 @@ enabled = true
 # Store analytical data in S3 for running ETL jobs over Iceberg Catalog
 # This feature is only available on the hosted platform.
 [storage.analytics]
-enabled = false
-max_namespaces = 5
+# Alineado al remoto (true) — fuera del alcance de esta revisión de
+# seguridad, no se toca; Kuni no usa Storage todavía.
+enabled = true
+max_namespaces = 10
 max_tables = 10
 max_catalogs = 2
 
@@ -155,11 +166,15 @@ max_indexes = 5
 enabled = true
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
 # in emails.
-site_url = "http://127.0.0.1:3000"
+site_url = "http://localhost:3000"
 # The public URL that Auth serves on. Defaults to the API external URL with `/auth/v1` appended.
 # external_url = ""
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["https://127.0.0.1:3000"]
+# Vacío a propósito: mientras no haya un dominio de despliegue real, no hay
+# ninguna URL adicional que deba poder recibir un redirect de Auth (menos
+# superficie = mejor, OWASP A05). Cuando se despliegue, agregar aquí SOLO la
+# URL exacta de producción.
+additional_redirect_urls = []
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to auth.external_url.
@@ -172,16 +187,22 @@ enable_refresh_token_rotation = true
 # Requires enable_refresh_token_rotation = true.
 refresh_token_reuse_interval = 10
 # Allow/disallow new user signups to your project.
-enable_signup = true
+# Kuni: en `false` a propósito. RF04/RF01 del plan: no hay autorregistro de
+# unidades/usuarios — las cuentas las crea un administrador a mano (dashboard
+# o Admin API). Dejar signup abierto permitiría que cualquiera se cree una
+# cuenta Auth válida sin membresía (OWASP A07: minimizar superficie de auth).
+enable_signup = false
 # Allow/disallow anonymous sign-ins to your project.
 enable_anonymous_sign_ins = false
 # Allow/disallow testing manual linking of accounts
 enable_manual_linking = false
 # Passwords shorter than this value will be rejected as weak. Minimum 6, recommended 8 or more.
-minimum_password_length = 6
+# Kuni: 12 en vez del default de 6 (OWASP A07 recomienda longitud mínima
+# mayor que la de fábrica).
+minimum_password_length = 12
 # Passwords that do not meet the following requirements will be rejected as weak. Supported values
 # are: `letters_digits`, `lower_upper_letters_digits`, `lower_upper_letters_digits_symbols`
-password_requirements = ""
+password_requirements = "lower_upper_letters_digits"
 
 # Configure passkey sign-ins.
 # [auth.passkey]
@@ -203,7 +224,11 @@ anonymous_users = 30
 # Number of sessions that can be refreshed in a 5 minute interval per IP address.
 token_refresh = 150
 # Number of sign up and sign-in requests that can be made in a 5 minute interval per IP address (excludes anonymous users).
-sign_in_sign_ups = 30
+# Kuni: bajado de 30 a 10 — sigue siendo generoso para pruebas del equipo,
+# pero reduce el margen para fuerza bruta de contraseña por IP (OWASP A07).
+# CAPTCHA sigue sin configurar (limitación aceptada para el hackathon, ver
+# docs/bitacora-canal-b.md).
+sign_in_sign_ups = 10
 # Number of OTP / Magic link verifications that can be made in a 5 minute interval per IP address.
 token_verifications = 30
 # Number of Web3 logins that can be made in a 5 minute interval per IP address.
@@ -217,18 +242,26 @@ web3 = 30
 
 [auth.email]
 # Allow/disallow new user signups via email to your project.
-enable_signup = true
+# Kuni: en `false` — mismo motivo que el `enable_signup` global de arriba.
+enable_signup = false
 # If enabled, a user will be required to confirm any email change on both the old, and new email
 # addresses. If disabled, only the new email is required to confirm.
 double_confirm_changes = true
 # If enabled, users need to confirm their email address before signing in.
-enable_confirmations = false
+# Alineado al remoto (true): con enable_signup ya en false esto casi no
+# aplica, pero no hay razón para debilitarlo.
+enable_confirmations = true
 # If enabled, users will need to reauthenticate or have logged in recently to change their password.
-secure_password_change = false
+# Kuni: en `true` — exigir sesión reciente antes de cambiar la contraseña
+# (OWASP A07: proteger acciones sensibles de la cuenta).
+secure_password_change = true
 # Controls the minimum amount of time that must pass before sending another signup confirmation or password reset email.
-max_frequency = "1s"
+# Alineado al remoto (1 minuto): más estricto que el default de 1s, mejor
+# anti-spam/anti-abuso.
+max_frequency = "1m0s"
 # Number of characters used in the email OTP.
-otp_length = 6
+# Alineado al remoto (8): más fuerte que el default de 6.
+otp_length = 8
 # Number of seconds before the email OTP expires (defaults to 1 hour).
 otp_expiry = 3600
 
@@ -298,9 +331,12 @@ auth_token = "env(SUPABASE_AUTH_SMS_TWILIO_AUTH_TOKEN)"
 max_enrolled_factors = 10
 
 # Control MFA via App Authenticator (TOTP)
+# Alineado al remoto (true): el proyecto ya tenía MFA por TOTP disponible;
+# no hay ninguna razón de seguridad para apagarlo, aunque el MVP del
+# hackathon no lo exija todavía en el flujo de login.
 [auth.mfa.totp]
-enroll_enabled = false
-verify_enabled = false
+enroll_enabled = true
+verify_enabled = true
 
 # Configure MFA via Phone Messaging
 [auth.mfa.phone]
