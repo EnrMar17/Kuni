@@ -33,11 +33,11 @@ import os
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, GradientBoostingRegressor
 from sklearn.isotonic import IsotonicRegression
 from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score
 import joblib
-from modelo_wrapper import ModeloCalibrado
+from modelo_wrapper import ModeloCalibrado, ModeloCalibradoEstratificado
 
 # Columnas del dataset original que necesitamos (ajusta esto si tu CSV tiene
 # nombres distintos)
@@ -332,6 +332,14 @@ def entrenar_modelo_prediccion_futura(df: pd.DataFrame, train_ids, test_ids, out
 
     df_pred['descompensacion_futura'] = (nueva_complicacion_grave | glucosa_empeora | pa_empeora).astype(int)
 
+    # Bandera de "en techo" -- necesaria para calibrar cada grupo por
+    # separado (ver ModeloCalibradoEstratificado en modelo_wrapper.py)
+    df_pred['en_techo'] = (
+        ((df_pred['diabetes_dx'] == 1) & (df_pred['cat_glucosa'] == 4)) |
+        ((df_pred['hypertension_dx'] == 1) & (df_pred['cat_pa'] == 5)) |
+        (df_pred['complicacion_grave_dm'] == 1)
+    )
+
     # CORRECCIÓN IMPORTANTE: el split de train/test debe hacerse sobre la
     # población de pacientes que SÍ tienen una ventana N/N+1 válida (no
     # sobre todos los pacientes del dataset, que es lo que hacía
@@ -357,12 +365,23 @@ def entrenar_modelo_prediccion_futura(df: pd.DataFrame, train_ids, test_ids, out
     base_modelo = GradientBoostingClassifier(n_estimators=200, max_depth=4, learning_rate=0.05, random_state=42)
     base_modelo.fit(X_train, y_train, sample_weight=sample_weight)
 
+    # --- Calibración ESTRATIFICADA: una curva para 'en techo', otra para 'sin techo' ---
     proba_cruda_calib = base_modelo.predict_proba(X_calib)[:, 1]
-    calibrador = IsotonicRegression(out_of_bounds='clip')
-    calibrador.fit(proba_cruda_calib, y_calib)
-    modelo_final = ModeloCalibrado(base_modelo, calibrador)
+    calib_df = calib_df.copy()
+    calib_df['proba_cruda'] = proba_cruda_calib
 
-    y_proba = modelo_final.predict_proba(X_test)[:, 1]
+    mask_sin_techo = ~calib_df['en_techo'].values
+    mask_en_techo = calib_df['en_techo'].values
+
+    calibrador_sin_techo = IsotonicRegression(out_of_bounds='clip')
+    calibrador_sin_techo.fit(proba_cruda_calib[mask_sin_techo], y_calib.values[mask_sin_techo])
+
+    calibrador_en_techo = IsotonicRegression(out_of_bounds='clip')
+    calibrador_en_techo.fit(proba_cruda_calib[mask_en_techo], y_calib.values[mask_en_techo])
+
+    modelo_final = ModeloCalibradoEstratificado(base_modelo, calibrador_sin_techo, calibrador_en_techo)
+
+    y_proba = modelo_final.predict_proba(X_test, en_techo=test_df['en_techo'].values)[:, 1]
     y_pred = (y_proba >= 0.15).astype(int)  # umbral calibrado para recall ~75%
 
     reporte = classification_report(y_test, y_pred, target_names=['no_descompensa', 'descompensa'])
@@ -416,6 +435,72 @@ def detectar_techo_categoria(paciente_row: dict) -> dict:
 FEATURE_COLS_MODELO_B = FEATURE_COLS + ['risk_score']
 
 
+VARIABLES_TRAYECTORIA = {
+    'glucosa': 'in_glucose_mean',
+    'pa_sistolica': 'fn_ta_systolic_mean',
+    'pa_diastolica': 'fn_ta_diastolic_mean',
+}
+
+
+def entrenar_modelos_trayectoria(df: pd.DataFrame, train_ids, out_dir: str):
+    """Entrena 3 modelos de regresión cuantil (bajo/esperado/alto) POR
+    CADA variable (glucosa, PA sistólica, PA diastólica) -- 9 modelos en
+    total. Se usan de forma ENCADENADA en producción (predecir_trayectoria)
+    para proyectar varios pasos hacia adelante: la predicción de un paso
+    se convierte en el 'dato actual' del siguiente paso."""
+    df = df.sort_values(['patient_id', 'window']).reset_index(drop=True)
+    grp = df.groupby('patient_id')
+    df['siguiente_window'] = grp['window'].shift(-1)
+
+    modelos = {}
+    for nombre_var, columna in VARIABLES_TRAYECTORIA.items():
+        df[f'siguiente_{columna}'] = grp[columna].shift(-1)
+        df_var = df[(df['siguiente_window'] == df['window'] + 1) &
+                     df[f'siguiente_{columna}'].notna() & df[columna].notna()].copy()
+
+        train_df = df_var[df_var['patient_id'].isin(train_ids)]
+        X_train = train_df[FEATURE_COLS + ['risk_score']].fillna(-1)
+        y_train = train_df[f'siguiente_{columna}']
+
+        modelos[nombre_var] = {}
+        for cuantil, alpha in [("bajo", 0.10), ("esperado", 0.50), ("alto", 0.90)]:
+            m = GradientBoostingRegressor(loss='quantile', alpha=alpha, n_estimators=80,
+                                           max_depth=3, learning_rate=0.08, random_state=42)
+            m.fit(X_train, y_train)
+            modelos[nombre_var][cuantil] = m
+
+    joblib.dump(modelos, os.path.join(out_dir, "modelos_trayectoria.joblib"))
+    return modelos
+
+
+def predecir_trayectoria(paciente_row: dict, modelos_trayectoria: dict, n_pasos: int = 3) -> dict:
+    """Devuelve la proyección a n_pasos futuros para glucosa y PA, lista
+    para graficar. Cada variable se encadena de forma INDEPENDIENTE."""
+    fila_base = pd.DataFrame([paciente_row])
+    fila_base = calcular_riesgo_actual(fila_base)  # calcula risk_score internamente
+    risk_score_inicial = fila_base['risk_score'].iloc[0]
+
+    resultado = {}
+    for nombre_var, columna in VARIABLES_TRAYECTORIA.items():
+        modelos = modelos_trayectoria[nombre_var]
+        fila_actual = {**paciente_row, 'risk_score': risk_score_inicial}
+        trayectoria = []
+        for paso in range(1, n_pasos + 1):
+            X = pd.DataFrame([fila_actual])[FEATURE_COLS + ['risk_score']].fillna(-1)
+            esperado = modelos['esperado'].predict(X)[0]
+            bajo = modelos['bajo'].predict(X)[0]
+            alto = modelos['alto'].predict(X)[0]
+            trayectoria.append({
+                "paso": paso,
+                "valor_esperado": round(float(esperado), 1),
+                "rango_min": round(float(min(bajo, esperado)), 1),
+                "rango_max": round(float(max(alto, esperado)), 1),
+            })
+            fila_actual[columna] = esperado
+        resultado[nombre_var] = trayectoria
+    return resultado
+
+
 def predecir_riesgo_ml(paciente_row: dict, modelo_prediccion_futura,
                         model_version: str = "prediccion_futura_v4_2026-09-08",
                         datos_suficientes: dict = None) -> dict:
@@ -441,10 +526,27 @@ def predecir_riesgo_ml(paciente_row: dict, modelo_prediccion_futura,
     paciente_row_completo = {**paciente_row, 'risk_score': fila['risk_score'].iloc[0]}
 
     techo = detectar_techo_categoria(paciente_row)
+    X_pred = pd.DataFrame([paciente_row_completo])[FEATURE_COLS_MODELO_B].fillna(-1)
+
+    # Con calibración estratificada, el modelo YA distingue razonablemente
+    # bien dentro del grupo "en techo" (AUC ~0.78, similar al del grupo
+    # general) -- ya no hace falta descartar el número, solo calibrarlo
+    # con la curva correcta para ese grupo.
+    if isinstance(modelo_prediccion_futura, ModeloCalibradoEstratificado):
+        prob_descompensacion = modelo_prediccion_futura.predict_proba(
+            X_pred, en_techo=techo['en_techo_maximo']
+        )[0, 1]
+    else:
+        prob_descompensacion = modelo_prediccion_futura.predict_proba(X_pred)[0, 1]
 
     if techo['en_techo_maximo']:
+        # Ya está en el peor escenario clínico posible para esta variable
+        # -> el nivel SIEMPRE se reporta como alto, sin importar el número.
+        # La probabilidad calibrada aquí ya no significa "¿va a llegar a
+        # este nivel?" (ya llegó) sino "¿qué tan probable es que seguir
+        # empeorando MÁS ALLÁ de este punto?" -- información real, no se
+        # descarta, pero se explica con un mensaje en lenguaje clínico.
         nivel_predicho = "alto"
-        prob_descompensacion = None  # no se calcula: no aporta información confiable en este caso
 
         etiquetas_motivo = {
             'glucosa': "glucosa en nivel de crisis",
@@ -458,15 +560,12 @@ def predecir_riesgo_ml(paciente_row: dict, modelo_prediccion_futura,
             motivos.append(etiquetas_motivo['pa'])
         if techo['techo_complicacion_grave']:
             motivos.append(etiquetas_motivo['complicacion'])
-
         razon = motivos[0] if len(motivos) == 1 else "; ".join(motivos[:-1]) + " y " + motivos[-1]
 
         mensaje = (f"⚠️ Riesgo máximo ({razon}). Este paciente ya está en el peor "
-                   f"escenario clínico posible para esta variable — se recomienda atención inmediata.")
+                   f"escenario clínico posible para esta variable. Probabilidad estimada "
+                   f"de que continúe empeorando aún más: {prob_descompensacion*100:.0f}%.")
     else:
-        X_pred = pd.DataFrame([paciente_row_completo])[FEATURE_COLS_MODELO_B].fillna(-1)
-        prob_descompensacion = modelo_prediccion_futura.predict_proba(X_pred)[0, 1]
-
         if prob_descompensacion < 0.30:
             nivel_predicho = "bajo"
         elif prob_descompensacion < 0.60:
@@ -476,7 +575,7 @@ def predecir_riesgo_ml(paciente_row: dict, modelo_prediccion_futura,
         mensaje = None
 
     resultado = {
-        'probabilidad_descompensacion': round(float(prob_descompensacion), 3) if prob_descompensacion is not None else None,
+        'probabilidad_descompensacion': round(float(prob_descompensacion), 3),
         'nivel_predicho': nivel_predicho,
         'model_version': model_version,
         'datos_suficientes': datos_suficientes or {},
@@ -559,6 +658,9 @@ def main():
 
     print("Entrenando Modelo B (predicción de empeoramiento futuro)...")
     reporte_b, auc_b, _ = entrenar_modelo_prediccion_futura(df, train_ids, test_ids, args.out)
+
+    print("Entrenando modelos de trayectoria (glucosa, PA sistólica, PA diastólica)...")
+    entrenar_modelos_trayectoria(df, train_ids, args.out)
 
     with open(os.path.join(args.out, "reporte_metricas.txt"), "w") as f:
         f.write("MODELO A - Clasificador de riesgo actual (base de alertas rojas)\n")
