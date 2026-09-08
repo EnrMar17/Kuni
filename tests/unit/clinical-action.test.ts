@@ -3,10 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/auth/context", () => ({ requireClinicalWriteContext: vi.fn() }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
 
-import {
-  mapClinicalRpcFailure,
-  resolveAlertRpcInputSchema,
-} from "@/actions/clinical";
+import { resolveAlertRpcInputSchema } from "@/actions/clinical";
+import { mapClinicalRpcFailure } from "@/lib/clinical/rpc-errors";
 
 describe("adaptador de resolve_alert", () => {
   it("conserva el token de concurrencia como texto y acepta solo estados de atención", () => {

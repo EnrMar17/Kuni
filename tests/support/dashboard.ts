@@ -12,7 +12,7 @@ export function patient(id: string, name: string, level: DashboardPatient["risk"
     risk: { level, reasons: ["Sin evaluación suficiente"], ruleVersion: "test", evaluatedAt: testNow, inputsUsed: { measurementsConsidered: 0, pendingTimeoutsLast7Days: 0, urgentFlagActive: false, initialAssessmentLevel: null } },
     adherence: computeAdherence({ concluded: [] }), nonresponse: { historical: 0, pending: 0 },
     measurements: [], latestGlucose: null, latestBloodPressure: null,
-    prescriptions: [], appointments: [], alerts: [], interactions: [],
+    prescriptions: [], appointments: [], alerts: [], complications: [], interactions: [],
   };
 }
 
