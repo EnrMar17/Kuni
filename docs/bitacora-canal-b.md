@@ -214,3 +214,14 @@ Tras la auditoría (`docs/auditoria-integracion.md`, `docs/pendientes-y-modelo.m
 - No se versionó ningún archivo de migración para esto (es configuración operativa con secretos reales, no DDL del esquema); queda documentado aquí como la referencia si hay que repetirlo o depurarlo.
 
 **Siguiente en la cola de B:** B6 (RLS real de dos unidades), después B7 (`appointment`/`nonresponse_summary` en el materializador), B8 (CSP, apagar SMS de Twilio) y B5 al final.
+
+## 2026-09-08 — B6: aislamiento RLS verificado contra el proyecto real
+
+Entregable verificable declarado en el README que nunca se había ejecutado contra el proyecto real (`docs/auditoria-integracion.md` §1, fila "RLS real de dos unidades, concurrencia, rendimiento" — 10 % de avance). Las pruebas unitarias existentes (`tests/unit/dashboard-queries.test.ts`) verifican el código de las consultas con mocks; esto verifica las políticas RLS mismas, contra Postgres real.
+
+- **Nuevo** `scripts/verify-rls-isolation.ts`. Con la clave secreta (se salta RLS a propósito) prepara el escenario: dos unidades de prueba aisladas (`RLS-TEST-UNIT-A`/`B`, con prefijo distintivo para no mezclarse con los datos demo existentes), un médico, un consultorio y un paciente en cada una, y tres usuarios de Auth — uno con membresía en A, uno en B, y uno **sin membresía en ninguna unidad**. Idempotente: reutiliza lo que ya existe en corridas siguientes y regenera la contraseña de los tres usuarios de prueba cada vez (son cuentas desechables, no reales).
+- Después, con la clave **publicable** (la misma que usa el navegador — RLS activo de verdad, nunca la clave secreta) abre sesión real como cada uno de los tres y corre 10 aserciones: cada quien ve solo su propia unidad y su propio paciente aunque pida explícitamente los ids de ambas unidades/pacientes en la misma consulta; un intento de A de escribir sobre el paciente de B afecta 0 filas (RLS también bloquea escritura, no solo lectura) y el paciente de B queda intacto (confirmado aparte con la clave secreta); la cuenta sin membresía no ve una sola fila en `health_units`, `patients` ni `unit_memberships`.
+- **Corrida por el usuario, resultado real contra el proyecto Supabase de producción**: **10/10 aserciones en verde**. Sin fallos, sin necesidad de ajustar RLS — las políticas de `0001_kuni.sql` (`private.can_read_unit`/`can_write_unit`, `memberships_read_self`) funcionan exactamente como se documentaron.
+- No se tocaron los datos demo existentes (los tres pacientes ficticios, la unidad Morelia). No se envió WhatsApp ni se corrió ningún otro job durante la verificación.
+
+**Siguiente en la cola de B:** B7 (`appointment`/`nonresponse_summary` en el materializador), después B8 (CSP, apagar SMS de Twilio) y B5 al final.

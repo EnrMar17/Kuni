@@ -22,6 +22,8 @@ Las migraciones `0002_clinical_derivations.sql` y `0003_clinical_commands.sql` (
 
 `/api/jobs/tick` ya no se dispara a mano: el Cron (B2) llama cada minuto vía Supabase (`pg_cron`+`pg_net`+Vault), verificado con una interacción real que venció automáticamente. Riesgo operativo real de cara a la demo: la URL pública hoy es un túnel de `ngrok`, que rota si se reinicia — ver el procedimiento de actualización en `bitacora-canal-b.md` 2026-09-08.
 
+El aislamiento RLS entre dos unidades (B6, el entregable verificable declarado en el README) ya se probó contra el proyecto real, no solo en PGlite: `scripts/verify-rls-isolation.ts` abre sesiones reales (clave publicable, RLS activo) para un usuario de la unidad A, uno de la unidad B y uno sin membresía, y confirma con 10 aserciones automáticas que cada quien ve solo su unidad/paciente aunque pida ambos ids explícitamente, que A no puede escribir sobre un paciente de B, y que la cuenta sin membresía no ve nada. 10/10 en verde — ver `bitacora-canal-b.md` 2026-09-08.
+
 ## Lo que se hizo de B
 
 ### Persistencia y acceso existentes
@@ -45,6 +47,7 @@ Las migraciones `0002_clinical_derivations.sql` y `0003_clinical_commands.sql` (
 
 ## Archivos principales trabajados
 
+- `scripts/verify-rls-isolation.ts`: verificación B6, dos unidades + cuenta sin membresía contra el proyecto real, sesiones auténticas (no clave secreta), 10 aserciones automáticas.
 - `src/lib/queries/dashboard.ts`: lectura por sesión y unidad, filtros y paginación.
 - `src/lib/domain/dashboard.ts`: DTO del tablero y adaptadores SQL al dominio canónico.
 - `src/lib/whatsapp/provider.ts` / `twilio.ts`: interfaz y adaptador real del canal (envío, verificación de firma).
@@ -94,6 +97,6 @@ B es responsable del esquema, migraciones incrementales, RLS, tipos, datos de pr
 3. ~~Materialización y envío, endpoint `api/jobs/tick`, prueba real de ida y vuelta desde la app~~ — hecho (`src/lib/jobs/{materialize,send}.ts`, `src/app/api/jobs/tick/route.ts`; mensaje real enviado y confirmado `delivered`/`read`, respuesta del paciente recibida — ver `bitacora-canal-b.md` 2026-09-08). ~~Programar el Cron~~ — hecho (§B2, ver `bitacora-canal-b.md` 2026-09-08): Supabase Cron (`pg_cron`+`pg_net`+Vault) llama `/api/jobs/tick` cada minuto sin intervención manual; probado de punta a punta con una interacción real vencida. `appointment` y `nonresponse_summary` quedan fuera del materializador a propósito (sin plantilla real / disparador preciso) — ver B7.
 4. ~~Normalizar `+521XXXXXXXXXX` vs `+52XXXXXXXXXX` (números de WhatsApp de México) al resolver paciente por teléfono en el webhook entrante~~ — hecho (`src/lib/whatsapp/phone.ts`, `phoneLookupCandidates()`, ver auditoría §3.1 y `bitacora-canal-b.md` 2026-09-08). Falta integrar BAJA, plantillas aprobadas de Twilio para medicamento/medición (`send.ts` hoy solo puede mandar dentro de la ventana de sesión de 24h, sin plantilla configurada para esos tipos), respuestas tardías e incidencias técnicas con la cola existente (los callbacks desordenados de entrega ya están cubiertos por `status.ts`, con concurrencia optimista).
 5. Completar con C las RPC de corrección, ajustes, urgencia y resolución con auditoría y recálculo coherente; las dos RPC actuales de cola no realizan esas acciones.
-6. Probar aislamiento real entre dos unidades y roles, concurrencia de workers y consentimiento revocado durante un envío.
+6. ~~Probar aislamiento real entre dos unidades~~ — hecho (§B6, ver `bitacora-canal-b.md` 2026-09-08): `scripts/verify-rls-isolation.ts`, 10/10 aserciones en verde contra el proyecto real. Sigue pendiente: concurrencia de workers y consentimiento revocado durante un envío.
 7. Medir rendimiento con datos reales del tamaño de la demo; para mayor escala, consultar agregados/snapshot mediante RPC y paginar el censo desde servidor.
 8. Pendientes operativos previos: configurar CSP tras probar compatibilidad, revisar proveedor SMS de Supabase y observabilidad de jobs. No confundir autenticación SMS de Supabase con transporte clínico WhatsApp.
