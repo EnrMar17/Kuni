@@ -9,7 +9,7 @@
  * mostrar nada", nunca como error ni como 0%.
  */
 import "server-only";
-import { requestMlPrediction, type MlPrediction } from "../../../domain-core/src/lib/ml/client";
+import { requestMlPrediction, requestMlTrajectory, type MlPrediction, type MlTrajectory } from "../../../domain-core/src/lib/ml/client";
 import { buildMlFeatureVector, type MlFeatureBuild } from "../../../domain-core/src/lib/ml/features";
 import type { DashboardPatient } from "../domain/dashboard";
 import { serverEnv } from "../env/server";
@@ -17,6 +17,8 @@ import { buildPatientMlFeatureInput } from "./patient-features";
 
 export interface PatientPrediction {
   prediction: MlPrediction;
+  /** Proyección a 3 pasos de glucosa/PA (mismo vector) — endpoint hermano, ver domain-core/ml/client.ts. */
+  trajectory: MlTrajectory;
   asOf: string;
   /** Brechas reales del expediente en este corte. Vacío = sin brechas declaradas. */
   gaps: MlFeatureBuild["gaps"];
@@ -27,16 +29,23 @@ export async function getPatientPrediction(patient: DashboardPatient, now: Date)
   const input = buildPatientMlFeatureInput(patient);
   const { vector, gaps } = buildMlFeatureVector(input, { now });
 
-  const prediction = await requestMlPrediction(vector, {
+  const config = {
     endpointUrl: serverEnv.ML_ENDPOINT_URL ?? null,
     apiKey: serverEnv.ML_API_KEY,
     timeoutMs: serverEnv.ML_TIMEOUT_MS,
-  });
+  };
+
+  // Independientes entre sí: si la trayectoria falla o no está disponible,
+  // el panel de riesgo futuro (RF30) no debe verse afectado, y viceversa.
+  const [prediction, trajectory] = await Promise.all([
+    requestMlPrediction(vector, config),
+    requestMlTrajectory(vector, config),
+  ]);
 
   // El cliente puro admite versiones null en pruebas; el panel del modelo real
   // exige procedencia identificable (plan-integracion RF30).
   const publishable = prediction.status !== "unavailable" && !prediction.modelVersion
     ? { status: "unavailable" as const }
     : prediction;
-  return { prediction: publishable, gaps, asOf: now.toISOString() };
+  return { prediction: publishable, trajectory, gaps, asOf: now.toISOString() };
 }

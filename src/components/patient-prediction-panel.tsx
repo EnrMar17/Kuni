@@ -1,6 +1,7 @@
 import type { DashboardPatient } from "@/lib/domain/dashboard";
 import { getPatientPrediction } from "@/lib/ml/predict-patient";
 import { formatInTimeZone } from "date-fns-tz";
+import { PatientTrajectoryCharts } from "./patient-trajectory-chart";
 
 const levelStyle = {
   bajo: "border-emerald-200 bg-emerald-50 text-emerald-800",
@@ -44,7 +45,7 @@ export function PatientPredictionSkeleton() {
 }
 
 export async function PatientPredictionPanel({ patient, asOf, timezone }: { patient: DashboardPatient; asOf: string; timezone: string }) {
-  const { prediction, gaps } = await getPatientPrediction(patient, new Date(asOf));
+  const { prediction, trajectory, gaps } = await getPatientPrediction(patient, new Date(asOf));
 
   // The model is optional. Keep the panel visible, but never turn an absent
   // endpoint, timeout, or malformed response into a fabricated prediction.
@@ -79,7 +80,10 @@ export async function PatientPredictionPanel({ patient, asOf, timezone }: { pati
   }
 
   const isCeiling = prediction.status === "ceiling";
-  const probability = isCeiling ? null : Math.round(prediction.probability * 100);
+  // En techo de riesgo la probabilidad puede venir (v7+, calibrada aparte
+  // para ese grupo) o no (v4). Ambos casos son válidos — se muestra el
+  // número solo cuando el servicio de verdad lo mandó.
+  const probability = prediction.probability == null ? null : Math.round(prediction.probability * 100);
 
   return (
     <section aria-labelledby="future-risk-title" className="clinical-panel overflow-hidden p-5 lg:col-span-3 motion-safe:animate-[kuni-rise_360ms_ease-out_both]">
@@ -101,6 +105,11 @@ export async function PatientPredictionPanel({ patient, asOf, timezone }: { pati
       {isCeiling ? (
         <div className="mt-5 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm leading-relaxed text-rose-900">
           <strong>Techo de riesgo clínico.</strong> {prediction.message}
+          {probability != null ? (
+            <p className="mt-1 text-xs text-rose-800">
+              El {probability}% no es "¿llegará a este nivel?" —ya llegó—, sino la probabilidad estimada de que siga empeorando más allá de este punto.
+            </p>
+          ) : null}
         </div>
       ) : null}
 
@@ -112,6 +121,17 @@ export async function PatientPredictionPanel({ patient, asOf, timezone }: { pati
           <DataSignal complete={prediction.sufficiency.presionArterial} label="Presión arterial" />
         </ul>
       </div>
+
+      {trajectory.status === "available" ? (
+        <PatientTrajectoryCharts
+          glucose={trajectory.glucose}
+          systolicBp={trajectory.systolicBp}
+          diastolicBp={trajectory.diastolicBp}
+          latestGlucoseMgDl={patient.latestGlucose?.glucoseMgDl ?? null}
+          latestSystolicMmHg={patient.latestBloodPressure?.systolicMmHg ?? null}
+          latestDiastolicMmHg={patient.latestBloodPressure?.diastolicMmHg ?? null}
+        />
+      ) : null}
 
       {gaps.length ? (
         <details className="mt-4 rounded-xl border border-amber-200 bg-amber-50/70 p-3 text-sm text-amber-950">

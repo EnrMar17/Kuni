@@ -25,10 +25,13 @@ from fastapi import FastAPI, HTTPException, Header
 from pydantic import BaseModel, Field
 from typing import Optional, Dict
 
-from pipeline_completo import predecir_riesgo_ml, FEATURE_COLS
-from modelo_wrapper import ModeloCalibrado  # necesario para deserializar el modelo
+from pipeline_completo import predecir_riesgo_ml, predecir_trayectoria, FEATURE_COLS
+# ModeloCalibrado y ModeloCalibradoEstratificado: joblib resuelve la clase por
+# ruta de import al deserializar — ambas deben existir aquí aunque no se usen
+# directamente en este archivo, o el modelo v7 falla al cargar.
+from modelo_wrapper import ModeloCalibrado, ModeloCalibradoEstratificado  # noqa: F401
 
-MODEL_VERSION = "prediccion_futura_v4_2026-09-08"
+MODEL_VERSION = "prediccion_futura_v7_2026-09-08"
 API_KEY = os.environ.get("ML_API_KEY")  # None si no está configurada
 
 app = FastAPI(
@@ -44,6 +47,16 @@ except FileNotFoundError:
     modelo_b = None
     print("⚠️  ADVERTENCIA: no se encontró el modelo entrenado en ./salidas/. "
           "Corre pipeline_completo.py primero.")
+
+# Trayectoria (v7): 9 modelos de regresión cuantil (glucosa/PA sistólica/PA
+# diastólica × bajo/esperado/alto), opcional — su ausencia nunca debe tumbar
+# el endpoint principal de riesgo.
+try:
+    modelos_trayectoria = joblib.load("./salidas/modelos_trayectoria.joblib")
+except FileNotFoundError:
+    modelos_trayectoria = None
+    print("⚠️  ADVERTENCIA: no se encontró modelos_trayectoria.joblib en ./salidas/. "
+          "/predecir-trayectoria quedará deshabilitado.")
 
 
 # =========================================================
@@ -97,6 +110,32 @@ def predecir_riesgo(paciente: VectorPaciente, x_api_key: Optional[str] = Header(
 
 
 # =========================================================
+# TRAYECTORIA — proyección a 3 pasos de glucosa/PA (v7), endpoint hermano
+# de /predecir-riesgo. Mismo vector de entrada, mismo esquema de auth.
+# Kuni la muestra como gráfica ligada al mismo resultado del modelo de
+# predicción futura, nunca como fuente de alerta ni sustituto de una
+# medición real.
+# =========================================================
+@app.post("/predecir-trayectoria")
+def predecir_trayectoria_endpoint(paciente: VectorPaciente, x_api_key: Optional[str] = Header(None)):
+    if API_KEY and x_api_key != API_KEY:
+        raise HTTPException(status_code=401, detail={"code": "UNAUTHENTICATED", "message": "API key inválida o ausente"})
+
+    if modelos_trayectoria is None:
+        raise HTTPException(status_code=503, detail={"code": "PROVIDER_UNAVAILABLE", "message": "Modelos de trayectoria no cargados"})
+
+    datos = paciente.model_dump()
+    datos.pop('datos_suficientes', None)
+
+    try:
+        trayectoria = predecir_trayectoria(datos, modelos_trayectoria, n_pasos=3)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail={"code": "VALIDATION", "message": str(e)})
+
+    return {"data": {"model_version": MODEL_VERSION, **trayectoria}, "error": None}
+
+
+# =========================================================
 # HEALTH CHECK — para que Kuni verifique disponibilidad
 # =========================================================
 @app.get("/health")
@@ -104,4 +143,5 @@ def health():
     return {
         "status": "ok" if modelo_b is not None else "modelo_no_cargado",
         "model_version": MODEL_VERSION,
+        "trayectoria_cargada": modelos_trayectoria is not None,
     }

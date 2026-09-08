@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import { parseMlResponse, requestMlPrediction, type MlFeatureVector } from '../../src/lib/ml/client';
+import {
+  parseMlResponse,
+  requestMlPrediction,
+  deriveTrajectoryEndpoint,
+  parseMlTrajectoryResponse,
+  requestMlTrajectory,
+  type MlFeatureVector,
+} from '../../src/lib/ml/client';
 
 const sufficient = { glucosa_ayuno: true, glucosa_postprandial: false, presion_arterial: true };
 
@@ -174,6 +181,26 @@ describe('parseMlResponse — techo de riesgo: probabilidad null NO es ausencia 
     const vacio = { data: { ...ceiling.data, mensaje: '   ' }, error: null };
     expect(parseMlResponse(vacio)).toEqual({ status: 'unavailable' });
   });
+
+  it('techo con probabilidad real (v7+, calibración separada para "en techo") también se distingue de una respuesta disponible normal', () => {
+    const result = parseMlResponse({
+      data: { ...ceiling.data, probabilidad_descompensacion: 0.812 },
+      error: null,
+    });
+    expect(result.status).toBe('ceiling');
+    expect(result).toMatchObject({ probability: 0.812, level: 'alto' });
+    if (result.status === 'ceiling') {
+      expect(result.message).toContain('peor escenario clínico posible');
+    }
+  });
+
+  it('techo con probabilidad en forma inesperada conserva el aviso y omite el número, en vez de descartar el resultado', () => {
+    const result = parseMlResponse({
+      data: { ...ceiling.data, probabilidad_descompensacion: 'no-es-numero' },
+      error: null,
+    });
+    expect(result).toMatchObject({ status: 'ceiling', probability: null });
+  });
 });
 
 describe('parseMlResponse — validación defensiva de forma', () => {
@@ -259,5 +286,104 @@ describe('parseMlResponse — validación defensiva de forma', () => {
     });
     expect(result).not.toHaveProperty('nivel_riesgo_actual');
     expect(result).not.toHaveProperty('alerta_roja');
+  });
+});
+
+describe('deriveTrajectoryEndpoint — URL hermana de /predecir-riesgo', () => {
+  it('reemplaza el path exacto, conservando host y puerto', () => {
+    expect(deriveTrajectoryEndpoint('https://modelo.example/predecir-riesgo')).toBe('https://modelo.example/predecir-trayectoria');
+    expect(deriveTrajectoryEndpoint('http://localhost:8000/predecir-riesgo')).toBe('http://localhost:8000/predecir-trayectoria');
+  });
+
+  it('no adivina si la URL no termina exactamente en /predecir-riesgo', () => {
+    expect(deriveTrajectoryEndpoint('https://modelo.example/predecir-riesgo/')).toBeNull();
+    expect(deriveTrajectoryEndpoint('https://modelo.example/otra-cosa')).toBeNull();
+  });
+});
+
+const trayectoriaPayload = {
+  glucosa: [
+    { paso: 1, valor_esperado: 145.7, rango_min: 128.0, rango_max: 165.7 },
+    { paso: 2, valor_esperado: 148.4, rango_min: 128.0, rango_max: 168.1 },
+    { paso: 3, valor_esperado: 150.7, rango_min: 129.4, rango_max: 172.9 },
+  ],
+  pa_sistolica: [
+    { paso: 1, valor_esperado: 132.0, rango_min: 120.0, rango_max: 144.0 },
+    { paso: 2, valor_esperado: 133.5, rango_min: 119.0, rango_max: 146.0 },
+    { paso: 3, valor_esperado: 134.8, rango_min: 118.5, rango_max: 148.2 },
+  ],
+  pa_diastolica: [
+    { paso: 1, valor_esperado: 84.0, rango_min: 76.0, rango_max: 92.0 },
+    { paso: 2, valor_esperado: 85.1, rango_min: 75.5, rango_max: 93.0 },
+    { paso: 3, valor_esperado: 85.9, rango_min: 75.0, rango_max: 94.5 },
+  ],
+};
+
+describe('parseMlTrajectoryResponse', () => {
+  it('parsea las tres variables sobre el sobre {data, error}', () => {
+    const result = parseMlTrajectoryResponse({ data: { model_version: 'prediccion_futura_v7_2026-09-08', ...trayectoriaPayload }, error: null });
+    expect(result).toEqual({
+      status: 'available',
+      modelVersion: 'prediccion_futura_v7_2026-09-08',
+      glucose: [
+        { step: 1, expected: 145.7, rangeMin: 128.0, rangeMax: 165.7 },
+        { step: 2, expected: 148.4, rangeMin: 128.0, rangeMax: 168.1 },
+        { step: 3, expected: 150.7, rangeMin: 129.4, rangeMax: 172.9 },
+      ],
+      systolicBp: [
+        { step: 1, expected: 132.0, rangeMin: 120.0, rangeMax: 144.0 },
+        { step: 2, expected: 133.5, rangeMin: 119.0, rangeMax: 146.0 },
+        { step: 3, expected: 134.8, rangeMin: 118.5, rangeMax: 148.2 },
+      ],
+      diastolicBp: [
+        { step: 1, expected: 84.0, rangeMin: 76.0, rangeMax: 92.0 },
+        { step: 2, expected: 85.1, rangeMin: 75.5, rangeMax: 93.0 },
+        { step: 3, expected: 85.9, rangeMin: 75.0, rangeMax: 94.5 },
+      ],
+    });
+  });
+
+  it('un `error` no nulo no publica nada', () => {
+    expect(parseMlTrajectoryResponse({ data: trayectoriaPayload, error: { code: 'VALIDATION', message: 'x' } })).toEqual({ status: 'unavailable' });
+  });
+
+  it('si falta cualquiera de las tres variables, se descarta toda la respuesta', () => {
+    const { pa_diastolica: _omitida, ...incompleto } = trayectoriaPayload;
+    expect(parseMlTrajectoryResponse({ data: incompleto, error: null })).toEqual({ status: 'unavailable' });
+  });
+
+  it('nunca lanza con entradas malformadas', () => {
+    for (const bad of [null, undefined, 'texto', [], 42, true, { data: { glucosa: 'no-es-array' } }]) {
+      expect(() => parseMlTrajectoryResponse(bad)).not.toThrow();
+      expect(parseMlTrajectoryResponse(bad).status).toBe('unavailable');
+    }
+  });
+});
+
+describe('requestMlTrajectory — misma regla de oro, endpoint hermano', () => {
+  it('sin endpointUrl no llama a la red', async () => {
+    const fetchImpl = (async () => { throw new Error('no debería llamarse'); }) as unknown as typeof fetch;
+    const result = await requestMlTrajectory(features, { endpointUrl: null, fetchImpl });
+    expect(result).toEqual({ status: 'unavailable' });
+  });
+
+  it('llama al path /predecir-trayectoria, no a /predecir-riesgo', async () => {
+    let calledUrl: string | undefined;
+    const fetchImpl = (async (url: string) => {
+      calledUrl = url;
+      return new Response(JSON.stringify({ data: trayectoriaPayload, error: null }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const result = await requestMlTrajectory(features, { endpointUrl: 'https://modelo.example/predecir-riesgo', fetchImpl });
+    expect(calledUrl).toBe('https://modelo.example/predecir-trayectoria');
+    expect(result.status).toBe('available');
+  });
+
+  it('unavailable si el fetch lanza o la respuesta no es ok', async () => {
+    const lanza = (async () => { throw new Error('red caída'); }) as unknown as typeof fetch;
+    expect((await requestMlTrajectory(features, { endpointUrl: 'https://modelo.example/predecir-riesgo', fetchImpl: lanza })).status).toBe('unavailable');
+
+    const noOk = (async () => new Response('{}', { status: 503 })) as unknown as typeof fetch;
+    expect((await requestMlTrajectory(features, { endpointUrl: 'https://modelo.example/predecir-riesgo', fetchImpl: noOk })).status).toBe('unavailable');
   });
 });
