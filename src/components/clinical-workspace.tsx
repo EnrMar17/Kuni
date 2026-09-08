@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
 import {
   ClinicalHeader,
@@ -10,7 +10,7 @@ import {
 import { AppointmentForm } from "@/components/appointment-form";
 import { StatisticsView } from "@/components/statistics-view";
 import { PatientCreateForm } from "@/components/patient-create-form";
-import { AlertActions, ComplicationPanel, MeasurementCorrection, PrescriptionAdjustment } from "@/components/clinical-actions";
+import { AlertActions, ComplicationPanel, MeasurementCorrection, MedicationClassification, PrescriptionAdjustment } from "@/components/clinical-actions";
 import type { DashboardData, DashboardPatient } from "@/lib/domain/dashboard";
 import {
   availableDiagnoses,
@@ -406,10 +406,12 @@ export function PatientProfile({
   data,
   patient,
   context,
+  predictionPanel,
 }: {
   data: DashboardData;
   patient: DashboardPatient;
   context: ClinicalTopBarContext;
+  predictionPanel?: ReactNode;
 }) {
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_12%_2%,#e0e7ff_0,transparent_31%),radial-gradient(circle_at_94%_18%,#dbeafe_0,transparent_28%),#e8ebf2] p-3 text-slate-800 md:p-6 lg:p-8">
@@ -475,6 +477,7 @@ export function PatientProfile({
                 ) : null}
               </ul>
             </section>
+            {predictionPanel}
             <aside className="clinical-panel bg-gradient-to-b from-white to-indigo-50/45 p-5">
               <h2 className="text-base font-extrabold text-slate-900">
                 Contacto y consentimiento
@@ -521,6 +524,7 @@ export function PatientProfile({
                         .join(", ") || "Sin horarios"}
                     </p>
                     <PrescriptionAdjustment patientId={patient.id} prescription={prescription} />
+                    <MedicationClassification patientId={patient.id} prescription={prescription} />
                   </article>
                 ))}
                 {!patient.prescriptions.length ? (
