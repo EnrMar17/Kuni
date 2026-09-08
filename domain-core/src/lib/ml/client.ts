@@ -1,87 +1,125 @@
 /**
- * Cliente HTTP hacia el modelo predictivo del equipo de IA — lib/ml/client.ts
+ * Cliente HTTP hacia el microservicio predictivo del equipo de IA.
  *
- * Contrato de salida ACTUALIZADO tras `respuestas_alineacion_kuni.md`
- * (respuesta a `alineacion-y-preguntas-equipo-ia.md`, pregunta 9). Resumen
- * de lo que cambió respecto a la primera versión de este archivo:
+ * Reescrito el 2026-09-08 contra el servicio REAL entregado (`app.py`,
+ * `pipeline_completo.py`, `README_ENDPOINT.md`). La versión anterior se
+ * había construido contra un ejemplo de JSON del documento de alineación y
+ * **no habría parseado ni una sola respuesta real**: el servicio envuelve el
+ * resultado en `{data, error}` y renombró el campo de probabilidad. Cada
+ * llamada habría caído silenciosamente en "sin datos".
  *
- * - `evaluateRisk()` (de Kuni) queda como la ÚNICA fuente de verdad para
- *   alertas rojas / riesgo actual. El motor de reglas en Python del equipo
- *   de IA era una pieza interna de entrenamiento, nunca de producción — fue
- *   un malentendido de comunicación, no una decisión de arquitectura.
- * - Por eso el endpoint YA NO manda `nivel_riesgo_actual` ni `alerta_roja`.
- *   Este cliente ya no los expone: mostrar dos "niveles de riesgo" que
- *   podrían no coincidir es exactamente lo que ambos equipos querían
- *   evitar.
- * - `datos_suficientes` ahora es un objeto por variable (glucosa en ayuno,
- *   glucosa posprandial, presión arterial), no un solo booleano para todo
- *   el paciente — un paciente puede tener suficientes lecturas de presión
- *   pero no de glucosa.
+ * Diferencias respecto del contrato anterior, todas confirmadas leyendo el
+ * código del servicio:
  *
- * ⚠️ Nota de ambigüedad (no resuelta todavía, no bloquea escribir esto):
- * la respuesta no aclara explícitamente si `brecha_monitoreo_excedida` y
- * `alerta_naranja_predictiva` (que sí estaban en el contrato original)
- * siguen existiendo o se descartaron junto con `nivel_riesgo_actual` /
- * `alerta_roja` — el ejemplo de JSON que dieron solo trae 3 campos. Este
- * cliente se construyó contra ESE ejemplo literal (los 3 campos
- * confirmados) para no inventar campos que quizás ya no existen. Si el
- * equipo de IA confirma que esos dos campos siguen vivos, hay que
- * agregarlos de vuelta — queda anotado como pregunta pendiente en
- * `documentacion-persona-c.md`.
+ * | Anterior (supuesto)                 | Real (`app.py`)                    |
+ * |-------------------------------------|------------------------------------|
+ * | cuerpo plano                        | `{"data": {...}, "error": null}`   |
+ * | `probabilidad_empeoramiento_futuro` | `probabilidad_descompensacion`     |
+ * | —                                   | `nivel_predicho` bajo/moderado/alto|
+ * | probabilidad siempre presente       | `null` legítimo en "techo de riesgo"|
+ * | —                                   | `mensaje` explicando ese techo     |
+ * | `Authorization: Bearer`             | `X-API-Key`                        |
  *
- * REGLA DE ORO (sigue vigente, confirmada desde el inicio como principio
- * no negociable): esta función NUNCA lanza una excepción y NUNCA deja que
- * una falla del modelo tumbe el dashboard. Si no hay endpoint configurado,
- * si la llamada falla, hace timeout, o la respuesta no tiene la forma
- * esperada, devuelve un resultado "todo null" y el dashboard se queda
- * únicamente con `evaluateRisk()`.
+ * EL "TECHO DE RIESGO" ES EL CASO DELICADO. Cuando el paciente ya está en la
+ * peor categoría clínica posible (glucosa o presión en crisis, o una
+ * complicación grave ya diagnosticada), el servicio NO calcula probabilidad
+ * —devuelve `null`— y responde `nivel_predicho: "alto"` con un mensaje. Es
+ * un resultado **útil y grave**, no una ausencia de datos: leerlo como "sin
+ * información" invertiría por completo su significado. Por eso el resultado
+ * de este módulo es una unión discriminada y no un objeto con nulos: quien
+ * lo consuma no puede confundir "no hay dato" con "riesgo máximo".
+ *
+ * REGLA DE ORO (principio no negociable, confirmado por ambos equipos): esta
+ * función NUNCA lanza y NUNCA deja que una falla del modelo tumbe el
+ * dashboard. Sin endpoint, con la red caída, con timeout o con una respuesta
+ * de forma inesperada, devuelve `{ status: 'unavailable' }` y el tablero se
+ * queda solo con `evaluateRisk()`. El modelo es un panel extra, jamás la
+ * fuente de una alerta.
  */
 
-/** Suficiencia de datos por variable — CONFIRMADO por el equipo de IA (pregunta 2). */
+/** Suficiencia de datos por variable. La calcula Kuni y el servicio la devuelve tal cual. */
 export interface MlDataSufficiency {
   glucosaAyuno: boolean;
   glucosaPostprandial: boolean;
   presionArterial: boolean;
 }
 
-export interface MlPredictionResult {
-  /** 0-1. Probabilidad de empeoramiento futuro (Modelo B, AUC-ROC 0.887). null si no se pudo obtener. */
-  probabilidadEmpeoramientoFuturo: number | null;
-  /** Formato confirmado: `{nombre_modelo}_v{numero}_{fecha_entrenamiento}`, ej. "prediccion_futura_v1_2026-09-08". */
-  modelVersion: string | null;
-  /** null si no se pudo obtener respuesta del modelo (no solo "no hay endpoint"). */
-  datosSuficientes: MlDataSufficiency | null;
-}
+/** `nivel_predicho` del servicio. Es del MODELO: no es el riesgo actual de `evaluateRisk()`. */
+export type MlPredictedLevel = 'bajo' | 'moderado' | 'alto';
+
+const PREDICTED_LEVELS: readonly string[] = ['bajo', 'moderado', 'alto'];
+
+export type MlPrediction =
+  /** No hay dato publicable: sin endpoint, falla de red, timeout o respuesta inválida. */
+  | { status: 'unavailable' }
+  /** El modelo devolvió una probabilidad calibrada utilizable. */
+  | {
+      status: 'available';
+      probability: number;
+      level: MlPredictedLevel;
+      modelVersion: string | null;
+      sufficiency: MlDataSufficiency;
+    }
+  /**
+   * Techo de riesgo: el paciente ya está en la peor categoría clínica para
+   * alguna variable, así que la probabilidad no aporta información y el
+   * servicio la omite. `message` explica cuál variable lo provocó.
+   */
+  | {
+      status: 'ceiling';
+      probability: null;
+      level: MlPredictedLevel;
+      modelVersion: string | null;
+      sufficiency: MlDataSufficiency;
+      message: string;
+    };
 
 /**
- * Vector de entrada — provisional. El contrato completo lo arma
- * `domain/ml-features.ts` (todavía no construido). Aquí solo se tipa como
- * registro abierto para que `requestMlPrediction` sea utilizable/probable
- * desde ya sin acoplarse a un tipo que todavía puede cambiar.
+ * Vector de entrada — los 17 campos exactos de `FEATURE_COLS`, más
+ * `datos_suficientes`, que el servicio no usa para predecir pero devuelve
+ * en la respuesta. Lo construye `domain/ml-features.ts`.
  */
-export type MlFeatureVector = Record<string, number | string | boolean | null>;
+export interface MlFeatureVector {
+  age_at_wx: number;
+  diabetes_dx: 0 | 1;
+  hypertension_dx: 0 | 1;
+  comorbido_dm_has: 0 | 1;
+  fn_ta_systolic_mean: number | null;
+  fn_ta_diastolic_mean: number | null;
+  tendencia_sistolica: number;
+  tendencia_diastolica: number;
+  pa_empeorando: 0 | 1;
+  in_glucose_mean: number | null;
+  tendencia_glucosa: number;
+  glucosa_empeorando: 0 | 1;
+  adherencia_antidiabeticos: number;
+  adherencia_antihipertensivos: number;
+  num_complicaciones_dm: number;
+  tiene_complicacion_dm: 0 | 1;
+  complicacion_grave_dm: 0 | 1;
+  datos_suficientes: {
+    glucosa_ayuno: boolean;
+    glucosa_postprandial: boolean;
+    presion_arterial: boolean;
+  };
+}
 
 export interface MlClientConfig {
-  /** null mientras el equipo de IA no comparta la URL real — la llamada se salta por completo. */
+  /** null mientras no haya servicio desplegado — la llamada se salta por completo. */
   endpointUrl: string | null;
+  /** Viaja en `X-API-Key` (es lo que lee `app.py`), no en `Authorization`. */
   apiKey?: string | null;
   timeoutMs?: number;
-  /** Inyectable para pruebas, igual que el reloj en risk.ts. Por defecto usa el `fetch` global. */
+  /** Inyectable para pruebas, igual que el reloj en risk.ts. */
   fetchImpl?: typeof fetch;
 }
 
 const DEFAULT_TIMEOUT_MS = 2000;
 
-function emptyResult(): MlPredictionResult {
-  return {
-    probabilidadEmpeoramientoFuturo: null,
-    modelVersion: null,
-    datosSuficientes: null,
-  };
-}
+const UNAVAILABLE: MlPrediction = { status: 'unavailable' };
 
 function parseDataSufficiency(value: unknown): MlDataSufficiency | null {
-  if (typeof value !== 'object' || value === null) return null;
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
   const obj = value as Record<string, unknown>;
   const glucosaAyuno = obj.glucosa_ayuno;
   const glucosaPostprandial = obj.glucosa_postprandial;
@@ -96,49 +134,68 @@ function parseDataSufficiency(value: unknown): MlDataSufficiency | null {
   return { glucosaAyuno, glucosaPostprandial, presionArterial };
 }
 
-/** Valida defensivamente la forma de la respuesta antes de confiar en ella. */
-export function parseMlResponse(json: unknown): MlPredictionResult {
-  if (typeof json !== 'object' || json === null || Array.isArray(json)) return emptyResult();
-  const obj = json as Record<string, unknown>;
+/**
+ * Valida defensivamente la respuesta completa del servicio antes de confiar
+ * en ella. Acepta tanto el sobre `{data, error}` real como un cuerpo plano,
+ * para no romperse si el servicio se despliega detrás de un gateway que lo
+ * desenvuelve.
+ */
+export function parseMlResponse(json: unknown): MlPrediction {
+  if (typeof json !== 'object' || json === null || Array.isArray(json)) return UNAVAILABLE;
+  const envelope = json as Record<string, unknown>;
 
-  const probabilidadEmpeoramientoFuturo =
-    typeof obj.probabilidad_empeoramiento_futuro === 'number' &&
-    obj.probabilidad_empeoramiento_futuro >= 0 &&
-    obj.probabilidad_empeoramiento_futuro <= 1
-      ? obj.probabilidad_empeoramiento_futuro
+  // Un `error` no nulo es una falla declarada por el servicio: no se publica
+  // nada aunque venga acompañado de datos parciales.
+  if (envelope.error != null) return UNAVAILABLE;
+
+  const payload =
+    typeof envelope.data === 'object' && envelope.data !== null && !Array.isArray(envelope.data)
+      ? (envelope.data as Record<string, unknown>)
+      : envelope;
+
+  const level = typeof payload.nivel_predicho === 'string' ? payload.nivel_predicho : null;
+  if (level == null || !PREDICTED_LEVELS.includes(level)) return UNAVAILABLE;
+
+  const sufficiency = parseDataSufficiency(payload.datos_suficientes);
+  if (sufficiency == null) return UNAVAILABLE;
+
+  // Política provisional de Kuni: sin ninguna variable suficiente no se
+  // publica una estimación. Pendiente de cerrar elegibilidad parcial con IA.
+  if (!sufficiency.glucosaAyuno && !sufficiency.glucosaPostprandial && !sufficiency.presionArterial) {
+    return UNAVAILABLE;
+  }
+
+  const modelVersion =
+    typeof payload.model_version === 'string' && payload.model_version.trim().length > 0
+      ? payload.model_version.trim()
       : null;
 
-  const modelVersion = typeof obj.model_version === 'string' && obj.model_version.trim().length > 0
-    ? obj.model_version.trim()
-    : null;
+  const rawProbability = payload.probabilidad_descompensacion;
 
-  const datosSuficientes = parseDataSufficiency(obj.datos_suficientes);
+  // Techo de riesgo: probabilidad ausente + mensaje. Es un resultado grave,
+  // no una ausencia — se distingue explícitamente de `unavailable`.
+  if (rawProbability === null || rawProbability === undefined) {
+    const message = typeof payload.mensaje === 'string' ? payload.mensaje.trim() : '';
+    if (message.length === 0) return UNAVAILABLE;
+    return { status: 'ceiling', probability: null, level: level as MlPredictedLevel, modelVersion, sufficiency, message };
+  }
 
-  if (probabilidadEmpeoramientoFuturo == null || datosSuficientes == null) return emptyResult();
-  // Política provisional de Kuni: no publicar un porcentaje con todas las
-  // variables insuficientes. Falta cerrar elegibilidad parcial con el equipo IA.
-  if (!datosSuficientes.glucosaAyuno && !datosSuficientes.glucosaPostprandial
-    && !datosSuficientes.presionArterial) return emptyResult();
+  if (typeof rawProbability !== 'number' || !Number.isFinite(rawProbability)) return UNAVAILABLE;
+  // Cero es una probabilidad válida; fuera de [0,1] no es del contrato.
+  if (rawProbability < 0 || rawProbability > 1) return UNAVAILABLE;
 
-  return {
-    probabilidadEmpeoramientoFuturo,
-    modelVersion,
-    datosSuficientes,
-  };
+  return { status: 'available', probability: rawProbability, level: level as MlPredictedLevel, modelVersion, sufficiency };
 }
 
 /**
- * Llama al endpoint del modelo predictivo. Nunca lanza: cualquier problema
- * (sin URL, red, timeout, forma de respuesta inesperada) resuelve a
- * `emptyResult()`.
+ * Llama al endpoint del modelo. Nunca lanza: cualquier problema (sin URL,
+ * red, timeout, forma inesperada) resuelve a `{ status: 'unavailable' }`.
  */
 export async function requestMlPrediction(
   features: MlFeatureVector,
   config: MlClientConfig,
-): Promise<MlPredictionResult> {
-  if (!config.endpointUrl) {
-    return emptyResult();
-  }
+): Promise<MlPrediction> {
+  if (!config.endpointUrl) return UNAVAILABLE;
 
   const doFetch = config.fetchImpl ?? fetch;
   const controller = new AbortController();
@@ -150,21 +207,19 @@ export async function requestMlPrediction(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}),
+        ...(config.apiKey ? { 'X-API-Key': config.apiKey } : {}),
       },
       body: JSON.stringify(features),
       signal: controller.signal,
     });
 
-    if (!res.ok) {
-      return emptyResult();
-    }
+    if (!res.ok) return UNAVAILABLE;
 
     const json = await res.json();
     return parseMlResponse(json);
   } catch {
     // Red caída, timeout, JSON inválido, lo que sea: nunca tumbar el dashboard.
-    return emptyResult();
+    return UNAVAILABLE;
   } finally {
     clearTimeout(timer);
   }

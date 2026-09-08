@@ -301,59 +301,93 @@ await check('evaluateTrend: insufficient data -> slope 0, sufficientForTrend fal
   assert.equal(r.slope, 0);
 });
 
-// --- ml/client.ts (contrato simplificado tras respuestas_alineacion_kuni.md) ---
-await check('requestMlPrediction: no endpointUrl -> all-null result, no network call', async () => {
+// --- ml/client.ts (contrato REAL del servicio: app.py + README_ENDPOINT.md) ---
+const mlFeatures = {
+  age_at_wx: 58, diabetes_dx: 1, hypertension_dx: 1, comorbido_dm_has: 1,
+  fn_ta_systolic_mean: 148, fn_ta_diastolic_mean: 94,
+  tendencia_sistolica: 2.3, tendencia_diastolica: 0.8, pa_empeorando: 1,
+  in_glucose_mean: 165, tendencia_glucosa: 4.1, glucosa_empeorando: 1,
+  adherencia_antidiabeticos: 0.35, adherencia_antihipertensivos: 0.4,
+  num_complicaciones_dm: 0, tiene_complicacion_dm: 0, complicacion_grave_dm: 0,
+  datos_suficientes: { glucosa_ayuno: true, glucosa_postprandial: false, presion_arterial: true },
+} as const;
+const mlSufficient = { glucosa_ayuno: true, glucosa_postprandial: false, presion_arterial: true };
+
+await check('requestMlPrediction: no endpointUrl -> unavailable, no network call', async () => {
   let called = false;
   const fetchImpl = (async () => {
     called = true;
     throw new Error('should not be called');
   }) as unknown as typeof fetch;
-  const r = await requestMlPrediction({}, { endpointUrl: null, fetchImpl });
+  const r = await requestMlPrediction(mlFeatures, { endpointUrl: null, fetchImpl });
   assert.equal(called, false);
-  assert.equal(r.probabilidadEmpeoramientoFuturo, null);
-  assert.equal(r.datosSuficientes, null);
+  assert.equal(r.status, 'unavailable');
 });
 
-await check('requestMlPrediction: fetch throws -> all-null result, never throws', async () => {
+await check('requestMlPrediction: fetch throws -> unavailable, never throws', async () => {
   const fetchImpl = (async () => {
     throw new Error('network down');
   }) as unknown as typeof fetch;
-  const r = await requestMlPrediction(
-    {},
-    { endpointUrl: 'https://modelo.example/predict', fetchImpl },
-  );
-  assert.equal(r.modelVersion, null);
+  const r = await requestMlPrediction(mlFeatures, { endpointUrl: 'https://modelo.example/predecir-riesgo', fetchImpl });
+  assert.equal(r.status, 'unavailable');
 });
 
-await check('requestMlPrediction: valid response (new simplified contract) parses correctly', async () => {
+await check('requestMlPrediction: respuesta real {data,error} se parsea correctamente', async () => {
   const body = {
-    probabilidad_empeoramiento_futuro: 0.73,
-    model_version: 'prediccion_futura_v1_2026-09-08',
-    datos_suficientes: { glucosa_ayuno: true, glucosa_postprandial: false, presion_arterial: true },
+    data: {
+      probabilidad_descompensacion: 0.388,
+      nivel_predicho: 'moderado',
+      model_version: 'prediccion_futura_v4_2026-09-08',
+      datos_suficientes: mlSufficient,
+    },
+    error: null,
   };
   const fetchImpl = (async () =>
     new Response(JSON.stringify(body), { status: 200 })) as unknown as typeof fetch;
-  const r = await requestMlPrediction(
-    {},
-    { endpointUrl: 'https://modelo.example/predict', fetchImpl },
-  );
-  assert.equal(r.probabilidadEmpeoramientoFuturo, 0.73);
-  assert.equal(r.modelVersion, 'prediccion_futura_v1_2026-09-08');
-  assert.deepEqual(r.datosSuficientes, { glucosaAyuno: true, glucosaPostprandial: false, presionArterial: true });
+  const r = await requestMlPrediction(mlFeatures, { endpointUrl: 'https://modelo.example/predecir-riesgo', fetchImpl });
+  assert.equal(r.status, 'available');
+  if (r.status === 'available') {
+    assert.equal(r.probability, 0.388);
+    assert.equal(r.level, 'moderado');
+    assert.equal(r.modelVersion, 'prediccion_futura_v4_2026-09-08');
+    assert.deepEqual(r.sufficiency, { glucosaAyuno: true, glucosaPostprandial: false, presionArterial: true });
+  }
 });
 
-await check('parseMlResponse: no longer exposes nivel_riesgo_actual / alerta_roja even if sent', () => {
-  const r = parseMlResponse({ nivel_riesgo_actual: 'alto', alerta_roja: true, probabilidad_empeoramiento_futuro: 0.5,
-    datos_suficientes: { glucosa_ayuno: true, glucosa_postprandial: false, presion_arterial: true } });
+await check('parseMlResponse: techo de riesgo (probabilidad null) NO se confunde con ausencia', () => {
+  const r = parseMlResponse({
+    data: {
+      probabilidad_descompensacion: null, nivel_predicho: 'alto',
+      model_version: 'prediccion_futura_v4_2026-09-08', datos_suficientes: mlSufficient,
+      mensaje: 'Riesgo maximo (presion arterial en nivel de crisis).',
+    },
+    error: null,
+  });
+  assert.equal(r.status, 'ceiling');
+  if (r.status === 'ceiling') {
+    assert.equal(r.probability, null);
+    assert.equal(r.level, 'alto');
+    assert.ok(r.message.length > 0);
+  }
+});
+
+await check('parseMlResponse: no expone nivel_riesgo_actual / alerta_roja aunque se manden', () => {
+  const r = parseMlResponse({
+    data: {
+      nivel_riesgo_actual: 'alto', alerta_roja: true,
+      probabilidad_descompensacion: 0.5, nivel_predicho: 'moderado', datos_suficientes: mlSufficient,
+    },
+    error: null,
+  });
   assert.equal('nivelRiesgoActual' in r, false);
   assert.equal('alertaRoja' in r, false);
-  assert.equal(r.probabilidadEmpeoramientoFuturo, 0.5);
+  assert.equal(r.status, 'available');
 });
 
 await check('parseMlResponse: never throws on malformed input', () => {
   assert.doesNotThrow(() => parseMlResponse(null));
   assert.doesNotThrow(() => parseMlResponse('texto plano'));
-  assert.equal(parseMlResponse(null).probabilidadEmpeoramientoFuturo, null);
+  assert.equal(parseMlResponse(null).status, 'unavailable');
 });
 
 // --- jobs/expire.ts ---

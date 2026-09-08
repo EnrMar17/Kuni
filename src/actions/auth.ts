@@ -46,9 +46,15 @@ export async function login(
     const supabase = await createClient();
     const { error } = await supabase.auth.signInWithPassword(parsed.data);
     if (error) {
+      // 429: límite de intentos de login por IP (auth.rate_limit.sign_in_sign_ups
+      // en supabase/config.toml, endurecido a propósito). Distinguirlo del caso
+      // de credenciales incorrectas evita que alguien reintente contraseñas a
+      // ciegas creyendo que escribió mal, cuando el problema es el límite.
       return { error: error.status === 400 || error.status === 401
         ? "El correo o la contraseña no son correctos."
-        : "No pudimos iniciar sesión. Intenta nuevamente." };
+        : error.status === 429
+          ? "Demasiados intentos. Espera unos minutos antes de volver a intentar."
+          : "No pudimos iniciar sesión. Intenta nuevamente." };
     }
     await clearConsultingRoomCookie();
     await clearLegacySessionCookies();

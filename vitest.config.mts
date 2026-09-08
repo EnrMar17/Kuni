@@ -9,7 +9,11 @@ export default defineConfig({
     },
   },
   test: {
-    include: ["tests/**/*.test.ts", "domain-core/tests/**/*.test.ts"],
+    // La suite de integración SQL de C (`domain-core/tests/integration`)
+    // corre con el runner y las dependencias de su propio paquete
+    // (`npm --prefix domain-core test`): usa Vitest 2.x y PGlite, que no
+    // están instalados en la raíz. Aquí solo entran sus pruebas unitarias.
+    include: ["tests/**/*.test.ts", "domain-core/tests/unit/**/*.test.ts"],
     environment: "node",
     clearMocks: true,
   },

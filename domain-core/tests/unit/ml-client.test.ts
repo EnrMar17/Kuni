@@ -1,182 +1,263 @@
 import { describe, expect, it, vi } from 'vitest';
-import { parseMlResponse, requestMlPrediction } from '../../src/lib/ml/client';
+import { parseMlResponse, requestMlPrediction, type MlFeatureVector } from '../../src/lib/ml/client';
 
 const sufficient = { glucosa_ayuno: true, glucosa_postprandial: false, presion_arterial: true };
 
+/** Vector mínimo válido; el contenido no importa para estas pruebas, la forma sí. */
+const features: MlFeatureVector = {
+  age_at_wx: 58,
+  diabetes_dx: 1,
+  hypertension_dx: 1,
+  comorbido_dm_has: 1,
+  fn_ta_systolic_mean: 148,
+  fn_ta_diastolic_mean: 94,
+  tendencia_sistolica: 2.3,
+  tendencia_diastolica: 0.8,
+  pa_empeorando: 1,
+  in_glucose_mean: 165,
+  tendencia_glucosa: 4.1,
+  glucosa_empeorando: 1,
+  adherencia_antidiabeticos: 0.35,
+  adherencia_antihipertensivos: 0.4,
+  num_complicaciones_dm: 0,
+  tiene_complicacion_dm: 0,
+  complicacion_grave_dm: 0,
+  datos_suficientes: sufficient,
+};
+
+/** Respuesta real del servicio: sobre `{data, error}`. */
+function ok(payload: Record<string, unknown>) {
+  return new Response(JSON.stringify({ data: payload, error: null }), { status: 200 });
+}
+
 describe('requestMlPrediction — regla de oro: nunca tumba el dashboard', () => {
-  it('devuelve todo null sin llamar a la red cuando no hay endpointUrl configurado', async () => {
+  it('sin endpointUrl no llama a la red y devuelve unavailable', async () => {
     let called = false;
     const fetchImpl = (async () => {
       called = true;
       throw new Error('no debería llamarse');
     }) as unknown as typeof fetch;
 
-    const result = await requestMlPrediction({}, { endpointUrl: null, fetchImpl });
+    const result = await requestMlPrediction(features, { endpointUrl: null, fetchImpl });
     expect(called).toBe(false);
-    expect(result).toEqual({
-      probabilidadEmpeoramientoFuturo: null,
-      modelVersion: null,
-      datosSuficientes: null,
-    });
+    expect(result).toEqual({ status: 'unavailable' });
   });
 
-  it('devuelve todo null si el fetch lanza (red caída / timeout)', async () => {
+  it('unavailable si el fetch lanza (red caída)', async () => {
     const fetchImpl = (async () => {
       throw new Error('network down');
     }) as unknown as typeof fetch;
 
-    const result = await requestMlPrediction(
-      {},
-      { endpointUrl: 'https://modelo.example/predict', fetchImpl },
-    );
-    expect(result.probabilidadEmpeoramientoFuturo).toBeNull();
-    expect(result.datosSuficientes).toBeNull();
+    const result = await requestMlPrediction(features, { endpointUrl: 'https://modelo.example/predecir-riesgo', fetchImpl });
+    expect(result.status).toBe('unavailable');
   });
 
-  it('devuelve todo null si la respuesta HTTP no es ok (4xx/5xx)', async () => {
-    const fetchImpl = (async () =>
-      new Response(JSON.stringify({}), { status: 500 })) as unknown as typeof fetch;
-
-    const result = await requestMlPrediction(
-      {},
-      { endpointUrl: 'https://modelo.example/predict', fetchImpl },
-    );
-    expect(result.modelVersion).toBeNull();
+  it('unavailable si la respuesta HTTP no es ok (401 sin API key, 503 modelo no cargado)', async () => {
+    for (const status of [401, 500, 503]) {
+      const fetchImpl = (async () => new Response('{}', { status })) as unknown as typeof fetch;
+      const result = await requestMlPrediction(features, { endpointUrl: 'https://modelo.example/predecir-riesgo', fetchImpl });
+      expect(result.status).toBe('unavailable');
+    }
   });
 
-  it('parsea correctamente una respuesta válida con la forma exacta de su nuevo contrato simplificado', async () => {
-    const body = {
-      probabilidad_empeoramiento_futuro: 0.73,
-      model_version: 'prediccion_futura_v1_2026-09-08',
-      datos_suficientes: {
-        glucosa_ayuno: true,
-        glucosa_postprandial: false,
-        presion_arterial: true,
-      },
-    };
-    const fetchImpl = (async () =>
-      new Response(JSON.stringify(body), { status: 200 })) as unknown as typeof fetch;
-
-    const result = await requestMlPrediction(
-      {},
-      { endpointUrl: 'https://modelo.example/predict', fetchImpl },
-    );
-    expect(result).toEqual({
-      probabilidadEmpeoramientoFuturo: 0.73,
-      modelVersion: 'prediccion_futura_v1_2026-09-08',
-      datosSuficientes: {
-        glucosaAyuno: true,
-        glucosaPostprandial: false,
-        presionArterial: true,
-      },
-    });
+  it('unavailable si el cuerpo no es JSON válido', async () => {
+    const fetchImpl = (async () => new Response('no soy json', { status: 200 })) as unknown as typeof fetch;
+    const result = await requestMlPrediction(features, { endpointUrl: 'https://modelo.example/predecir-riesgo', fetchImpl });
+    expect(result.status).toBe('unavailable');
   });
 
-  it('manda el API key como Bearer y el vector de features como body JSON', async () => {
-    let capturedInit: RequestInit | undefined;
-    const fetchImpl = (async (_url: unknown, init?: RequestInit) => {
-      capturedInit = init;
-      return new Response(JSON.stringify({ probabilidad_empeoramiento_futuro: 0.2 }), { status: 200 });
+  it('manda la API key en X-API-Key, que es el header que lee app.py (no Authorization)', async () => {
+    let seen: Headers | undefined;
+    const fetchImpl = (async (_url: string, init: RequestInit) => {
+      seen = new Headers(init.headers);
+      return ok({ probabilidad_descompensacion: 0.4, nivel_predicho: 'moderado', model_version: 'v4', datos_suficientes: sufficient });
     }) as unknown as typeof fetch;
 
-    await requestMlPrediction(
-      { edad: 58 },
-      { endpointUrl: 'https://modelo.example/predict', apiKey: 'secreto123', fetchImpl },
-    );
+    await requestMlPrediction(features, { endpointUrl: 'https://modelo.example/predecir-riesgo', apiKey: 'secreta', fetchImpl });
 
-    expect(capturedInit?.method).toBe('POST');
-    expect((capturedInit?.headers as Record<string, string>).Authorization).toBe('Bearer secreto123');
-    expect(capturedInit?.body).toBe(JSON.stringify({ edad: 58 }));
+    expect(seen?.get('x-api-key')).toBe('secreta');
+    expect(seen?.get('authorization')).toBeNull();
   });
 
-  it('aborta al alcanzar el timeout y devuelve el resultado vacío', async () => {
+  it('respeta el timeout y devuelve unavailable en vez de colgarse', async () => {
     vi.useFakeTimers();
     try {
-      let observedSignal: AbortSignal | null | undefined;
-      const fetchImpl: typeof fetch = async (_url, init) => {
-        observedSignal = init?.signal;
-        return new Promise<Response>((_resolve, reject) => {
-          init?.signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
-        });
-      };
-      const pending = requestMlPrediction({}, { endpointUrl: 'https://modelo.example/predict', timeoutMs: 50, fetchImpl });
-      await vi.advanceTimersByTimeAsync(50);
-      expect((await pending).probabilidadEmpeoramientoFuturo).toBeNull();
-      expect(observedSignal?.aborted).toBe(true);
-      expect(vi.getTimerCount()).toBe(0);
+      const fetchImpl = ((_url: string, init: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          init.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+        })) as unknown as typeof fetch;
+
+      const pending = requestMlPrediction(features, { endpointUrl: 'https://modelo.example/predecir-riesgo', timeoutMs: 50, fetchImpl });
+      await vi.advanceTimersByTimeAsync(60);
+      expect((await pending).status).toBe('unavailable');
     } finally {
       vi.useRealTimers();
     }
   });
+});
 
-  it('un cuerpo JSON inválido tampoco deja escapar excepción', async () => {
-    const fetchImpl: typeof fetch = async () => new Response('no es JSON', { status: 200 });
-    const result = await requestMlPrediction({}, { endpointUrl: 'https://modelo.example/predict', fetchImpl });
-    expect(result.probabilidadEmpeoramientoFuturo).toBeNull();
+describe('parseMlResponse — sobre {data, error} del servicio real', () => {
+  it('parsea una respuesta normal con probabilidad calibrada', () => {
+    const result = parseMlResponse({
+      data: {
+        probabilidad_descompensacion: 0.388,
+        nivel_predicho: 'moderado',
+        model_version: 'prediccion_futura_v4_2026-09-08',
+        datos_suficientes: sufficient,
+      },
+      error: null,
+    });
+
+    expect(result).toEqual({
+      status: 'available',
+      probability: 0.388,
+      level: 'moderado',
+      modelVersion: 'prediccion_futura_v4_2026-09-08',
+      sufficiency: { glucosaAyuno: true, glucosaPostprandial: false, presionArterial: true },
+    });
+  });
+
+  it('acepta también un cuerpo plano, por si el servicio queda detrás de un gateway que desenvuelve', () => {
+    const result = parseMlResponse({
+      probabilidad_descompensacion: 0.1,
+      nivel_predicho: 'bajo',
+      model_version: 'v4',
+      datos_suficientes: sufficient,
+    });
+    expect(result.status).toBe('available');
+  });
+
+  it('probabilidad cero con contrato válido se conserva como cero, no como ausencia', () => {
+    const result = parseMlResponse({
+      data: { probabilidad_descompensacion: 0, nivel_predicho: 'bajo', model_version: 'v4', datos_suficientes: sufficient },
+      error: null,
+    });
+    expect(result).toMatchObject({ status: 'available', probability: 0 });
+  });
+
+  it('un `error` no nulo no publica nada aunque venga con datos', () => {
+    const result = parseMlResponse({
+      data: { probabilidad_descompensacion: 0.9, nivel_predicho: 'alto', datos_suficientes: sufficient },
+      error: { code: 'VALIDATION', message: 'campo faltante' },
+    });
+    expect(result).toEqual({ status: 'unavailable' });
+  });
+});
+
+describe('parseMlResponse — techo de riesgo: probabilidad null NO es ausencia de datos', () => {
+  const ceiling = {
+    data: {
+      probabilidad_descompensacion: null,
+      nivel_predicho: 'alto',
+      model_version: 'prediccion_futura_v4_2026-09-08',
+      datos_suficientes: sufficient,
+      mensaje: '⚠️ Riesgo máximo (presión arterial en nivel de crisis). Este paciente ya está en el peor escenario clínico posible.',
+    },
+    error: null,
+  };
+
+  it('se distingue de unavailable y conserva nivel alto y el motivo', () => {
+    const result = parseMlResponse(ceiling);
+    expect(result.status).toBe('ceiling');
+    expect(result).toMatchObject({ probability: null, level: 'alto' });
+    if (result.status === 'ceiling') {
+      expect(result.message).toContain('presión arterial en nivel de crisis');
+    }
+  });
+
+  it('probabilidad null SIN mensaje no se publica: no se inventa un techo', () => {
+    const sinMensaje = { data: { ...ceiling.data, mensaje: undefined }, error: null };
+    expect(parseMlResponse(sinMensaje)).toEqual({ status: 'unavailable' });
+  });
+
+  it('un mensaje vacío tampoco acredita techo', () => {
+    const vacio = { data: { ...ceiling.data, mensaje: '   ' }, error: null };
+    expect(parseMlResponse(vacio)).toEqual({ status: 'unavailable' });
   });
 });
 
 describe('parseMlResponse — validación defensiva de forma', () => {
-  it('ya NO expone nivel_riesgo_actual ni alerta_roja aunque el endpoint los mande (contrato viejo/error de otro lado)', () => {
+  it('nunca lanza con entradas malformadas', () => {
+    for (const bad of [null, undefined, 'texto plano', [], 42, true]) {
+      expect(() => parseMlResponse(bad)).not.toThrow();
+      expect(parseMlResponse(bad)).toEqual({ status: 'unavailable' });
+    }
+  });
+
+  it('rechaza un nivel_predicho fuera del enum del servicio', () => {
     const result = parseMlResponse({
-      nivel_riesgo_actual: 'alto',
-      alerta_roja: true,
-      probabilidad_empeoramiento_futuro: 0.5,
-      datos_suficientes: sufficient,
+      data: { probabilidad_descompensacion: 0.5, nivel_predicho: 'altísimo', datos_suficientes: sufficient },
+      error: null,
     });
-    expect(result).not.toHaveProperty('nivelRiesgoActual');
-    expect(result).not.toHaveProperty('alertaRoja');
-    expect(result.probabilidadEmpeoramientoFuturo).toBe(0.5);
+    expect(result).toEqual({ status: 'unavailable' });
   });
 
-  it('descarta una probabilidad fuera de rango [0,1]', () => {
-    const result = parseMlResponse({ probabilidad_empeoramiento_futuro: 1.5 });
-    expect(result.probabilidadEmpeoramientoFuturo).toBeNull();
-  });
-
-  it('datosSuficientes es null si el objeto viene incompleto o con tipos incorrectos', () => {
-    expect(parseMlResponse({ datos_suficientes: { glucosa_ayuno: true } }).datosSuficientes).toBeNull();
-    expect(
-      parseMlResponse({ datos_suficientes: { glucosa_ayuno: 'si', glucosa_postprandial: true, presion_arterial: true } })
-        .datosSuficientes,
-    ).toBeNull();
-  });
-
-  it('no truena con un cuerpo vacío o de forma inesperada', () => {
-    expect(() => parseMlResponse(null)).not.toThrow();
-    expect(() => parseMlResponse('texto plano')).not.toThrow();
-    expect(() => parseMlResponse([])).not.toThrow();
-    expect(parseMlResponse(null).probabilidadEmpeoramientoFuturo).toBeNull();
-  });
-
-  it('no publica probabilidad si falta suficiencia aunque el número sea válido', () => {
-    expect(parseMlResponse({ probabilidad_empeoramiento_futuro: 0.8 })).toEqual({
-      probabilidadEmpeoramientoFuturo: null, modelVersion: null, datosSuficientes: null,
+  it('sin nivel_predicho no se publica una probabilidad suelta', () => {
+    expect(parseMlResponse({ data: { probabilidad_descompensacion: 0.5, datos_suficientes: sufficient }, error: null })).toEqual({
+      status: 'unavailable',
     });
   });
 
-  it.each([NaN, Infinity, -0.1, 1.01, null, '0.8'])(
-    'descarta todo el resultado con probabilidad inválida (%s)', (probability) => {
-      expect(parseMlResponse({ probabilidad_empeoramiento_futuro: probability, datos_suficientes: sufficient }).datosSuficientes).toBeNull();
-    },
-  );
-
-  it.each([0, 1])('acepta una probabilidad límite %s con contrato suficiente', (probability) => {
-    const result = parseMlResponse({ probabilidad_empeoramiento_futuro: probability, datos_suficientes: sufficient });
-    expect(result.probabilidadEmpeoramientoFuturo).toBe(probability);
-    expect(result.modelVersion).toBeNull();
+  it('rechaza probabilidades fuera de [0,1] y no finitas', () => {
+    for (const probability of [1.5, -0.1, Number.NaN, Number.POSITIVE_INFINITY, '0.5']) {
+      const result = parseMlResponse({
+        data: { probabilidad_descompensacion: probability, nivel_predicho: 'alto', datos_suficientes: sufficient },
+        error: null,
+      });
+      expect(result).toEqual({ status: 'unavailable' });
+    }
   });
 
-  it('mantiene nullable una versión no informada sin inventar identificación', () => {
-    const result = parseMlResponse({ probabilidad_empeoramiento_futuro: 0.8, datos_suficientes: sufficient, model_version: ' ' });
-    expect(result.modelVersion).toBeNull();
-    expect(result.probabilidadEmpeoramientoFuturo).toBe(0.8);
+  it('exige los tres booleanos de suficiencia completos', () => {
+    const parcial = parseMlResponse({
+      data: { probabilidad_descompensacion: 0.5, nivel_predicho: 'moderado', datos_suficientes: { glucosa_ayuno: true } },
+      error: null,
+    });
+    expect(parcial).toEqual({ status: 'unavailable' });
+
+    const conTipoMalo = parseMlResponse({
+      data: {
+        probabilidad_descompensacion: 0.5,
+        nivel_predicho: 'moderado',
+        datos_suficientes: { glucosa_ayuno: 'si', glucosa_postprandial: true, presion_arterial: true },
+      },
+      error: null,
+    });
+    expect(conTipoMalo).toEqual({ status: 'unavailable' });
   });
 
-  it('oculta allfalse como política provisional de Kuni', () => {
-    const result = parseMlResponse({ probabilidad_empeoramiento_futuro: 0.8, datos_suficientes: {
-      glucosa_ayuno: false, glucosa_postprandial: false, presion_arterial: false,
-    } });
-    expect(result.probabilidadEmpeoramientoFuturo).toBeNull();
+  it('política provisional de Kuni: con las tres variables insuficientes no se publica nada', () => {
+    const result = parseMlResponse({
+      data: {
+        probabilidad_descompensacion: 0.9,
+        nivel_predicho: 'alto',
+        datos_suficientes: { glucosa_ayuno: false, glucosa_postprandial: false, presion_arterial: false },
+      },
+      error: null,
+    });
+    expect(result).toEqual({ status: 'unavailable' });
+  });
+
+  it('una versión ausente o en blanco queda null, nunca se inventa', () => {
+    const sinVersion = parseMlResponse({
+      data: { probabilidad_descompensacion: 0.8, nivel_predicho: 'alto', model_version: '  ', datos_suficientes: sufficient },
+      error: null,
+    });
+    expect(sinVersion).toMatchObject({ status: 'available', modelVersion: null });
+  });
+
+  it('no expone riesgo actual ni alertas del modelo aunque el servicio los mandara', () => {
+    const result = parseMlResponse({
+      data: {
+        nivel_riesgo_actual: 'alto',
+        alerta_roja: true,
+        probabilidad_descompensacion: 0.5,
+        nivel_predicho: 'moderado',
+        datos_suficientes: sufficient,
+      },
+      error: null,
+    });
+    expect(result).not.toHaveProperty('nivel_riesgo_actual');
+    expect(result).not.toHaveProperty('alerta_roja');
   });
 });

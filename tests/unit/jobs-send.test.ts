@@ -1,0 +1,185 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({
+  from: vi.fn(),
+  rpc: vi.fn(),
+  sendFreeformMessage: vi.fn(),
+}));
+vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({ from: mocks.from, rpc: mocks.rpc }) }));
+vi.mock("@/lib/env/server", () => ({ serverEnv: { WHATSAPP_PROVIDER: "mock" } }));
+vi.mock("@/lib/whatsapp/provider", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/whatsapp/provider")>("@/lib/whatsapp/provider");
+  return {
+    ...actual,
+    getWhatsAppProvider: async () => ({
+      dbProviderValue: "demo",
+      sendFreeformMessage: mocks.sendFreeformMessage,
+    }),
+  };
+});
+
+import { sendDueInteractions } from "@/lib/jobs/send";
+import { WhatsAppProviderError } from "@/lib/whatsapp/provider";
+
+function makeChain(result: { data?: unknown; error?: unknown } = { data: null, error: null }) {
+  const chain = {
+    select: vi.fn(() => chain),
+    update: vi.fn(() => chain),
+    in: vi.fn(() => chain),
+    eq: vi.fn(() => chain),
+    then: <TResult1 = typeof result>(
+      onfulfilled?: ((value: typeof result) => TResult1 | PromiseLike<TResult1>) | null,
+    ) => Promise.resolve(result).then(onfulfilled),
+  };
+  return chain;
+}
+
+function queueFrom(queues: Record<string, ReturnType<typeof makeChain>[]>) {
+  mocks.from.mockImplementation((table: string) => {
+    const next = queues[table]?.shift();
+    if (!next) throw new Error(`Llamada inesperada a .from("${table}") sin chain en cola`);
+    return next;
+  });
+}
+
+const medicationInteraction = {
+  id: "bi-1",
+  patient_id: "patient-1",
+  kind: "medication",
+  reply_code: "A7F3",
+  payload_snapshot: { doseText: "1 tableta", medicationName: "Metformina" },
+};
+
+beforeEach(() => {
+  mocks.from.mockReset();
+  mocks.rpc.mockReset();
+  mocks.sendFreeformMessage.mockReset();
+});
+
+describe("sendDueInteractions", () => {
+  it("sin interacciones reclamadas, no hace ninguna otra consulta ni envío", async () => {
+    mocks.rpc.mockResolvedValue({ data: [], error: null });
+    const result = await sendDueInteractions();
+    expect(result).toEqual({ claimed: 0, sent: 0, failed: 0 });
+    expect(mocks.from).not.toHaveBeenCalled();
+    expect(mocks.sendFreeformMessage).not.toHaveBeenCalled();
+  });
+
+  it("con sesión reciente (<24h), manda texto libre y marca 'accepted'", async () => {
+    mocks.rpc.mockResolvedValue({ data: [medicationInteraction], error: null });
+    const updateChain = makeChain({ error: null });
+    queueFrom({
+      patients: [makeChain({ data: [{ id: "patient-1", whatsapp_e164: "+5215512345678" }], error: null })],
+      patient_messaging_state: [
+        makeChain({ data: [{ patient_id: "patient-1", last_inbound_at: "2026-09-08T10:00:00.000Z" }], error: null }),
+      ],
+      bot_interactions: [updateChain],
+    });
+    mocks.sendFreeformMessage.mockResolvedValue({ providerMessageId: "demo-1", acceptedAt: new Date("2026-09-08T14:00:00.000Z") });
+
+    const result = await sendDueInteractions();
+
+    expect(result).toEqual({ claimed: 1, sent: 1, failed: 0 });
+    expect(mocks.sendFreeformMessage).toHaveBeenCalledWith({
+      toE164: "+5215512345678",
+      body: expect.stringContaining("SI A7F3"),
+    });
+    expect(updateChain.update).toHaveBeenCalledWith(
+      expect.objectContaining({ delivery_status: "accepted", provider_message_id: "demo-1" }),
+    );
+  });
+
+  it("sin sesión reciente y sin plantilla configurada, marca 'failed' sin llamar al proveedor", async () => {
+    mocks.rpc.mockResolvedValue({ data: [medicationInteraction], error: null });
+    const updateChain = makeChain({ error: null });
+    queueFrom({
+      patients: [makeChain({ data: [{ id: "patient-1", whatsapp_e164: "+5215512345678" }], error: null })],
+      patient_messaging_state: [makeChain({ data: [], error: null })], // nunca escribió
+      bot_interactions: [updateChain],
+    });
+
+    const result = await sendDueInteractions();
+
+    expect(result).toEqual({ claimed: 1, sent: 0, failed: 1 });
+    expect(mocks.sendFreeformMessage).not.toHaveBeenCalled();
+    expect(updateChain.update).toHaveBeenCalledWith(
+      expect.objectContaining({ delivery_status: "failed", failure_code: "template_not_configured" }),
+    );
+  });
+
+  it("una sesión de hace más de 24h ya no cuenta como reciente", async () => {
+    mocks.rpc.mockResolvedValue({ data: [medicationInteraction], error: null });
+    const updateChain = makeChain({ error: null });
+    queueFrom({
+      patients: [makeChain({ data: [{ id: "patient-1", whatsapp_e164: "+5215512345678" }], error: null })],
+      patient_messaging_state: [
+        makeChain({ data: [{ patient_id: "patient-1", last_inbound_at: "2026-09-06T10:00:00.000Z" }], error: null }),
+      ],
+      bot_interactions: [updateChain],
+    });
+
+    const result = await sendDueInteractions();
+
+    expect(result.failed).toBe(1);
+    expect(mocks.sendFreeformMessage).not.toHaveBeenCalled();
+  });
+
+  it("paciente ya no existe → 'patient_not_found', nunca intenta enviar", async () => {
+    mocks.rpc.mockResolvedValue({ data: [medicationInteraction], error: null });
+    const updateChain = makeChain({ error: null });
+    queueFrom({
+      patients: [makeChain({ data: [], error: null })],
+      patient_messaging_state: [makeChain({ data: [], error: null })],
+      bot_interactions: [updateChain],
+    });
+
+    const result = await sendDueInteractions();
+
+    expect(result.failed).toBe(1);
+    expect(updateChain.update).toHaveBeenCalledWith(expect.objectContaining({ failure_code: "patient_not_found" }));
+  });
+
+  it("un error reintentable del proveedor (rate limit) marca 'unknown', no 'failed'", async () => {
+    mocks.rpc.mockResolvedValue({ data: [medicationInteraction], error: null });
+    const updateChain = makeChain({ error: null });
+    queueFrom({
+      patients: [makeChain({ data: [{ id: "patient-1", whatsapp_e164: "+5215512345678" }], error: null })],
+      patient_messaging_state: [
+        makeChain({ data: [{ patient_id: "patient-1", last_inbound_at: "2026-09-08T10:00:00.000Z" }], error: null }),
+      ],
+      bot_interactions: [updateChain],
+    });
+    mocks.sendFreeformMessage.mockRejectedValue(
+      new WhatsAppProviderError("rate_limited", "Demasiadas solicitudes", { retriable: true }),
+    );
+
+    const result = await sendDueInteractions();
+
+    expect(result.failed).toBe(1);
+    expect(updateChain.update).toHaveBeenCalledWith(
+      expect.objectContaining({ delivery_status: "unknown", failure_code: "rate_limited" }),
+    );
+  });
+
+  it("un error no reintentable (número inválido) marca 'failed' directo", async () => {
+    mocks.rpc.mockResolvedValue({ data: [medicationInteraction], error: null });
+    const updateChain = makeChain({ error: null });
+    queueFrom({
+      patients: [makeChain({ data: [{ id: "patient-1", whatsapp_e164: "+5215512345678" }], error: null })],
+      patient_messaging_state: [
+        makeChain({ data: [{ patient_id: "patient-1", last_inbound_at: "2026-09-08T10:00:00.000Z" }], error: null }),
+      ],
+      bot_interactions: [updateChain],
+    });
+    mocks.sendFreeformMessage.mockRejectedValue(
+      new WhatsAppProviderError("invalid_recipient", "Número inválido", { retriable: false }),
+    );
+
+    const result = await sendDueInteractions();
+
+    expect(result.failed).toBe(1);
+    expect(updateChain.update).toHaveBeenCalledWith(
+      expect.objectContaining({ delivery_status: "failed", failure_code: "invalid_recipient" }),
+    );
+  });
+});

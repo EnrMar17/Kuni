@@ -301,7 +301,7 @@ describe('measurement corrections', () => {
     await login();
     for (const [systolic, diastolic] of [[59, 30], [60, 30], [260, 180], [261, 80], [120, 181], [120, 120], [120.5, 80]]) {
       const args = [patient, id(52), (await row('measurements', id(52))).updated_at,
-        { kind: 'blood_pressure', patientId: patient, observedAt: now, systolicMmhg: systolic, diastolicMmhg: diastolic }, 'Presion cotejada', doctor];
+        { kind: 'blood_pressure', patientId: patient, observedAt: now, systolicMmHg: systolic, diastolicMmHg: diastolic }, 'Presion cotejada', doctor];
       if (validateBloodPressureValue(systolic, diastolic).valid && Number.isInteger(systolic)) {
         await expect(rpc('correct_measurement', args)).resolves.toHaveProperty('error', null);
       } else await expect(rpc('correct_measurement', args)).rejects.toMatchObject({ code: 'PT422' });
