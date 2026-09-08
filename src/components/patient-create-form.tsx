@@ -1,7 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
+import { savePatient } from "@/actions/patients";
+import { savePatientSchema, type PatientEditData } from "@/contracts/patient-registration";
 
 type PatientDraft = {
   fullName: string;
@@ -18,6 +22,7 @@ type PatientDraft = {
   noticeVersion: string;
   consentMethod: string;
   evidenceNote: string;
+  reason: string;
 };
 
 const diagnoses = [
@@ -37,12 +42,17 @@ function validateBirthDate(value: string) {
   );
 }
 
-export function PatientCreateForm() {
+export function PatientCreateForm({ initial }: { initial?: PatientEditData }) {
+  const router = useRouter();
+  const patientId = useRef(initial?.patientId);
+  const saving = useRef(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const {
     register,
     handleSubmit,
     control,
-    formState: { errors, isSubmitSuccessful },
+    setError,
+    formState: { errors, isSubmitting },
   } = useForm<PatientDraft>({
     mode: "onTouched",
     defaultValues: {
@@ -52,9 +62,51 @@ export function PatientCreateForm() {
       diagnoses: [],
       consentGranted: false,
       consentMethod: "in_person",
+      ...(initial ? { ...initial.input, curp: initial.input.curp ?? "", bloodType: initial.input.bloodType ?? "",
+        consentGranted: initial.consentGranted } : {}),
     },
   });
   const consent = useWatch({ control, name: "consentGranted" });
+  const consentChanged = initial ? consent !== initial.consentGranted : consent;
+  async function submit(draft: PatientDraft) {
+    if (saving.current) return;
+    setSaveError(null);
+    patientId.current ??= crypto.randomUUID();
+    const parsed = savePatientSchema.safeParse({ patientId: patientId.current, revision: initial?.revision ?? null,
+      reason: initial ? draft.reason : "Alta de paciente", input: {
+        fullName: draft.fullName, birthDate: draft.birthDate, sex: draft.sex, clinicalRecord: draft.clinicalRecord,
+        curp: draft.curp?.trim().toUpperCase() || null, whatsappE164: draft.whatsappE164,
+        bloodType: draft.bloodType || null, diagnoses: draft.diagnoses, initialRisk: draft.initialRisk,
+        initialRiskReason: draft.initialRiskReason, consent: consentChanged ? {
+          event: draft.consentGranted ? "granted" : "revoked", noticeVersion: draft.noticeVersion,
+          method: draft.consentMethod, evidenceNote: draft.evidenceNote,
+        } : null,
+      } });
+    if (!parsed.success) {
+      for (const issue of parsed.error.issues) {
+        const name = (issue.path[0] === "input" ? issue.path[1] : issue.path[0]) as keyof PatientDraft;
+        if (name in draft) setError(name, { message: "Revisa este campo." });
+      }
+      setSaveError("Revisa los datos antes de guardar.");
+      return;
+    }
+    try {
+      saving.current = true;
+      const result = await savePatient(parsed.data);
+      if (result.error) {
+        setSaveError(result.error.code === "CONFLICT"
+          ? "El expediente cambió o sus identificadores ya están registrados. Vuelve al censo y revisa los datos antes de reintentar."
+          : result.error.message);
+        return;
+      }
+      router.push(`/pacientes/${result.data.id}`);
+      router.refresh();
+    } catch {
+      setSaveError("No se pudo confirmar el guardado. Revisa el censo antes de reintentar.");
+    } finally {
+      saving.current = false;
+    }
+  }
   function error(name: keyof PatientDraft) {
     return errors[name] ? (
       <span id={`${name}-error`} className="field-error" role="alert">
@@ -71,14 +123,10 @@ export function PatientCreateForm() {
     <form
       className="patient-form mt-6 grid gap-6"
       noValidate
-      onSubmit={handleSubmit(() => {
-        /* Preview only; persistence awaits the clinical command. */
-      })}
+      onSubmit={(event) => { void handleSubmit(submit)(event); }}
+      aria-busy={isSubmitting}
     >
-      <p className="draft-notice">
-        Preparación de alta · Puedes revisar los datos. El guardado todavía no
-        está disponible.
-      </p>
+      <fieldset disabled={isSubmitting} className="grid min-w-0 gap-6">
       <section className="form-section">
         <div className="form-section-heading">
           <span className="section-number">01</span>
@@ -153,6 +201,7 @@ export function PatientCreateForm() {
             WhatsApp
             <input
               type="tel"
+              readOnly={Boolean(initial)}
               autoComplete="tel"
               placeholder="+525512345678"
               {...register("whatsappE164", {
@@ -254,14 +303,14 @@ export function PatientCreateForm() {
             El paciente otorgó consentimiento para automatización por WhatsApp.
           </span>
         </label>
-        {consent ? (
+        {consentChanged ? (
           <div className="form-fields mt-5 clinical-page-content">
             <label>
               Versión del aviso
               <input
                 {...register("noticeVersion", {
                   validate: (value) =>
-                    !consent ||
+                    !consentChanged ||
                     Boolean(value?.trim()) ||
                     "Escribe la versión del aviso presentado.",
                 })}
@@ -279,12 +328,12 @@ export function PatientCreateForm() {
               </select>
             </label>
             <label className="sm:col-span-2">
-              Evidencia del consentimiento
+              Evidencia del cambio de consentimiento
               <textarea
                 rows={3}
                 {...register("evidenceNote", {
                   validate: (value) =>
-                    !consent ||
+                    !consentChanged ||
                     Boolean(value?.trim()) ||
                     "Describe la evidencia del consentimiento.",
                 })}
@@ -295,14 +344,17 @@ export function PatientCreateForm() {
           </div>
         ) : null}
       </section>
-      {isSubmitSuccessful ? (
-        <p role="status" className="draft-notice">
-          Datos revisados correctamente. No se ha guardado ningún paciente.
-        </p>
+      {initial ? <div className="form-fields"><label>
+        Motivo de la edición
+        <textarea rows={3} {...register("reason", { validate: value => Boolean(value?.trim()) || "Describe el motivo de la edición." })} {...a11y("reason")} />
+        {error("reason")}
+      </label></div> : null}
+      {saveError ? (
+        <p role="alert" className="field-error">{saveError}</p>
       ) : null}
       <footer className="form-actions">
         <span className="text-xs text-slate-500">
-          Los datos se conservan solo mientras esta vista permanezca abierta.
+          {initial ? "Edición del expediente" : "Alta de paciente"}
         </span>
         <div className="flex gap-3">
           <Link className="clinical-button" href="/pacientes">
@@ -312,10 +364,11 @@ export function PatientCreateForm() {
             className="clinical-button clinical-button-primary"
             type="submit"
           >
-            Revisar datos <span aria-hidden="true">→</span>
+            {isSubmitting ? "Guardando…" : initial ? "Guardar cambios" : "Registrar paciente"}
           </button>
         </div>
       </footer>
+      </fieldset>
     </form>
   );
 }

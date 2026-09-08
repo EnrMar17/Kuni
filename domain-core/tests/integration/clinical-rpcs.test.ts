@@ -106,7 +106,7 @@ beforeAll(async () => {
     grant execute on function auth.uid() to anon,authenticated,service_role;
     set timezone = 'UTC';
   `);
-  for (const file of ['0001_kuni.sql', '0002_clinical_derivations.sql', '0003_clinical_commands.sql', '0004_patient_complications.sql', '0005_medication_therapeutic_class.sql', '0006_inbound_commands.sql', '0007_external_derivatives.sql']) {
+  for (const file of ['0001_kuni.sql', '0002_clinical_derivations.sql', '0003_clinical_commands.sql', '0004_patient_complications.sql', '0005_medication_therapeutic_class.sql', '0006_inbound_commands.sql', '0007_external_derivatives.sql', '0008_patient_registration.sql']) {
     await db.exec(await readFile(new URL(`../../../supabase/migrations/${file}`, import.meta.url), 'utf8'));
   }
 }, 30_000);
@@ -150,6 +150,125 @@ beforeEach(async () => {
 });
 afterEach(async () => { await db.exec('rollback; reset role;'); });
 afterAll(async () => { await db?.close(); });
+
+describe('U08 patient registration phase 1', () => {
+  const target = id(800);
+  const input = () => ({ fullName: 'Paciente ficticio nuevo', birthDate: '1980-01-02', sex: 'unknown',
+    clinicalRecord: 'NUEVO', curp: null, whatsappE164: '+525500000800', bloodType: null,
+    initialRisk: 'medium', initialRiskReason: 'Valoracion de prueba', diagnoses: ['diabetes_type_2', 'hypertension'], consent: null });
+  const consent = { event: 'granted', noticeVersion: 'v1', method: 'in_person', evidenceNote: 'Evidencia de prueba' };
+  const create = (value: unknown = input(), targetRoom = room, targetDoctor = doctor, targetId = target) =>
+    attempt(() => query<{ data: { patient: { id: string; updatedAt: string } }; error: null }>(
+      'select public.register_patient($1,$2,$3,$4) as value', [targetId, targetRoom, targetDoctor, value]));
+  const revision = () => query('select jsonb_build_object(\'updatedAt\',p.updated_at,\'consentId\',\
+    (select id from consent_events where patient_id=p.id order by sequence_no desc limit 1),\'diagnoses\',\
+    (select coalesce(jsonb_agg(jsonb_build_object(\'id\',d.id,\'updatedAt\',d.updated_at) order by d.id),\'[]\'::jsonb)\
+    from patient_diagnoses d where d.patient_id=p.id and d.active)) as value from patients p where id=$1', [target]);
+  const edit = (token: unknown, value: unknown = input()) => attempt(() => query(
+    'select public.update_patient_registration($1,$2,$3,$4,$5,$6) as value', [target, room, doctor, value, token, 'Correccion cotejada']));
+
+  it('atomically saves demographics, diagnoses, consent and derived provenance without inventing plans', async () => {
+    expect((await create({ ...input(), consent })).data.patient.id).toBe(target);
+    expect(await query('select count(*)::integer as value from patient_diagnoses where patient_id=$1 and active', [target])).toBe(2);
+    expect(await query('select count(*)::integer as value from consent_events where patient_id=$1', [target])).toBe(1);
+    expect(await query('select count(*)::integer as value from monitoring_plans where patient_id=$1', [target])).toBe(0);
+    expect(await query('select count(*)::integer as value from prescriptions where patient_id=$1', [target])).toBe(0);
+    expect(await query('select input_snapshot as value from risk_assessments where patient_id=$1', [target]))
+      .toMatchObject({ actorUserId: actor, attributedDoctorId: doctor });
+    await owner();
+    expect(await query('select count(*)::integer as value from audit_log where actor_user_id=$1 and attributed_doctor_id=$2', [actor, doctor])).toBeGreaterThan(0);
+  });
+  it.each([viewer, otherActor, null])('denies an unauthorized actor %s', async user => {
+    await login(user);
+    await expect(create()).rejects.toMatchObject({ code: user === null ? 'PT401' : 'PT403' });
+  });
+  it('denies a foreign room or mismatched doctor', async () => {
+    await expect(create(input(), id(22), otherDoctor)).rejects.toMatchObject({ code: 'PT403' });
+    await expect(create(input(), room, otherDoctor)).rejects.toMatchObject({ code: 'PT403' });
+  });
+  it.each([
+    { birthDate: '2999-01-01' }, { birthDate: '2026-02-30' }, { diagnoses: [] },
+    { diagnoses: ['hypertension', 'hypertension'] }, { diagnoses: ['unknown'] },
+    { consent: { ...consent, evidenceNote: '' } }, { consent: { ...consent, event: 'revoked' } },
+    { unitId: otherUnit }, { whatsappE164: '555' }, { initialRiskReason: '' },
+  ])('rejects invalid input %j without partial rows', async override => {
+    await expect(create({ ...input(), ...override })).rejects.toMatchObject({ code: 'PT422' });
+    expect(await query('select count(*)::integer as value from patients where id=$1', [target])).toBe(0);
+  });
+  it('rejects repeated IDs and canonical phone duplicates', async () => {
+    await create();
+    await expect(create()).rejects.toMatchObject({ code: 'PT409' });
+    await expect(create({ ...input(), clinicalRecord: 'OTRO', whatsappE164: '+5215500000800' }, room, doctor, id(801)))
+      .rejects.toMatchObject({ code: 'PT409' });
+  });
+  it('edits once, preserves diagnoses history and does not invent consent events', async () => {
+    await create();
+    const token = await revision();
+    await edit(token, { ...input(), fullName: 'Nombre corregido', diagnoses: ['hypertension'] });
+    expect(await query('select full_name as value from patients where id=$1', [target])).toBe('Nombre corregido');
+    expect(await query('select count(*)::integer as value from patient_diagnoses where patient_id=$1', [target])).toBe(2);
+    expect(await query('select count(*)::integer as value from patient_diagnoses where patient_id=$1 and active', [target])).toBe(1);
+    expect(await query('select count(*)::integer as value from consent_events where patient_id=$1', [target])).toBe(0);
+    await expect(edit(token)).rejects.toMatchObject({ code: 'PT409' });
+  });
+  it('rejects a stale consent token and forbids recipient changes', async () => {
+    await create({ ...input(), consent });
+    const token = await revision();
+    await db.query('insert into consent_events(unit_id,patient_id,event,notice_version,method,evidence_note,attributed_doctor_id) values($1,$2,\'revoked\',\'v1\',\'in_person\',\'Baja de prueba\',$3)', [unit, target, doctor]);
+    await expect(edit(token)).rejects.toMatchObject({ code: 'PT409' });
+    await expect(edit(await revision(), { ...input(), whatsappE164: '+525500000899' })).rejects.toMatchObject({ code: 'PT422' });
+  });
+  it('rejects a stale diagnosis token', async () => {
+    await create();
+    const token = await revision();
+    await db.query('update patient_diagnoses set description=\'Actualizado\' where patient_id=$1', [target]);
+    await expect(edit(token)).rejects.toMatchObject({ code: 'PT409' });
+  });
+  it('records an explicit revocation and cancels only unsent work', async () => {
+    await create({ ...input(), consent });
+    await owner();
+    await db.query(`insert into bot_interactions(unit_id,patient_id,kind,deduplication_key,scheduled_at,expects_response,provider,delivery_status,delivered_at)
+      values($1,$2,'nonresponse_summary','u08-queued',now(),false,'demo','queued',null),
+      ($1,$2,'nonresponse_summary','u08-delivered',now(),false,'demo','delivered',now())`, [unit, target]);
+    await login();
+    await edit(await revision(), { ...input(), consent: { ...consent, event: 'revoked', evidenceNote: 'Revocacion cotejada' } });
+    expect(await query("select event as value from consent_events where patient_id=$1 order by sequence_no desc limit 1", [target])).toBe('revoked');
+    expect(await query("select jsonb_object_agg(deduplication_key,delivery_status) as value from bot_interactions where patient_id=$1", [target]))
+      .toEqual({ 'u08-queued': 'cancelled', 'u08-delivered': 'delivered' });
+  });
+  it('compares timestamp formats semantically and preserves unchanged diagnosis identity', async () => {
+    await create();
+    const token = await revision() as { updatedAt: string; consentId: string | null; diagnoses: { id: string; updatedAt: string }[] };
+    const changedFormat = { ...token, updatedAt: token.updatedAt.replace('+00:00', 'Z'),
+      diagnoses: token.diagnoses.map(d => ({ ...d, updatedAt: d.updatedAt.replace('+00:00', 'Z') })).reverse() };
+    await edit(changedFormat);
+    expect((await revision() as typeof token).diagnoses).toEqual(token.diagnoses);
+  });
+  it('denies inactive rooms and cross-room edits', async () => {
+    await create();
+    const token = await revision();
+    await owner();
+    await db.query('insert into doctors(id,unit_id,full_name) values($1,$2,\'Otro medico\')', [id(803), unit]);
+    await db.query('insert into consulting_rooms(id,unit_id,name,doctor_id) values($1,$2,\'Otro consultorio\',$3)', [id(802), unit, id(803)]);
+    await login();
+    await expect(attempt(() => query('select public.update_patient_registration($1,$2,$3,$4,$5,$6) as value',
+      [target, id(802), id(803), input(), token, 'Prueba']))).rejects.toMatchObject({ code: 'PT403' });
+    await owner();
+    await db.query('update consulting_rooms set active=false where id=$1', [room]);
+    await login();
+    await expect(create()).rejects.toMatchObject({ code: 'PT403' });
+  });
+  it('rolls back the whole registration when derivation fails', async () => {
+    await owner();
+    await db.exec(`create function public.reject_registration_risk() returns trigger language plpgsql as $$ begin raise exception 'forced risk failure'; end; $$;
+      create trigger reject_registration_risk before insert on risk_assessments for each row execute function public.reject_registration_risk();`);
+    await login();
+    await expect(create({ ...input(), consent })).rejects.toThrow('forced risk failure');
+    for (const table of ['patients', 'patient_diagnoses', 'consent_events']) {
+      expect(await query(`select count(*)::integer as value from ${table} where ${table === 'patients' ? 'id' : 'patient_id'}=$1`, [target])).toBe(0);
+    }
+  });
+});
 
 describe('U07 external derivatives', () => {
   async function refresh(cutoff = now) {

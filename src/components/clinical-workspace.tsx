@@ -10,6 +10,7 @@ import {
 import { AppointmentForm } from "@/components/appointment-form";
 import { StatisticsView } from "@/components/statistics-view";
 import { PatientCreateForm } from "@/components/patient-create-form";
+import type { PatientEditData } from "@/contracts/patient-registration";
 import { AlertActions, ComplicationPanel, MeasurementCorrection, MedicationClassification, PrescriptionAdjustment } from "@/components/clinical-actions";
 import type { DashboardData, DashboardPatient } from "@/lib/domain/dashboard";
 import {
@@ -288,14 +289,14 @@ function PatientsView({ data }: { data: DashboardData }) {
   );
 }
 
-function NewPatientView() {
+function NewPatientView({ initial }: { initial?: PatientEditData }) {
   return (
     <>
       <PageHeader
-        title="Alta de paciente"
-        description="Prepara los datos personales, la valoración inicial y el consentimiento del paciente."
+        title={initial ? "Editar expediente" : "Alta de paciente"}
+        description="Datos personales, valoración y consentimiento del paciente."
       />
-      <PatientCreateForm />
+      <PatientCreateForm initial={initial} />
     </>
   );
 }
@@ -396,16 +397,18 @@ export function ClinicalWorkspace({
   data,
   mode,
   context,
+  patientEdit,
 }: {
   data: DashboardData;
   mode: WorkspaceMode;
   context: ClinicalTopBarContext;
+  patientEdit?: PatientEditData;
 }) {
   const content =
     mode === "patients" ? (
       <PatientsView data={data} />
     ) : mode === "new-patient" ? (
-      <NewPatientView />
+      <NewPatientView initial={patientEdit} />
     ) : mode === "appointments" ? (
       <AppointmentsView data={data} />
     ) : mode === "statistics" ? (
@@ -430,11 +433,13 @@ export function PatientProfile({
   patient,
   context,
   predictionPanel,
+  canWrite = false,
 }: {
   data: DashboardData;
   patient: DashboardPatient;
   context: ClinicalTopBarContext;
   predictionPanel?: ReactNode;
+  canWrite?: boolean;
 }) {
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_12%_2%,#e0e7ff_0,transparent_31%),radial-gradient(circle_at_94%_18%,#dbeafe_0,transparent_28%),#e8ebf2] p-3 text-slate-800 md:p-6 lg:p-8">
@@ -443,8 +448,9 @@ export function PatientProfile({
         <div className="clinical-page-content">
           <PageHeader
             title={patient.fullName}
-            description={`Expediente ${patient.clinicalRecord}. Esta ficha presenta datos observados del consultorio autorizado; las correcciones y cambios clínicos aún requieren operaciones auditables.`}
+            description={`Expediente ${patient.clinicalRecord}`}
           >
+            {canWrite ? <Link className="clinical-button" href={`/pacientes/${patient.id}/editar`}>Editar expediente</Link> : null}
             <Link
               className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 shadow-sm"
               href="/pacientes"

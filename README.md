@@ -136,6 +136,8 @@ Copiar `.env.example` a `.env.local` y completar las variables documentadas en `
 
 El trabajo continúa con un [backlog único](docs/continuidad-unificada.md): entrega realizada, verificación y pendientes. La [auditoría previa](docs/auditoria-estado-actual.md) conserva los porcentajes históricos por integrante. Los resultados remotos se distinguen de la verificación local.
 
+La [fase 1 de U08](docs/u08-alta-edicion-fase1.md) conecta el alta y la edición de expediente, diagnósticos y consentimiento. Requiere la migración 0008 después de 0006/0007; recetas y planes iniciales siguen pendientes.
+
 - [x] Requerimientos y plan técnico definidos (documentos internos, no versionados).
 - [x] Estructura de carpetas del repositorio.
 - [x] Inicialización de la app Next.js (`create-next-app`) + dependencias del plan instaladas.

@@ -2113,6 +2113,15 @@ export type Database = {
         Args: { p_patient_id: string; p_unit_id: string }
         Returns: boolean
       }
+      register_patient: {
+        Args: {
+          p_doctor_id: string
+          p_input: Json
+          p_patient_id: string
+          p_room_id: string
+        }
+        Returns: Json
+      }
       resolve_alert: {
         Args: {
           p_alert_id: string
@@ -2121,6 +2130,17 @@ export type Database = {
           p_next_status: string
           p_patient_id: string
           p_reason: string
+        }
+        Returns: Json
+      }
+      update_patient_registration: {
+        Args: {
+          p_doctor_id: string
+          p_input: Json
+          p_patient_id: string
+          p_reason: string
+          p_revision: Json
+          p_room_id: string
         }
         Returns: Json
       }
