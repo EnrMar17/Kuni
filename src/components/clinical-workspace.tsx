@@ -169,6 +169,7 @@ function PatientsView({ data }: { data: DashboardData }) {
                 <th className="px-5 py-4">Paciente</th>
                 <th className="px-5 py-4">Diagnósticos</th>
                 <th className="px-5 py-4">Prioridad actual</th>
+                <th className="px-5 py-4">Seguimiento</th>
                 <th className="px-5 py-4">Última respuesta</th>
                 <th className="px-5 py-4">
                   <span className="sr-only">Abrir ficha</span>
@@ -211,6 +212,28 @@ function PatientsView({ data }: { data: DashboardData }) {
                   <td className="px-5 py-4 text-slate-600">
                     {dateTime(patient.lastResponseAt, data.timezone)}
                   </td>
+                  <td className="px-5 py-4">
+                    <div className="flex flex-wrap gap-1.5 text-xs font-semibold">
+                      {patient.alerts.length ? (
+                        <span className="rounded-full bg-rose-50 px-2 py-1 text-rose-700">
+                          {patient.alerts.length} alerta{patient.alerts.length === 1 ? "" : "s"}
+                        </span>
+                      ) : null}
+                      {patient.nonresponse.pending ? (
+                        <span className="rounded-full bg-amber-50 px-2 py-1 text-amber-700">
+                          {patient.nonresponse.pending} pendiente{patient.nonresponse.pending === 1 ? "" : "s"}
+                        </span>
+                      ) : null}
+                      {patient.appointments[0] ? (
+                        <span className="rounded-full bg-sky-50 px-2 py-1 text-sky-700">
+                          Cita {dateTime(patient.appointments[0].startsAt, data.timezone)}
+                        </span>
+                      ) : null}
+                      {!patient.alerts.length && !patient.nonresponse.pending && !patient.appointments[0] ? (
+                        <span className="text-slate-400">Sin pendientes</span>
+                      ) : null}
+                    </div>
+                  </td>
                   <td className="px-5 py-4 text-right">
                     <Link
                       className="text-xs font-bold text-indigo-600 hover:text-indigo-800"
@@ -225,7 +248,7 @@ function PatientsView({ data }: { data: DashboardData }) {
                 <tr>
                   <td
                     className="px-5 py-10 text-center text-slate-500"
-                    colSpan={5}
+                    colSpan={6}
                   >
                     No hay pacientes que coincidan con los filtros.
                   </td>
@@ -333,7 +356,7 @@ function AlertsView({ data }: { data: DashboardData }) {
     <>
       <PageHeader
         title="Alertas y triaje"
-        description="Visualiza alertas reales del consultorio. Reconocer, resolver, marcar urgencia y recalcular riesgo siguen deshabilitados hasta contar con las RPC auditables de C."
+        description="Visualiza alertas reales del consultorio y documenta su atención o una urgencia. La prioridad se recalcula en servidor; el modelo experimental no la sustituye."
       />
       <section className="mt-6 grid gap-4">
         {data.alerts.map((alert, index) => (

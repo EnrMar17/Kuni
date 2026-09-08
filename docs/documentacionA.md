@@ -12,6 +12,7 @@
 - Programar cita usa React Hook Form y valida paciente del censo, motivo y horario futuro en la zona del consultorio. Ofrece resumen y limpieza de campos; permanece sin guardar hasta conectar la operación transaccional e invalidación de recordatorios.
 - Se retiraron los enlaces redundantes «Volver al dashboard» y el botón separado de Indicadores.
 - Se añadió clasificación terapéutica en cada receta activa: el médico puede marcar el medicamento como antidiabético, antihipertensivo u otra clase. La Server Action verifica que la receta activa pertenezca al paciente y al consultorio seleccionados antes de actualizar el catálogo protegido por RLS; el cambio queda en la auditoría de `medications`.
+- La clasificación terapéutica ya se vuelve a leer desde Supabase y se presenta como vigente al reabrir la ficha. El censo también muestra alertas, pendientes de respuesta y próxima cita por paciente; el dashboard principal dirige sus accesos rápidos a los flujos reales de alertas y tratamiento, en vez de dejarlos deshabilitados.
 - La ficha ya integra RF30. El panel consulta el modelo solo desde el servidor, se entrega progresivamente con skeleton y muestra nivel, probabilidad o techo de riesgo, suficiencia y brechas. Si no hay endpoint o la respuesta es inválida, conserva un estado neutral y visible de «Servicio no disponible», sin fabricar una predicción ni modificar la prioridad clínica.
 
 - Dashboard, censo, ficha, alta, alertas, citas y estadísticas usan `ClinicalHeader`, con los mismos controles y selección activa derivada de la ruta. Los datos del médico/consultorio siguen llegando desde el contexto SSR.
@@ -156,9 +157,9 @@ Los reportes identifican unidad, consultorio, zona horaria y corte. Prioridad y 
 
 ### Continuidad de frontend — estado de la última comprobación
 
-- `npm run typecheck`, `npm run lint` y `git diff --check`: aprobados después de integrar clasificación terapéutica y RF30.
-- `npm test -- --run`: 328 pruebas aprobadas en 32 archivos. Incluye la validación de las clases terapéuticas permitidas en la acción clínica.
-- `npm run build`: build de producción completo aprobado con Next.js 16.3.4; incluye la ruta dinámica `/pacientes/[patientId]` y el límite Server/Client del panel RF30.
+- `npm run typecheck`, `npm run lint` y `git diff --check`: aprobados tras integrar la relectura de clase terapéutica y las señales reales del censo.
+- `npm test -- --run`: 347 pruebas aprobadas en 33 archivos. Incluye el alcance de unidad, receta activa y conflicto de la actualización terapéutica, además del render de los accesos rápidos del dashboard.
+- `npm run build`: build de producción completo aprobado con Next.js 16.3.4; incluye las rutas dinámicas de ficha, el límite Server/Client del panel RF30 y los accesos del dashboard a flujos clínicos reales.
 - La revisión manual en navegador se dejó fuera por decisión del equipo. Estas comprobaciones no escribieron en Supabase, no enviaron WhatsApp ni demostraron la inferencia alojada.
 
 ### Evidencia histórica de la integración visual original

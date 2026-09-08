@@ -125,7 +125,9 @@ export function MedicationClassification({
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [therapeuticClass, setTherapeuticClass] = useState<TherapeuticClass | "">("");
+  const [therapeuticClass, setTherapeuticClass] = useState<TherapeuticClass | "">(
+    prescription.therapeuticClass ?? "",
+  );
   const [message, setMessage] = useState<string | null>(null);
 
   const save = () => {
@@ -182,13 +184,18 @@ export function MedicationClassification({
           {therapeuticClasses.find((item) => item.value === therapeuticClass)?.description}
         </p>
       ) : null}
+      {prescription.therapeuticClass ? (
+        <p className="mt-2 text-xs font-semibold text-emerald-700">
+          Clasificación vigente: {therapeuticClasses.find((item) => item.value === prescription.therapeuticClass)?.label}
+        </p>
+      ) : null}
       <button
         className="mt-3 inline-flex min-h-10 items-center rounded-xl bg-sky-700 px-3 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-sky-800 disabled:cursor-not-allowed disabled:opacity-60"
         disabled={isPending || !therapeuticClass}
         onClick={save}
         type="button"
       >
-        {isPending ? "Guardando clasificación…" : "Guardar clasificación"}
+        {isPending ? "Guardando clasificación…" : prescription.therapeuticClass ? "Actualizar clasificación" : "Guardar clasificación"}
       </button>
       {message ? (
         <p aria-live="polite" className={`mt-3 text-xs font-semibold ${message.includes("guardada") ? "text-emerald-700" : "text-rose-700"}`} role={message.includes("guardada") ? "status" : "alert"}>

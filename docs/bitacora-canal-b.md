@@ -225,3 +225,60 @@ Entregable verificable declarado en el README que nunca se había ejecutado cont
 - No se tocaron los datos demo existentes (los tres pacientes ficticios, la unidad Morelia). No se envió WhatsApp ni se corrió ningún otro job durante la verificación.
 
 **Siguiente en la cola de B:** B7 (`appointment`/`nonresponse_summary` en el materializador), después B8 (CSP, apagar SMS de Twilio) y B5 al final.
+
+## 2026-09-08 — B7: `appointment` y `nonresponse_summary` en el materializador
+
+`materialize.ts` los dejaba fuera a propósito desde su primera entrega: `appointment` porque no había plantilla aprobada con contenido real, `nonresponse_summary` porque su disparador ("al siguiente contacto permitido") nunca quedó definido con precisión en el plan. Antes de escribir código, dos decisiones de producto se acordaron con el equipo (no las inventé):
+
+- **Anticipación del recordatorio de cita:** 24h antes de `starts_at`.
+- **`nonresponse_summary`** — va dirigido al **paciente** (por WhatsApp) y también debe verse en el dashboard; se dispara con el mismo criterio que ya usa `evaluateRisk()` para elevar a riesgo medio (≥3 no-respuestas), pero **una sola vez por racha**, no cada tick mientras la racha sigue viva; tono deliberadamente amable, sin presión.
+
+**Diseño del disparador de `nonresponse_summary`** (la parte no trivial): en vez de una ventana móvil de 7 días — que se volvería a disparar en cada tick mientras la racha sigue activa — se cuenta *desde la última respuesta del paciente* (o desde siempre, si nunca ha respondido) sus no-respuestas seguidas. Al llegar a 3, el `id` de esa 3ª no-respuesta se usa como **ancla fija** de la clave de deduplicación (`nonresponse_summary:<patient_id>:<anchorId>`): aunque la racha siga creciendo a 4, 5, 10 no-respuestas, el ancla no cambia, así que el `upsert` con `ignoreDuplicates` nunca vuelve a insertar el mismo mensaje. La racha solo "se rompe" — y una nueva podría volver a disparar un mensaje, con un ancla distinta — en cuanto el paciente responde cualquier cosa. Implementado como función pura (`nonresponseStreakAnchors()`), testeable sin base de datos, igual que el resto del dominio.
+
+- `src/lib/jobs/materialize.ts`: dos bloques nuevos por unidad —
+  - `appointment`: consulta `appointments` con `status='scheduled'` y `starts_at` futuro; materializa cuando `starts_at - 24h <= now`. `expects_response=false`, dedup key `appointment:<id>:reminder`. El texto local de la cita (`startsAtLocal`) se formatea en el momento de materializar con la zona horaria de la unidad (mismo patrón que ya usa el snapshot de medicamento/medición), para que `send.ts` no necesite conocer la zona horaria.
+  - `nonresponse_summary`: consulta el historial de `bot_interactions` de medicamento/medición con `timeout_at`/`response_at`, agrupa por paciente y aplica `nonresponseStreakAnchors()` (nueva, exportada, pura).
+- `src/lib/whatsapp/message-body.ts`: `AppointmentReminderInput` (informativo, sin código de respuesta) y `NonresponseSummaryReminderInput` (tono amable, sin presión, sin pedir dato alguno).
+- `src/lib/jobs/send.ts`: `renderMessageBody()` ahora cubre los cuatro `kind`; ambos nuevos reutilizan el mismo flujo de entrega que medicamento/medición — **misma limitación conocida**: sin ventana de sesión reciente, fallan con `template_not_configured` hasta que exista plantilla aprobada (B5). No hice ningún tratamiento especial para "esperar a que el paciente escriba": el sistema ya no tiene un mecanismo de reintento distinto de eso para ningún `kind`, así que introducir uno solo para `nonresponse_summary` habría sido inconsistente con el resto.
+- Visibilidad en el dashboard: gratis, sin tocar nada — `src/lib/domain/dashboard.ts` ya mapea cualquier `kind` de `bot_interactions` a los "hitos de interacción" de la ficha (línea `interactions: ...map((r) => ({ id: r.id, kind: r.kind, ... }))`), sin narrowing a un enum cerrado.
+- Tests: `tests/unit/jobs-materialize.test.ts` — 3 casos nuevos de integración (recordatorio de cita a tiempo, cita todavía lejana no genera nada, check-in disparado al cruzar el umbral) + 5 casos unitarios de `nonresponseStreakAnchors()` (sin racha, ancla estable al crecer la racha, una respuesta rompe la racha, una racha nueva usa un ancla distinta, dos pacientes se evalúan por separado). `tests/unit/jobs-send.test.ts` — 2 casos nuevos (cita se manda con sesión reciente, check-in se manda sin código de respuesta en el texto).
+- Verificado: `tsc --noEmit`, ESLint y `next build` de producción sin errores; **337 pruebas en 32 archivos** (antes 322).
+
+**Siguiente en la cola de B:** B8 (CSP, apagar SMS de Twilio), y B5 al final (plantillas de Twilio, depende de aprobación externa).
+
+## 2026-09-08 — B8: CSP con nonce por request, probado en caliente
+
+Pendiente diferido desde la revisión OWASP inicial (§A05, 2026-09-07) "por el riesgo de romper el build si se configura mal en el tiempo disponible". Esta vez sí se probó en caliente antes de darlo por cerrado, como pedía ese mismo comentario.
+
+**Primer intento (descartado):** una CSP estática en `next.config.ts` (`script-src 'self'`, sin nonce). Compiló, pasó `tsc`/ESLint/`next build` sin errores — pero al abrir `/login` en el navegador real (vía `ngrok`, con el `next dev` del equipo), la consola mostró:
+
+```
+Executing inline script violates the following Content Security Policy directive 'script-src 'self' 'unsafe-eval''...
+Uncaught (in promise) InvariantError: Expected a request ID to be defined... via self.__next_r. This is a bug in Next.js.
+```
+
+Next.js App Router inyecta scripts inline (`self.__next_f.push(...)`) para hidratar el streaming de RSC — **en producción también, no solo en dev**. `script-src 'self'` sin excepción los bloquea y rompe la hidratación de verdad, no solo la política. Es exactamente el riesgo que ya se había señalado y por el que se difirió la primera vez.
+
+**Solución (la documentada oficialmente por Next.js para App Router):** un nonce único por request, generado en el middleware, mandado dos veces con el mismo valor — en `request.headers` (para que Next lo detecte al renderizar y marque sus propios `<script>` con ese nonce) y en `response.headers` (lo que recibe el navegador). Implementado en `updateSession()` (`src/lib/supabase/proxy.ts`), que ya era el único lugar donde corre lógica de request/response por navegación:
+
+- `script-src 'self' 'nonce-<random>' 'strict-dynamic'` (+ `'unsafe-eval'` solo si `NODE_ENV !== 'production'`, que es lo que exige el HMR de Turbopack en `npm run dev`; `next build`/producción no lo necesita).
+- `style-src 'self' 'unsafe-inline'`: cuatro vistas usan `style={{...}}` de React (`clinical-workspace.tsx`, `clinical-dashboard.tsx`, `statistics-view.tsx`, `global-error.tsx`); nonar cada estilo inline es una refactorización aparte fuera de este pendiente, y el riesgo de inyección CSS es mucho menor que uno de script.
+- `connect-src 'self'` + origen https/wss del proyecto Supabase real (leído de `serverEnv.NEXT_PUBLIC_SUPABASE_URL`, no hardcodeado) — el navegador nunca habla con Twilio ni con el servicio de ML, ambos server-only.
+- El resto de directivas (`img-src`, `font-src`, `form-action`, `frame-ancestors`, `base-uri`, `object-src`) estrictas: el repo no carga scripts, fuentes ni imágenes de terceros (verificado: cero uso de `next/font`, `next/image` con `remotePatterns`, o `<script src=` externo).
+- `next.config.ts` conserva las cabeceras estáticas de siempre (`X-Frame-Options`, HSTS, etc.) para todas las rutas, más una CSP mínima y estática (`default-src 'none'; frame-ancestors 'none'; base-uri 'none'`) solo para las tres rutas que el matcher del proxy excluye a propósito (`api/webhooks/*`, `api/jobs/*`, `api/health` — se autentican con firma de Twilio/Bearer, no con cookies): son JSON puro sin HTML, así que una CSP con nonce ahí no aporta nada y una estática muy estricta es perfectamente segura.
+
+**Verificado en caliente, contra la app real** (no solo `next build`): con el `next dev` + `ngrok` del equipo ya corriendo, se pidió reiniciar el proceso dos veces (`next.config.ts`/middleware no se recargan en caliente) — primero con el diseño roto (confirmando el error real en consola), después con el nonce:
+
+- Header `Content-Security-Policy` con nonce distinto en cada request, confirmado por `fetch()` directo desde la consola del navegador.
+- `/login` renderiza sin ningún error de CSP en consola, con estilos inline aplicados correctamente.
+- Redirect de `/dashboard` (sin sesión) a `/login` también lleva el mismo header con nonce.
+- `/api/health` lleva la CSP mínima estática (`default-src 'none'`), confirmado con `curl`.
+- El único error de consola que quedó (`WebSocket ... /_next/hmr failed`) no es una violación de CSP — es la conexión de HMR de Turbopack sobre el túnel de `ngrok`, ajeno a este cambio.
+
+Tests nuevos: `tests/unit/auth-proxy.test.ts` — 3 casos (`Content-Security-Policy` con nonce en `script-src` cuando no redirige, el mismo header también en la respuesta de redirect a `/login`, y que dos requests distintos generan nonces distintos). Suite completa: `tsc --noEmit`, ESLint y `next build` de producción sin errores; **340 pruebas en 32 archivos** (antes 337).
+
+**Segundo pendiente de B8, manual — hecho:** proveedor SMS apagado en Supabase (Authentication → Sign In/Providers → Phone → OFF). Verificado después con el recordatorio explícito del bug del 2026-09-08 (esa vez se había apagado Email por accidente junto con SMS): `curl -X POST ".../auth/v1/token?grant_type=password"` con credenciales inventadas devolvió `400 invalid_credentials`, no `422 email_provider_disabled` — Email sigue activo, login del equipo no se rompió.
+
+Con esto, **B8 queda completo.**
+
+**Siguiente en la cola de B:** B5 (plantillas aprobadas de Twilio), el último punto de la lista original — depende de aprobación externa (Twilio/Meta), fuera del control directo de B.

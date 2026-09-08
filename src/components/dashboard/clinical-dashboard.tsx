@@ -964,7 +964,7 @@ export function ClinicalDashboard({
                 </span>
                 <span className="flex items-center gap-1.5">
                   <Icon name="clock" className="size-4 text-emerald-500" />
-                  Última respuesta · 90d
+                  Última respuesta: {selected.time}
                 </span>
               </div>
             </div>
@@ -985,17 +985,17 @@ export function ClinicalDashboard({
               </button>
               <div className="mt-2.5 grid grid-cols-2 gap-2">
                 <button
-                  className="rounded-xl bg-rose-500 px-2 py-2.5 text-xs font-bold text-white shadow-sm"
-                  disabled
-                  title="Registro de urgencia aún no disponible"
+                  className="rounded-xl bg-rose-500 px-2 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-rose-600"
+                  onClick={() => router.push("/alertas")}
+                  title="Abre las alertas activas para documentar la urgencia"
                   type="button"
                 >
                   Citar a urgencias
                 </button>
                 <button
-                  className="rounded-xl border border-indigo-200 bg-indigo-50 px-2 py-2.5 text-xs font-bold text-indigo-700 shadow-sm"
-                  disabled
-                  title="Ajuste de dosis aún no disponible"
+                  className="rounded-xl border border-indigo-200 bg-indigo-50 px-2 py-2.5 text-xs font-bold text-indigo-700 shadow-sm transition hover:bg-indigo-100"
+                  onClick={() => selectedPatient && router.push(`/pacientes/${selectedPatient.id}`)}
+                  title="Abre la ficha del paciente para ajustar el tratamiento"
                   type="button"
                 >
                   Ajustar dosis
