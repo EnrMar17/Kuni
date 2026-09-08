@@ -1,0 +1,44 @@
+# Documentos de planeación internos (no se suben al repo)
+requerimientos-rpm-cronicos.md
+kuni-plan-tecnico.md
+kuni-schema.sql
+kuni-cron.sql
+kuni.env.example
+
+# Configuración local de asistentes de IA (Claude Code / Codex CLI)
+.claude/
+.codex/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+build/
+dist/
+coverage/
+next-env.d.ts
+.vercel
+
+# Variables de entorno (secretos reales)
+.env
+.env.local
+.env.*.local
+
+# Supabase CLI local
+supabase/.branches/
+supabase/.temp/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# TypeScript build info
+*.tsbuildinfo
