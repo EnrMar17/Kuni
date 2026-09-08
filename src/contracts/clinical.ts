@@ -95,6 +95,62 @@ export const alertResolutionInputSchema = z.object({
   note: z.string().trim().min(1),
 });
 
+// Contratos de las otras 4 RPC clínicas de C (0003_clinical_commands.sql).
+// Cada `input` reproduce EXACTAMENTE la lista blanca de llaves que valida su
+// RPC (`p_input - array[...] <> '{}'`) — una llave de más o de menos no es un
+// error de UI, es PT422 del lado del servidor.
+
+export const measurementCorrectionInputSchema = z.object({
+  measurementId: z.uuid(),
+  expectedUpdatedAt: z.iso.datetime({ offset: true }),
+  reason: z.string().trim().min(1),
+  // Mismo esquema que ya valida la captura original: la RPC exige el mismo
+  // `kind` que ya tiene la medición, así que reusar measurementInputSchema
+  // (no una versión más laxa) evita que el formulario acepte algo que el
+  // servidor va a rechazar con PT422.
+  input: measurementInputSchema,
+});
+
+export const medicationResponseCorrectionInputSchema = z.object({
+  patientId: z.uuid(),
+  responseId: z.uuid(),
+  expectedUpdatedAt: z.iso.datetime({ offset: true }),
+  // La RPC solo acepta la toma si `scheduleId` + `scheduledAt` identifican SIN
+  // AMBIGÜEDAD la ocurrencia original (0 o >1 coincidencias en
+  // prescription_schedules → CONFLICT), así que ambos son obligatorios.
+  scheduleId: z.uuid(),
+  scheduledAt: z.iso.datetime({ offset: true }),
+  taken: z.boolean(),
+  reason: z.string().trim().min(1),
+});
+
+export const prescriptionScheduleEntrySchema = z.object({
+  weekday: z.number().int().min(1).max(7),
+  localTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Formato HH:MM."),
+});
+
+export const prescriptionAdjustmentInputSchema = z.object({
+  patientId: z.uuid(),
+  prescriptionId: z.uuid(),
+  expectedVersion: z.number().int().positive(),
+  expectedUpdatedAt: z.iso.datetime({ offset: true }),
+  reason: z.string().trim().min(1),
+  medicationId: z.uuid(),
+  doseText: z.string().trim().min(1),
+  instructions: z.string().trim(),
+  endsAt: z.iso.date().nullable(),
+  schedules: z.array(prescriptionScheduleEntrySchema).min(1).max(168),
+});
+
+export const urgentMarkInputSchema = z.object({
+  patientId: z.uuid(),
+  // ID estable del evento que motiva la urgencia (p. ej. el id de la alerta o
+  // interacción que la disparó) — la RPC lo usa para deduplicar reintentos y
+  // acumular alias sin reabrir una urgencia ya atendida.
+  eventId: z.uuid(),
+  reason: z.string().trim().min(1),
+});
+
 export const riskResultSchema = z.object({
   level: riskLevelSchema,
   ruleVersion: z.string().min(1),
@@ -110,6 +166,11 @@ export type MeasurementInput = z.infer<typeof measurementInputSchema>;
 export type AppointmentInput = z.infer<typeof appointmentInputSchema>;
 export type AlertResolutionInput = z.infer<typeof alertResolutionInputSchema>;
 export type RiskResult = z.infer<typeof riskResultSchema>;
+export type MeasurementCorrectionInput = z.infer<typeof measurementCorrectionInputSchema>;
+export type MedicationResponseCorrectionInput = z.infer<typeof medicationResponseCorrectionInputSchema>;
+export type PrescriptionScheduleEntry = z.infer<typeof prescriptionScheduleEntrySchema>;
+export type PrescriptionAdjustmentInput = z.infer<typeof prescriptionAdjustmentInputSchema>;
+export type UrgentMarkInput = z.infer<typeof urgentMarkInputSchema>;
 
 export type ActionError = {
   code: string;

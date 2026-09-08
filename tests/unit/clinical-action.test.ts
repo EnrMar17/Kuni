@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/auth/context", () => ({ requireClinicalWriteContext: vi.fn() }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
 
-import { resolveAlertRpcInputSchema } from "@/actions/clinical";
+import { medicationTherapeuticClassInputSchema, resolveAlertRpcInputSchema } from "@/actions/clinical";
 import { mapClinicalRpcFailure } from "@/lib/clinical/rpc-errors";
 
 describe("adaptador de resolve_alert", () => {
@@ -27,5 +27,22 @@ describe("adaptador de resolve_alert", () => {
     expect(
       mapClinicalRpcFailure({ code: "PT422", message: "VALIDATION" }).code,
     ).toBe("VALIDATION");
+  });
+
+  it("acepta solo clases terapéuticas aprobadas para una receta del paciente", () => {
+    const valid = medicationTherapeuticClassInputSchema.safeParse({
+      patientId: "11111111-1111-4111-8111-111111111111",
+      prescriptionId: "22222222-2222-4222-8222-222222222222",
+      medicationId: "33333333-3333-4333-8333-333333333333",
+      therapeuticClass: "antidiabetic",
+    });
+    expect(valid.success).toBe(true);
+
+    expect(medicationTherapeuticClassInputSchema.safeParse({
+      patientId: "11111111-1111-4111-8111-111111111111",
+      prescriptionId: "22222222-2222-4222-8222-222222222222",
+      medicationId: "33333333-3333-4333-8333-333333333333",
+      therapeuticClass: "diuretic",
+    }).success).toBe(false);
   });
 });

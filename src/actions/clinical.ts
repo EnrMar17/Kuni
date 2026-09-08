@@ -5,14 +5,19 @@ import { revalidatePath } from "next/cache";
 import { formatInTimeZone } from "date-fns-tz";
 
 import { AppError, ok, toApiError, type ApiResult } from "@/contracts/errors";
-import { alertResolutionInputSchema } from "@/contracts/clinical";
-import { measurementInputSchema } from "@/contracts/clinical";
+import {
+  alertResolutionInputSchema,
+  measurementInputSchema,
+  medicationResponseCorrectionInputSchema,
+  type MedicationResponseCorrectionInput,
+} from "@/contracts/clinical";
 import { requireClinicalWriteContext } from "@/lib/auth/context";
 import { mapClinicalRpcFailure } from "@/lib/clinical/rpc-errors";
 import { createClient } from "@/lib/supabase/server";
 
-// `updated_at` is intentionally a string: converting it through Date can drop
-// microseconds and turn a valid optimistic-concurrency token into a conflict.
+// `updated_at` es intencionalmente un string: convertirlo por Date puede
+// perder microsegundos y volver inválido un token de concurrencia optimista
+// que sí era correcto.
 export const resolveAlertRpcInputSchema = alertResolutionInputSchema.extend({
   patientId: z.uuid(),
   expectedUpdatedAt: z.iso.datetime({ offset: true }),
@@ -49,12 +54,18 @@ const adjustPrescriptionInputSchema = z.object({
   schedules: z.array(z.object({ weekday: z.number().int().min(1).max(7), localTime: z.iso.time({ precision: 0 }) })).min(1).max(168),
   reason: z.string().trim().min(1).max(2_000),
 });
+export const medicationTherapeuticClassInputSchema = patientIdSchema.extend({
+  prescriptionId: z.uuid(),
+  medicationId: z.uuid(),
+  therapeuticClass: z.enum(["antidiabetic", "antihypertensive", "other"]),
+});
 
 export type UrgentInput = z.infer<typeof urgentInputSchema>;
 export type ComplicationInput = z.infer<typeof complicationInputSchema>;
 export type DeactivateComplicationInput = z.infer<typeof deactivateComplicationInputSchema>;
 export type CorrectMeasurementInput = z.infer<typeof correctMeasurementInputSchema>;
 export type AdjustPrescriptionInput = z.infer<typeof adjustPrescriptionInputSchema>;
+export type MedicationTherapeuticClassInput = z.infer<typeof medicationTherapeuticClassInputSchema>;
 
 function readResolvedAlert(payload: unknown): ResolvedAlert {
   const parsed = z
@@ -78,6 +89,10 @@ function readResolvedAlert(payload: unknown): ResolvedAlert {
   return parsed.data.data.alert;
 }
 
+/** Verifica que el paciente exista, siga activo y pertenezca al consultorio
+ * seleccionado por el médico antes de permitir cualquier mutación clínica —
+ * defensa en profundidad además de lo que ya exige la RPC del lado del
+ * servidor. */
 async function assertPatientInSelectedRoom(patientId: string) {
   const context = await requireClinicalWriteContext();
   const supabase = await createClient();
@@ -106,10 +121,7 @@ function readCommandId(payload: unknown, key: string) {
   return value.id;
 }
 
-/**
- * Adapter for C's `resolve_alert` RPC. The route/UI remains disabled until
- * migrations 0002/0003 are applied and database types are regenerated.
- */
+/** Adaptador de la RPC `resolve_alert` de C (RF23). */
 export async function resolveAlert(
   input: ResolveAlertRpcInput,
 ): Promise<ApiResult<ResolvedAlert>> {
@@ -143,6 +155,7 @@ export async function resolveAlert(
   }
 }
 
+/** Adaptador de la RPC `mark_urgent` de C (RF22). */
 export async function markUrgent(input: UrgentInput): Promise<ApiResult<ResolvedAlert>> {
   const parsed = urgentInputSchema.safeParse(input);
   if (!parsed.success) return { data: null, error: { code: "VALIDATION", message: "Escribe el motivo de la urgencia." } };
@@ -163,6 +176,7 @@ export async function markUrgent(input: UrgentInput): Promise<ApiResult<Resolved
   }
 }
 
+/** Alta de complicación (RF28) — inserta una fila nueva en patient_complications. */
 export async function addPatientComplication(input: ComplicationInput): Promise<ApiResult<{ id: string }>> {
   const parsed = complicationInputSchema.safeParse(input);
   if (!parsed.success) return { data: null, error: { code: "VALIDATION", message: "Revisa el código y la fecha de la complicación." } };
@@ -184,6 +198,8 @@ export async function addPatientComplication(input: ComplicationInput): Promise<
   }
 }
 
+/** Baja lógica de complicación (RF28) — nunca borra la fila, solo la desactiva
+ * con motivo, para conservar el historial. */
 export async function deactivatePatientComplication(input: DeactivateComplicationInput): Promise<ApiResult<{ id: string }>> {
   const parsed = deactivateComplicationInputSchema.safeParse(input);
   if (!parsed.success) return { data: null, error: { code: "VALIDATION", message: "Explica por qué se retira la complicación." } };
@@ -207,6 +223,7 @@ export async function deactivatePatientComplication(input: DeactivateComplicatio
   }
 }
 
+/** Adaptador de la RPC `correct_measurement` de C (RF19). */
 export async function correctMeasurement(input: CorrectMeasurementInput): Promise<ApiResult<{ id: string }>> {
   const parsed = correctMeasurementInputSchema.safeParse(input);
   if (!parsed.success) return { data: null, error: { code: "VALIDATION", message: "Revisa los valores y el motivo de corrección." } };
@@ -221,6 +238,40 @@ export async function correctMeasurement(input: CorrectMeasurementInput): Promis
   } catch (error) { return toApiError(error); }
 }
 
+/** Adaptador de la RPC `correct_medication_response` de C (RF20). La RPC solo
+ * acepta la toma si `scheduleId` + `scheduledAt` identifican sin ambigüedad
+ * la ocurrencia original (si no, CONFLICT), así que ambos son obligatorios. */
+export async function correctMedicationResponse(
+  input: MedicationResponseCorrectionInput,
+): Promise<ApiResult<{ id: string }>> {
+  const parsed = medicationResponseCorrectionInputSchema.safeParse(input);
+  if (!parsed.success) {
+    return { data: null, error: { code: "VALIDATION", message: "Revisa los datos de la corrección de la toma." } };
+  }
+  try {
+    const { context, supabase } = await assertPatientInSelectedRoom(parsed.data.patientId);
+    const response = await supabase.rpc("correct_medication_response", {
+      p_patient_id: parsed.data.patientId,
+      p_response_id: parsed.data.responseId,
+      p_expected_updated_at: parsed.data.expectedUpdatedAt,
+      p_schedule_id: parsed.data.scheduleId,
+      p_scheduled_at: parsed.data.scheduledAt,
+      p_taken: parsed.data.taken,
+      p_reason: parsed.data.reason,
+      p_doctor_id: context.consultingRoom.doctorId,
+    });
+    if (response.error) throw mapClinicalRpcFailure(response.error);
+    const id = readCommandId(response.data, "medicationResponse");
+    refreshClinicalViews();
+    return ok({ id });
+  } catch (error) {
+    return toApiError(error);
+  }
+}
+
+/** Adaptador de la RPC `adjust_prescription` de C (RF21). La RPC exige que
+ * `startsAt` sea EXACTAMENTE "hoy" en la zona horaria de la unidad — se
+ * calcula aquí en vez de confiar en el reloj del navegador. */
 export async function adjustPrescription(input: AdjustPrescriptionInput): Promise<ApiResult<{ id: string }>> {
   const parsed = adjustPrescriptionInputSchema.safeParse(input);
   if (!parsed.success) return { data: null, error: { code: "VALIDATION", message: "Revisa el ajuste, sus horarios y el motivo." } };
@@ -233,4 +284,62 @@ export async function adjustPrescription(input: AdjustPrescriptionInput): Promis
     refreshClinicalViews();
     return ok({ id });
   } catch (error) { return toApiError(error); }
+}
+
+/**
+ * Classifies the medication used by an active prescription. The prescription
+ * lookup prevents a clinician from changing a medication outside the selected
+ * patient's room; the database trigger records the change in the audit trail.
+ */
+export async function setMedicationTherapeuticClass(
+  input: MedicationTherapeuticClassInput,
+): Promise<ApiResult<{ id: string }>> {
+  const parsed = medicationTherapeuticClassInputSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      data: null,
+      error: {
+        code: "VALIDATION",
+        message: "Selecciona una clase terapéutica válida.",
+      },
+    };
+  }
+
+  try {
+    const { context, supabase } = await assertPatientInSelectedRoom(parsed.data.patientId);
+    const { data: prescription, error: prescriptionError } = await supabase
+      .from("prescriptions")
+      .select("id")
+      .eq("id", parsed.data.prescriptionId)
+      .eq("unit_id", context.unitId)
+      .eq("patient_id", parsed.data.patientId)
+      .eq("medication_id", parsed.data.medicationId)
+      .eq("status", "active")
+      .maybeSingle();
+    if (prescriptionError) throw mapClinicalRpcFailure(prescriptionError);
+    if (!prescription) {
+      throw new AppError(
+        "FORBIDDEN",
+        "El medicamento no corresponde a una receta activa de este paciente.",
+      );
+    }
+
+    const { data: medication, error: medicationError } = await supabase
+      .from("medications")
+      .update({ therapeutic_class: parsed.data.therapeuticClass })
+      .eq("id", parsed.data.medicationId)
+      .eq("unit_id", context.unitId)
+      .select("id")
+      .maybeSingle();
+    if (medicationError) throw mapClinicalRpcFailure(medicationError);
+    if (!medication) {
+      throw new AppError("CONFLICT", "El medicamento cambió o ya no está disponible. Actualiza la ficha.");
+    }
+
+    revalidatePath(`/pacientes/${parsed.data.patientId}`);
+    refreshClinicalViews();
+    return ok({ id: medication.id });
+  } catch (error) {
+    return toApiError(error);
+  }
 }
