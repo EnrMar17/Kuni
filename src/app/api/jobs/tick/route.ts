@@ -1,6 +1,7 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { serverEnv } from "@/lib/env/server";
+import { expireDueInteractions } from "@/lib/jobs/expire";
 import { materializeDueInteractions } from "@/lib/jobs/materialize";
 import { sendDueInteractions } from "@/lib/jobs/send";
 
@@ -20,11 +21,13 @@ function isAuthorized(request: Request): boolean {
  * Supabase Cron (`pg_cron` + `pg_net`, o un cron externo) lo llame cada
  * pocos minutos con `Authorization: Bearer <CRON_SECRET>`.
  *
- * Materializa primero, envía después, en la misma invocación: así una
- * ocurrencia que acaba de nacer puede salir en el mismo tick sin esperar al
- * siguiente. Ambos pasos son idempotentes por su cuenta (dedup por clave /
- * `claim_due_interactions` con `skip locked`), así que llamadas
- * superpuestas o reintentos del cron no duplican envíos.
+ * Vence primero, materializa después y envía al final, en la misma
+ * invocación. El orden importa: el silencio del paciente debe convertirse en
+ * alerta ANTES de que salgan los mensajes nuevos del mismo tick, y una
+ * ocurrencia que acaba de nacer puede salir sin esperar al siguiente tick.
+ * Los tres pasos son idempotentes por su cuenta (`timeout_at is null` /
+ * dedup por clave / `claim_due_interactions` con `skip locked`), así que
+ * llamadas superpuestas o reintentos del cron no duplican nada.
  */
 export async function POST(request: Request) {
   if (!isAuthorized(request)) {
@@ -32,9 +35,10 @@ export async function POST(request: Request) {
   }
 
   try {
+    const expire = await expireDueInteractions();
     const materialize = await materializeDueInteractions();
     const send = await sendDueInteractions();
-    return NextResponse.json({ materialize, send });
+    return NextResponse.json({ expire, materialize, send });
   } catch (error) {
     console.error("[jobs/tick] error inesperado:", error);
     return new NextResponse(null, { status: 500 });

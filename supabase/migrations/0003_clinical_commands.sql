@@ -110,18 +110,18 @@ begin
       measurement_context = p_input->>'context',measured_at = v_observed,
       correction_reason = p_reason,attributed_doctor_id = p_doctor_id where id = v_row.id returning * into v_row;
   else
-    if p_input - array['kind','patientId','observedAt','systolicMmhg','diastolicMmhg'] <> '{}'::jsonb
-        or jsonb_typeof(p_input->'systolicMmhg') is distinct from 'number'
-        or jsonb_typeof(p_input->'diastolicMmhg') is distinct from 'number'
-        or (p_input->>'systolicMmhg')::numeric not between 60 and 260
-        or (p_input->>'diastolicMmhg')::numeric not between 30 and 180
-        or (p_input->>'systolicMmhg')::numeric <= (p_input->>'diastolicMmhg')::numeric
-        or trunc((p_input->>'systolicMmhg')::numeric) <> (p_input->>'systolicMmhg')::numeric
-        or trunc((p_input->>'diastolicMmhg')::numeric) <> (p_input->>'diastolicMmhg')::numeric then
+    if p_input - array['kind','patientId','observedAt','systolicMmHg','diastolicMmHg'] <> '{}'::jsonb
+        or jsonb_typeof(p_input->'systolicMmHg') is distinct from 'number'
+        or jsonb_typeof(p_input->'diastolicMmHg') is distinct from 'number'
+        or (p_input->>'systolicMmHg')::numeric not between 60 and 260
+        or (p_input->>'diastolicMmHg')::numeric not between 30 and 180
+        or (p_input->>'systolicMmHg')::numeric <= (p_input->>'diastolicMmHg')::numeric
+        or trunc((p_input->>'systolicMmHg')::numeric) <> (p_input->>'systolicMmHg')::numeric
+        or trunc((p_input->>'diastolicMmHg')::numeric) <> (p_input->>'diastolicMmHg')::numeric then
       raise exception using errcode = 'PT422', message = 'VALIDATION', detail = 'Presion fuera de los criterios de captura de validation.ts.';
     end if;
-    update public.measurements set systolic_mm_hg = (p_input->>'systolicMmhg')::integer,
-      diastolic_mm_hg = (p_input->>'diastolicMmhg')::integer,measured_at = v_observed,
+    update public.measurements set systolic_mm_hg = (p_input->>'systolicMmHg')::integer,
+      diastolic_mm_hg = (p_input->>'diastolicMmHg')::integer,measured_at = v_observed,
       correction_reason = p_reason,attributed_doctor_id = p_doctor_id where id = v_row.id returning * into v_row;
   end if;
   perform private.clinical_review_measurement(v_unit,p_patient_id,v_row.id,p_doctor_id,v_now,p_reason);

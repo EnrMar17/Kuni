@@ -52,21 +52,33 @@ export const prescriptionVersionInputSchema = z.object({
   daysOfWeek: z.array(z.number().int().min(1).max(7)).min(1),
 });
 
+// Los rangos replican `domain-core/src/lib/domain/validation.ts`, que es la
+// misma fuente que aplica `correct_measurement` en 0003. Son criterios de
+// captura (rechazar números imposibles), NO límites clínicos de riesgo: esos
+// vienen de los planes personalizados de cada paciente. Si el formulario
+// valida más laxo que la RPC, el servidor devuelve PT422 y el error parece
+// clínico cuando es de formato.
 export const measurementInputSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("glucose"),
     patientId: z.uuid(),
     observedAt: z.iso.datetime(),
-    glucoseMgDl: z.number().positive(),
+    glucoseMgDl: z.number().min(20).max(700),
     context: z.enum(["fasting", "before_meal", "after_meal", "random", "unspecified"]),
   }),
-  z.object({
-    kind: z.literal("blood_pressure"),
-    patientId: z.uuid(),
-    observedAt: z.iso.datetime(),
-    systolicMmhg: z.number().positive(),
-    diastolicMmhg: z.number().positive(),
-  }),
+  z
+    .object({
+      kind: z.literal("blood_pressure"),
+      patientId: z.uuid(),
+      observedAt: z.iso.datetime(),
+      // Enteras: las columnas SQL son `integer` y la RPC rechaza decimales.
+      systolicMmHg: z.number().int().min(60).max(260),
+      diastolicMmHg: z.number().int().min(30).max(180),
+    })
+    .refine((value) => value.systolicMmHg > value.diastolicMmHg, {
+      message: "La sistólica debe ser mayor que la diastólica.",
+      path: ["systolicMmHg"],
+    }),
 ]);
 
 export const appointmentInputSchema = z.object({

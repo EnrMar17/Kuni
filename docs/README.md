@@ -8,6 +8,8 @@ Esta carpeta concentra la documentación viva de Kuni: lo que no está en el có
 - [`documentacionB.md`](documentacionB.md) — B: persistencia, consultas reales, transporte y migraciones pendientes.
 - [`documentacionC.md`](documentacionC.md) — C: dominio, contratos, pruebas, RPC e integración predictiva pendientes.
 - [`plan-integracion.md`](plan-integracion.md) — Correcciones de develop, nuevos RF28–RF30, dependencias y siguiente entrega por miembro.
+- [`auditoria-integracion.md`](auditoria-integracion.md) — Auditoría del 8 sept 2026: avance por integrante, hallazgos de integración, desalineaciones con esta documentación y orden sugerido.
+- [`pendientes-y-modelo.md`](pendientes-y-modelo.md) — Pendientes de A/B/C separados en independientes y bloqueados, e integración del microservicio predictivo entregado por el equipo de IA.
 
 - [`decisiones.md`](decisiones.md) — Bitácora de decisiones técnicas y de alcance tomadas durante el desarrollo (fecha, decisión, motivo, quién la tomó).
 - [`bitacora-canal-b.md`](bitacora-canal-b.md) — Bitácora operativa de B (persistencia y transporte): Supabase, datos de prueba y canal de WhatsApp.

@@ -43,6 +43,17 @@ const serverEnvSchema = z
     CRON_SECRET: z.string().min(16, {
       message: "CRON_SECRET debe tener al menos 16 caracteres si se define.",
     }).optional(),
+    // Microservicio predictivo del equipo de IA (`app.py`). URL COMPLETA del
+    // endpoint, incluyendo la ruta: el servicio expone `/predecir-riesgo`.
+    // Ausente = inferencia deshabilitada; el tablero sigue funcionando solo
+    // con `evaluateRisk()`. Nunca NEXT_PUBLIC_: el navegador no debe hablarle
+    // al modelo ni conocer su llave.
+    ML_ENDPOINT_URL: z.string().url().optional(),
+    // Viaja en el header `X-API-Key`, que es el que valida el servicio.
+    ML_API_KEY: z.string().optional(),
+    // Presupuesto de espera por paciente. Corto a propósito: una predicción
+    // es un extra, jamás debe retrasar la carga del tablero.
+    ML_TIMEOUT_MS: z.coerce.number().int().min(100).max(10_000).default(2000),
   })
   .superRefine((env, ctx) => {
     if (env.WHATSAPP_PROVIDER !== "twilio") return;
@@ -75,6 +86,9 @@ function loadServerEnv() {
     TWILIO_APPOINTMENT_CONTENT_SID: process.env.TWILIO_APPOINTMENT_CONTENT_SID,
     APP_PUBLIC_URL: process.env.APP_PUBLIC_URL,
     CRON_SECRET: process.env.CRON_SECRET,
+    ML_ENDPOINT_URL: process.env.ML_ENDPOINT_URL,
+    ML_API_KEY: process.env.ML_API_KEY,
+    ML_TIMEOUT_MS: process.env.ML_TIMEOUT_MS,
   });
 
   if (!parsed.success) {

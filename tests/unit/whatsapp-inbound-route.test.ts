@@ -23,6 +23,8 @@ function makeChain(result: { data?: unknown; error?: unknown } = { data: null, e
     select: vi.fn(() => chain),
     update: vi.fn(() => chain),
     eq: vi.fn(() => chain),
+    in: vi.fn(() => chain),
+    limit: vi.fn(() => chain),
     maybeSingle: vi.fn(() => Promise.resolve(result)),
     then: <TResult1 = typeof result>(
       onfulfilled?: ((value: typeof result) => TResult1 | PromiseLike<TResult1>) | null,
@@ -84,7 +86,7 @@ describe("POST /api/webhooks/whatsapp — remitente no registrado", () => {
     const markIgnored = makeChain({ error: null });
     queueFrom({
       webhook_events: [makeChain({ error: null }), markIgnored],
-      patients: [makeChain({ data: null, error: null })],
+      patients: [makeChain({ data: [], error: null })],
     });
     const res = await POST(request(twilioForm({ MessageSid: "SM-desconocido", From: "whatsapp:+5219999999999", Body: "hola" })));
     expect(res.status).toBe(200);
@@ -99,7 +101,7 @@ describe("POST /api/webhooks/whatsapp — paciente resuelto", () => {
     const persistParsed = makeChain({ error: null });
     queueFrom({
       webhook_events: [makeChain({ error: null }), persistParsed],
-      patients: [makeChain({ data: { id: "patient-1", unit_id: "unit-1" }, error: null })],
+      patients: [makeChain({ data: [{ id: "patient-1", unit_id: "unit-1" }], error: null })],
       patient_messaging_state: [makeChain({ error: null })],
     });
 
@@ -127,7 +129,7 @@ describe("POST /api/webhooks/whatsapp — paciente resuelto", () => {
     const persistParsed = makeChain({ error: null });
     queueFrom({
       webhook_events: [makeChain({ error: null }), persistParsed],
-      patients: [makeChain({ data: { id: "patient-1", unit_id: "unit-1" }, error: null })],
+      patients: [makeChain({ data: [{ id: "patient-1", unit_id: "unit-1" }], error: null })],
       patient_messaging_state: [makeChain({ error: null })],
     });
 
@@ -141,5 +143,42 @@ describe("POST /api/webhooks/whatsapp — paciente resuelto", () => {
         normalized_payload: expect.objectContaining({ parsed: expect.objectContaining({ kind: "unrecognized" }) }),
       }),
     );
+  });
+});
+
+describe("POST /api/webhooks/whatsapp — variantes de teléfono de México", () => {
+  it("busca `+521XXXXXXXXXX` y `+52XXXXXXXXXX`: el paciente capturado sin el 1 se resuelve igual", async () => {
+    const lookup = makeChain({ data: [{ id: "patient-1", unit_id: "unit-1" }], error: null });
+    queueFrom({
+      webhook_events: [makeChain({ error: null }), makeChain({ error: null })],
+      patients: [lookup],
+      patient_messaging_state: [makeChain({ error: null })],
+    });
+
+    const res = await POST(request(twilioForm({ MessageSid: "SM-mx", From: "whatsapp:+5214431234567", Body: "SI A7F3" })));
+
+    expect(res.status).toBe(200);
+    expect(lookup.in).toHaveBeenCalledWith("whatsapp_e164", ["+5214431234567", "+524431234567"]);
+  });
+
+  it("dos pacientes activos con variantes del mismo número → 'ignored', no se atribuye a ninguno", async () => {
+    const markIgnored = makeChain({ error: null });
+    queueFrom({
+      webhook_events: [makeChain({ error: null }), markIgnored],
+      patients: [
+        makeChain({
+          data: [
+            { id: "patient-1", unit_id: "unit-1" },
+            { id: "patient-2", unit_id: "unit-1" },
+          ],
+          error: null,
+        }),
+      ],
+    });
+
+    const res = await POST(request(twilioForm({ MessageSid: "SM-ambiguo", From: "whatsapp:+5214431234567", Body: "SI A7F3" })));
+
+    expect(res.status).toBe(200);
+    expect(markIgnored.update).toHaveBeenCalledWith(expect.objectContaining({ processing_status: "ignored" }));
   });
 });

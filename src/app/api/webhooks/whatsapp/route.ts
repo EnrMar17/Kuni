@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { serverEnv } from "@/lib/env/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getWhatsAppProvider } from "@/lib/whatsapp/provider";
+import { phoneLookupCandidates } from "@/lib/whatsapp/phone";
 import { parseIncomingMessage, type ParsedMessage } from "../../../../../domain-core/src/lib/whatsapp/parser";
 
 export const runtime = "nodejs";
@@ -51,7 +52,11 @@ export async function POST(request: Request) {
 
   // El body puede venir vacío en mensajes de solo botón/plantilla interactiva.
   const rawText = params.Body ?? params.ButtonPayload ?? "";
-  const phoneE164 = from.replace(/^whatsapp:/, "");
+  // Los móviles de México llegan como `+521XXXXXXXXXX` aunque el paciente
+  // esté capturado como `+52XXXXXXXXXX` (o al revés): se busca por todas
+  // las variantes equivalentes en vez de exigir que el dato ya venga en
+  // la forma "correcta". Ver `lib/whatsapp/phone.ts`.
+  const phoneCandidates = phoneLookupCandidates(from);
 
   const admin = createAdminClient();
   const { error: insertEventError } = await admin.from("webhook_events").insert({
@@ -72,17 +77,32 @@ export async function POST(request: Request) {
     return new NextResponse(null, { status: 500 });
   }
 
-  const { data: patient, error: patientError } = await admin
+  const { data: matches, error: patientError } = await admin
     .from("patients")
     .select("id, unit_id")
-    .eq("whatsapp_e164", phoneE164)
+    .in("whatsapp_e164", phoneCandidates)
     .eq("active", true)
-    .maybeSingle();
+    .limit(2);
 
   if (patientError) {
     console.error("[whatsapp/inbound] error resolviendo paciente:", patientError);
     return new NextResponse(null, { status: 500 });
   }
+
+  if (matches && matches.length > 1) {
+    // Dos pacientes activos capturados con variantes distintas del mismo
+    // número: atribuir el mensaje a cualquiera de los dos sería inventar
+    // a quién pertenece un dato clínico. Se deja constancia y se ACK.
+    await admin
+      .from("webhook_events")
+      .update({ processing_status: "ignored", last_error: "Varios pacientes activos comparten este número; se requiere corregir el dato antes de procesar.", processed_at: new Date().toISOString() })
+      .eq("provider", provider.dbProviderValue)
+      .eq("event_key", messageSid);
+    console.error("[whatsapp/inbound] número ambiguo entre varios pacientes activos.");
+    return new NextResponse(null, { status: 200 });
+  }
+
+  const patient = matches?.[0];
 
   if (!patient) {
     // Remitente no es un paciente registrado (número equivocado, prueba de
