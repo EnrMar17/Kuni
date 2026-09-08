@@ -6,6 +6,7 @@ import { materializeDueInteractions } from "@/lib/jobs/materialize";
 import { sendDueInteractions } from "@/lib/jobs/send";
 import { reconcileStatusEvents } from "@/lib/jobs/reconcile-status";
 import { reconcileInboundEvents } from "@/lib/jobs/reconcile-inbound";
+import { refreshPatientDerivatives } from "@/lib/jobs/refresh-derivatives";
 
 export const runtime = "nodejs";
 // Nunca cachear/prerenderizar un endpoint que muta datos y depende del reloj.
@@ -23,7 +24,7 @@ function isAuthorized(request: Request): boolean {
  * Supabase Cron (`pg_cron` + `pg_net`, o un cron externo) lo llame cada
  * pocos minutos con `Authorization: Bearer <CRON_SECRET>`.
  *
- * Reconcilia callbacks, vence, materializa, envía y vuelve a reconciliar.
+ * Reconcilia callbacks/inbound, vence, recalcula, materializa, envia y reconcilia.
  * Una entrega recibida previamente debe fijar su plazo antes de expirar;
  * un callback adelantado al guardado del SID puede resolverse tras enviar.
  * Las escrituras locales usan deduplicación/CAS. Eso no convierte al
@@ -38,10 +39,11 @@ export async function POST(request: Request) {
     const callbacksBefore = await reconcileStatusEvents();
     const inbound = await reconcileInboundEvents();
     const expire = await expireDueInteractions();
+    const derivatives = await refreshPatientDerivatives();
     const materialize = await materializeDueInteractions();
     const send = await sendDueInteractions();
     const callbacksAfter = await reconcileStatusEvents();
-    return NextResponse.json({ callbacksBefore, inbound, expire, materialize, send, callbacksAfter });
+    return NextResponse.json({ callbacksBefore, inbound, expire, derivatives, materialize, send, callbacksAfter });
   } catch (error) {
     console.error("[jobs/tick] error inesperado:", error);
     return new NextResponse(null, { status: 500 });

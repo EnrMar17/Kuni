@@ -4,6 +4,8 @@ Actualizado: 8 septiembre 2026. Desde esta entrega, el trabajo se organiza como 
 
 ## Entrega 1: base de la cola y verificación común
 
+**Actualización posterior — U07:** se añadió el recálculo por cambios externos/tiempo y se alineó `patient_adherence`; [detalle de U07](u07-derivados-externos.md). `develop` se actualizó a `f2de17b` antes de continuar. Verificación local: 413 pruebas raíz, 314 de dominio, ambos typechecks, lint sin errores y build aprobados. La migración nueva 0007 y la validación alojada siguen pendientes: el usuario autorizó el entorno de prueba, pero el CLI local carece de login y proyecto vinculado.
+
 **Actualización posterior — U06:** se implementó la ingesta clínica atómica, BAJA y reproceso durable. Véase [la entrega U06](u06-inbound-y-baja.md) para cambios, 408/299 pruebas, migración 0006 pendiente de aplicar y límites de cierre. La entrega 1 se conserva a continuación como antecedente.
 
 Se empezó por los bloqueos encontrados en la [auditoría anterior](auditoria-estado-actual.md). Las correcciones de esa auditoría siguen en el árbol; esta entrega añade lo siguiente.
@@ -98,7 +100,7 @@ Las suites comparten pruebas unitarias: no sumar sus totales como pruebas distin
 | U04 | Persistencia, callbacks y recuperación | **Avanzado** | Recuperar SID no persistido y `sending/unknown` con evidencia del proveedor; revisión de pendientes antiguos; no reenviar a ciegas |
 | U05 | Expiración y paridad SQL | **Verificado local** | Ensayo alojado dentro del circuito completo |
 | U06 | Inbound clínico y BAJA | **Núcleo verificado local** | Aplicar 0006, ensayo alojado/concurrente, confirmación de reportes espontáneos y entrega durable de ayuda histórica; [detalle](u06-inbound-y-baja.md) |
-| U07 | Derivados por eventos externos | **Pendiente** | Recalcular después de ingesta, expiración, planes y paso del tiempo; reconciliar vista `patient_adherence` con dominio |
+| U07 | Derivados por eventos externos | **Núcleo verificado local** | Aplicar 0007 y ensayar recálculo alojado/contención/volumen; planes por DML se detectan en el siguiente tick exitoso. Vista alineada; [detalle](u07-derivados-externos.md) |
 | U08 | Alta y edición persistentes | **Pendiente** | Comando atómico paciente/diagnósticos/consentimiento/receta/planes; conectar formulario existente, sin éxito ficticio |
 | U09 | Citas persistentes | **Pendiente** | Crear/editar/cancelar/estado con zona, autorización e invalidación de cola; cerrar criterio de conflictos de agenda |
 | U10 | Corrección de tomas e historia clínica | **Pendiente** | Recuperar ocurrencia/horario originales para la acción existente; consultas de historia y formularios documentados |
@@ -109,6 +111,6 @@ Las suites comparten pruebas unitarias: no sumar sus totales como pruebas distin
 
 ## Próxima entrega
 
-**Cerrar la validación alojada de U06 y continuar U07.** La operación clínica atómica y el reproceso ya están implementados; falta aplicar 0006 y comprobarlos en Supabase/WhatsApp. Los reportes espontáneos sin solicitud y la ayuda histórica mantienen los límites descritos en la entrega U06.
+**Cerrar la validación alojada de U06/U07 y continuar U08.** Ingesta, BAJA, reproceso y recálculo ya tienen núcleo local; falta comprobar el estado remoto y aplicar 0006/0007 según corresponda tras completar login/link del CLI. Los reportes espontáneos sin solicitud y la ayuda histórica mantienen los límites descritos en U06; U07 documenta la consistencia eventual del barrido y sus límites de volumen.
 
-Después: U07, U08 y U09. Las decisiones no cerradas de agenda y elegibilidad/TTL de IA se mantienen explícitas; escribir documentación nueva no basta para convertir una suposición en requisito aprobado. El alta, citas, BAJA y la operación completa **no se declaran terminados por haber mejorado la cola**.
+Después: U08 y U09. Las decisiones no cerradas de agenda y elegibilidad/TTL de IA se mantienen explícitas; escribir documentación nueva no basta para convertir una suposición en requisito aprobado. El alta, citas, BAJA y la operación completa **no se declaran terminados por haber mejorado la cola**.

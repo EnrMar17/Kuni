@@ -2096,6 +2096,10 @@ export type Database = {
         Returns: Json
       }
       expire_due_interactions: { Args: never; Returns: number }
+      refresh_patient_derivatives: {
+        Args: { p_unit_id: string; p_patient_id: string }
+        Returns: boolean
+      }
       mark_urgent: {
         Args: {
           p_doctor_id: string

@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   sendDueInteractions: vi.fn(),
   reconcileStatusEvents: vi.fn(),
   reconcileInboundEvents: vi.fn(),
+  refreshPatientDerivatives: vi.fn(),
 }));
 vi.mock("@/lib/env/server", () => ({ serverEnv: { CRON_SECRET: "un-secreto-de-mas-de-16-caracteres" } }));
 vi.mock("@/lib/jobs/expire", () => ({ expireDueInteractions: mocks.expireDueInteractions }));
@@ -13,6 +14,7 @@ vi.mock("@/lib/jobs/materialize", () => ({ materializeDueInteractions: mocks.mat
 vi.mock("@/lib/jobs/send", () => ({ sendDueInteractions: mocks.sendDueInteractions }));
 vi.mock("@/lib/jobs/reconcile-status", () => ({ reconcileStatusEvents: mocks.reconcileStatusEvents }));
 vi.mock("@/lib/jobs/reconcile-inbound", () => ({ reconcileInboundEvents: mocks.reconcileInboundEvents }));
+vi.mock("@/lib/jobs/refresh-derivatives", () => ({ refreshPatientDerivatives: mocks.refreshPatientDerivatives }));
 
 import { POST } from "@/app/api/jobs/tick/route";
 
@@ -23,6 +25,7 @@ function request(bearer: string | null) {
 }
 
 beforeEach(() => {
+  mocks.refreshPatientDerivatives.mockReset().mockResolvedValue({ checked: 0, refreshed: 0 });
   mocks.reconcileInboundEvents.mockReset().mockResolvedValue({ processed: 0 });
   mocks.reconcileStatusEvents.mockReset().mockResolvedValue({ processed: 0, pending: 0 });
   mocks.expireDueInteractions.mockReset().mockResolvedValue({ expired: 0 });
@@ -53,6 +56,9 @@ describe("POST /api/jobs/tick", () => {
 
   it("con el Bearer correcto → 200, corre expire, LUEGO materialize y LUEGO send, y devuelve los tres resultados", async () => {
     const order: string[] = [];
+    mocks.refreshPatientDerivatives.mockImplementation(async () => {
+      order.push("derivatives"); return { checked: 1, refreshed: 1 };
+    });
     mocks.reconcileInboundEvents.mockImplementation(async () => { order.push("inbound"); return { processed: 0 }; });
     mocks.reconcileStatusEvents.mockImplementation(async () => {
       order.push("callbacks");
@@ -75,11 +81,12 @@ describe("POST /api/jobs/tick", () => {
 
     expect(res.status).toBe(200);
     // El silencio se convierte en alerta antes de que salgan los mensajes nuevos.
-    expect(order).toEqual(["callbacks", "inbound", "expire", "materialize", "send", "callbacks"]);
+    expect(order).toEqual(["callbacks", "inbound", "expire", "derivatives", "materialize", "send", "callbacks"]);
     expect(await res.json()).toEqual({
       callbacksBefore: { processed: 0, pending: 0 }, callbacksAfter: { processed: 0, pending: 0 },
       inbound: { processed: 0 },
       expire: { expired: 2 },
+      derivatives: { checked: 1, refreshed: 1 },
       materialize: { candidates: 1, created: 1 },
       send: { claimed: 1, sent: 1, failed: 0 },
     });
@@ -89,6 +96,13 @@ describe("POST /api/jobs/tick", () => {
     mocks.expireDueInteractions.mockRejectedValue(new Error("rpc caida"));
     const res = await POST(request("Bearer un-secreto-de-mas-de-16-caracteres"));
     expect(res.status).toBe(500);
+    expect(mocks.materializeDueInteractions).not.toHaveBeenCalled();
+    expect(mocks.sendDueInteractions).not.toHaveBeenCalled();
+  });
+
+  it("si falla el recalculo, no materializa ni envia y permite reintentar", async () => {
+    mocks.refreshPatientDerivatives.mockRejectedValue(new Error("derivados pendientes"));
+    expect((await POST(request("Bearer un-secreto-de-mas-de-16-caracteres"))).status).toBe(500);
     expect(mocks.materializeDueInteractions).not.toHaveBeenCalled();
     expect(mocks.sendDueInteractions).not.toHaveBeenCalled();
   });

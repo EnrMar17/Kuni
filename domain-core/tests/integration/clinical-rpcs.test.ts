@@ -106,7 +106,7 @@ beforeAll(async () => {
     grant execute on function auth.uid() to anon,authenticated,service_role;
     set timezone = 'UTC';
   `);
-  for (const file of ['0001_kuni.sql', '0002_clinical_derivations.sql', '0003_clinical_commands.sql', '0004_patient_complications.sql', '0005_medication_therapeutic_class.sql', '0006_inbound_commands.sql']) {
+  for (const file of ['0001_kuni.sql', '0002_clinical_derivations.sql', '0003_clinical_commands.sql', '0004_patient_complications.sql', '0005_medication_therapeutic_class.sql', '0006_inbound_commands.sql', '0007_external_derivatives.sql']) {
     await db.exec(await readFile(new URL(`../../../supabase/migrations/${file}`, import.meta.url), 'utf8'));
   }
 }, 30_000);
@@ -150,6 +150,108 @@ beforeEach(async () => {
 });
 afterEach(async () => { await db.exec('rollback; reset role;'); });
 afterAll(async () => { await db?.close(); });
+
+describe('U07 external derivatives', () => {
+  async function refresh(cutoff = now) {
+    await owner();
+    return attempt(() => query<boolean>('select private.refresh_patient_derivatives($1,$2,$3) as value', [unit, patient, cutoff]));
+  }
+  async function latest() {
+    return query<{ level: string; input_snapshot: RiskSnapshot & { adherence: AdherenceResult; actorUserId: string | null; attributedDoctorId: string | null } }>(
+      'select to_jsonb(r) as value from risk_assessments r where patient_id=$1 order by assessed_at desc,id desc limit 1', [patient]);
+  }
+  it('saves system provenance once and leaves unchanged alert tokens untouched on replay', async () => {
+    expect(await refresh()).toBe(true);
+    const before = await query('select jsonb_agg(to_jsonb(a) order by id) as value from alerts a');
+    expect((await latest()).input_snapshot).toMatchObject({ actorUserId: null, attributedDoctorId: null });
+    expect(await refresh()).toBe(false);
+    expect(await query('select count(*)::integer as value from risk_assessments')).toBe(1);
+    expect(await query('select jsonb_agg(to_jsonb(a) order by id) as value from alerts a')).toEqual(before);
+  });
+  it('detects changed plan thresholds and reviews existing measurement alerts', async () => {
+    await refresh();
+    expect((await latest()).level).toBe('high');
+    await db.exec(`update monitoring_plans set glucose_max_mg_dl=350,critical_glucose_max_mg_dl=400 where id='${plan}'`);
+    expect(await refresh(new Date(Date.parse(now) + 1000).toISOString())).toBe(true);
+    expect((await latest()).level).toBe('low');
+    expect(await query("select count(*)::integer as value from alerts where kind in ('high_risk','measurement_out_of_range') and status in ('open','acknowledged')")).toBe(0);
+    await assertDatabaseParity();
+  });
+  it('detects a new critical plan limit without any inbound event', async () => {
+    await rpc('correct_measurement', await argsFor('correct_measurement'));
+    await owner();
+    await db.exec(`update monitoring_plans set glucose_min_mg_dl=70,glucose_max_mg_dl=80,critical_glucose_max_mg_dl=90 where id='${plan}'`);
+    expect(await refresh(new Date(Date.parse(now) + 1000).toISOString())).toBe(true);
+    expect((await latest()).level).toBe('high');
+  });
+  it('refreshes when evidence expires through time alone', async () => {
+    await refresh();
+    expect(await refresh(new Date(Date.parse(now) + 91 * 86400000).toISOString())).toBe(true);
+    expect((await latest()).level).toBe('unknown');
+    expect((await latest()).input_snapshot.adherence.hasData).toBe(false);
+  });
+  it('updates adherence independently when only a response changes', async () => {
+    await refresh();
+    await db.exec(`update medication_responses set taken=true,correction_reason='Other writer' where id='${response}'`);
+    expect(await refresh(new Date(Date.parse(now) + 1000).toISOString())).toBe(true);
+    expect((await latest()).input_snapshot.adherence).toMatchObject({ y: 1, n: 0, confirmedAdherencePct: 100 });
+  });
+  it('does not reopen a dismissed high-risk alert on the next unchanged sweep', async () => {
+    await refresh(); await login();
+    const alert = await query<Row<'alerts'>>("select to_jsonb(a) as value from alerts a where kind='high_risk'");
+    await rpc('resolve_alert', [patient, alert.id, alert.updated_at, 'dismissed', 'Reviewed', doctor]);
+    expect(await refresh(new Date(Date.parse(now) + 1000).toISOString())).toBe(false);
+    expect((await row('alerts', alert.id)).status).toBe('dismissed');
+  });
+  it('records expiration-derived risk and matches the canonical domain', async () => {
+    await rpc('correct_measurement', await argsFor('correct_measurement')); await owner();
+    for (let n = 0; n < 3; n++) await db.query(`insert into bot_interactions(unit_id,patient_id,kind,prescription_id,deduplication_key,
+      scheduled_at,expects_response,provider,delivery_status,delivered_at,response_deadline_at)
+      values($1,$2,'medication',$3,$4,now()-interval '2 hours',true,'demo','delivered',now()-interval '2 hours',now()-interval '1 hour')`,
+    [unit,patient,prescription,`expiration-${n}`]);
+    await db.exec('select public.expire_due_interactions()');
+    expect(await refresh(new Date(Date.parse(now) + 1000).toISOString())).toBe(true);
+    expect((await latest()).level).toBe('medium');
+    await assertDatabaseParity();
+  });
+  it('denies clinical/anonymous roles and cross-unit patient IDs', async () => {
+    for (const role of ['anon', 'authenticated'] as const) {
+      await login(actor,role);
+      await expect(attempt(() => db.query('select public.refresh_patient_derivatives($1,$2)',[unit,patient])))
+        .rejects.toMatchObject({ code: '42501' });
+    }
+    await login(null,'service_role');
+    await expect(attempt(() => db.query('select public.refresh_patient_derivatives($1,$2)',[otherUnit,patient])))
+      .rejects.toMatchObject({ code: 'PT403' });
+    expect(await query('select public.refresh_patient_derivatives($1,$2) as value',[unit,patient])).toBe(true);
+    await owner();
+    expect(await query('select count(*)::integer as value from risk_assessments where patient_id=$1',[otherPatient])).toBe(0);
+  });
+  it('skips patients that have become inactive', async () => {
+    await owner(); await db.exec(`update patients set active=false where id='${patient}'`);
+    expect(await refresh()).toBe(false);
+  });
+  it('rolls back review and assessment together if persistence fails', async () => {
+    await owner();
+    const before = await query('select jsonb_agg(to_jsonb(a) order by id) as value from alerts a');
+    const auditCount = await query('select count(*)::integer as value from audit_log');
+    await db.exec(`create function private.fail_refresh() returns trigger language plpgsql as $$ begin raise exception 'refresh test failure'; end $$;
+      create trigger fail_refresh before insert on risk_assessments for each row execute function private.fail_refresh();`);
+    await expect(refresh()).rejects.toThrow('refresh test failure');
+    expect(await query('select jsonb_agg(to_jsonb(a) order by id) as value from alerts a')).toEqual(before);
+    expect(await query('select count(*)::integer as value from audit_log')).toBe(auditCount);
+  });
+  it.each(['failed','cancelled','blocked_window','unknown','delivered'])('aligns the RLS adherence view for %s with a response', async status => {
+    await owner(); await db.query('update bot_interactions set delivery_status=$1 where id=$2',[status,interaction]);
+    const expected = (await assertDatabaseParity()).adherence;
+    await login();
+    const value = await query<Record<string, number | null>>('select to_jsonb(a) as value from patient_adherence a where patient_id=$1',[patient]);
+    expect(value).toMatchObject({ eligible_count: expected.y + expected.n + expected.u, yes_count: expected.y,
+      no_count: expected.n, unknown_count: expected.u, confirmed_adherence_pct: expected.confirmedAdherencePct,
+      coverage_pct: expected.responseCoveragePct });
+    expect(await query('select count(*)::integer as value from patient_adherence where patient_id=$1',[otherPatient])).toBe(0);
+  });
+});
 
 describe('U06 durable inbound SQL', () => {
   const eventId = id(600), target = id(601);
