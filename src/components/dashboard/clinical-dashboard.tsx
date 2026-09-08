@@ -313,10 +313,11 @@ export function ClinicalDashboard({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <label className="relative min-w-[260px] flex-1 md:min-w-[320px]">
+          <label className="relative min-w-0 flex-1 basis-full sm:min-w-[260px] sm:basis-auto md:min-w-[320px]">
             <span className="sr-only">Buscar pacientes</span>
             <input
-              className="w-full rounded-full border border-slate-200/80 bg-white py-2.5 pl-5 pr-11 text-xs text-slate-800 shadow-sm outline-none transition placeholder:text-slate-400 focus:ring-2 focus:ring-[#001d39] md:text-sm"
+              className="w-full min-w-0 rounded-full border border-slate-200/80 bg-white py-2.5 pl-5 pr-11 text-xs text-slate-800 shadow-sm outline-none transition placeholder:text-slate-400 focus:ring-2 focus:ring-[#001d39] md:text-sm"
+              id="dashboard-buscar"
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Buscar por paciente, CURP o expediente..."
               type="search"
@@ -324,10 +325,11 @@ export function ClinicalDashboard({
             />
             <Icon
               name="search"
-              className="absolute right-4 top-1/2 size-4 -translate-y-1/2 text-slate-400"
+              className="pointer-events-none absolute right-4 top-1/2 size-4 -translate-y-1/2 text-slate-400"
             />
           </label>
           <button
+            aria-label={`Filtrar por prioridad: ${priority === "all" ? "todas" : riskLabels[priority]}. Pulsar para cambiar.`}
             className="flex items-center gap-1.5 rounded-full border border-slate-200/80 bg-white px-5 py-2.5 text-xs font-semibold text-slate-700 shadow-sm md:text-sm"
             onClick={() => {
               const levels = [
@@ -347,6 +349,7 @@ export function ClinicalDashboard({
             {priority === "all" ? "Filtrar prioridad" : riskLabels[priority]}
           </button>
           <button
+            aria-label={`Orden actual: ${order === "risk" ? "prioridad" : "nombre"}. Pulsar para cambiar.`}
             className="rounded-full border border-slate-200/80 bg-white px-5 py-2.5 text-xs font-semibold text-slate-700 shadow-sm md:text-sm"
             onClick={() => setOrder(order === "risk" ? "name" : "risk")}
             type="button"
@@ -451,10 +454,10 @@ export function ClinicalDashboard({
               </div>
             </article>
             <Link
-              className="group flex min-h-[140px] flex-col items-center justify-center gap-2 rounded-3xl border-2 border-dashed border-slate-300 p-5 text-center transition hover:-translate-y-0.5 hover:border-indigo-400 hover:bg-indigo-50/30"
+              className="group flex min-h-[140px] flex-col items-center justify-center gap-2 rounded-3xl border-2 border-dashed border-slate-300 p-5 text-center transition hover:border-indigo-400 hover:bg-indigo-50/30 motion-safe:hover:-translate-y-0.5"
               href="/pacientes/nuevo"
             >
-              <span className="grid size-10 place-items-center rounded-full bg-[#001d39] text-white shadow-sm transition group-hover:scale-110">
+              <span className="grid size-10 place-items-center rounded-full bg-[#001d39] text-white shadow-sm transition motion-safe:group-hover:scale-110">
                 <Icon name="plus" className="size-5" />
               </span>
               <span className="text-xs font-bold text-slate-700">
@@ -469,6 +472,7 @@ export function ClinicalDashboard({
           <div className="grid grid-cols-1 gap-6 md:grid-cols-12">
             <section
               id="pacientes"
+              aria-label="Pacientes del consultorio"
               className="dashboard-shadow-soft rounded-3xl border border-slate-100 bg-white p-5 md:col-span-5"
             >
               <div className="mb-1 flex items-center justify-between">
@@ -669,7 +673,7 @@ export function ClinicalDashboard({
           </section>
         </div>
 
-        <aside id="ficha" className="lg:col-span-4">
+        <aside id="ficha" aria-live="polite" className="lg:col-span-4">
           <div className="dashboard-shadow-floating flex h-full flex-col justify-between overflow-hidden rounded-[32px] border border-slate-200/90 bg-white p-6">
             <div>
               <div className="flex items-center justify-between">
@@ -713,7 +717,7 @@ export function ClinicalDashboard({
                 </span>
                 <div className="relative z-10 mt-2.5 flex flex-wrap justify-center gap-2">
                   <span className="rounded-full border border-slate-100 bg-white/90 px-3 py-1 text-xs font-bold text-slate-800 shadow-sm">
-                    <i className="mr-1.5 inline-block size-2 animate-pulse rounded-full bg-rose-500" />
+                    <i className="mr-1.5 inline-block size-2 rounded-full bg-rose-500 motion-safe:animate-pulse" />
                     {selected.glucose}
                   </span>
                   <span className="rounded-full border border-slate-100 bg-white/90 px-3 py-1 text-xs font-bold text-slate-800 shadow-sm">
@@ -887,7 +891,7 @@ export function ClinicalDashboard({
                       >
                         <div className="flex items-center gap-2">
                           <span
-                            className={`size-2 shrink-0 rounded-full ${item.alert ? "animate-pulse bg-red-500" : "bg-emerald-500"}`}
+                            className={`size-2 shrink-0 rounded-full ${item.alert ? "bg-red-500 motion-safe:animate-pulse" : "bg-emerald-500"}`}
                           />
                           <div>
                             <p className="text-xs font-bold text-slate-800">

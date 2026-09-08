@@ -13,10 +13,11 @@ const serverEnvSchema = z
     SUPABASE_SECRET_KEY: z.string().min(1, {
       message: "Falta SUPABASE_SECRET_KEY (clave secreta, solo servidor).",
     }),
-    // `mock` es el default seguro: no envía nada real. Cambiar a `twilio`
-    // solo cuando las credenciales de abajo estén configuradas. `meta` queda
-    // reservado para el adaptador alternativo del plan; aún no implementado.
+    // Selector histórico de WhatsApp. Sigue siendo el fallback para no romper
+    // despliegues existentes; MESSAGE_PROVIDER permite sumar SMS sin renombrar
+    // variables ya instaladas.
     WHATSAPP_PROVIDER: z.enum(["mock", "twilio", "meta"]).default("mock"),
+    MESSAGE_PROVIDER: z.enum(["mock", "twilio", "meta", "smsgate"]).optional(),
     TWILIO_ACCOUNT_SID: z.string().optional(),
     TWILIO_AUTH_TOKEN: z.string().optional(),
     // Admite con o sin el prefijo "whatsapp:"; el adaptador lo normaliza.
@@ -36,6 +37,18 @@ const serverEnvSchema = z
     TWILIO_MEASUREMENT_BP_CONTENT_SID: z.string().optional(),
     TWILIO_APPOINTMENT_CONTENT_SID: z.string().optional(),
     TWILIO_NONRESPONSE_CONTENT_SID: z.string().optional(),
+    // SMS Gateway for Android (capcom6/android-sms-gateway). La URL puede ser
+    // la nube pública, un servidor privado o el servidor local del teléfono.
+    SMS_GATEWAY_BASE_URL: z.string().url().optional(),
+    SMS_GATEWAY_USERNAME: z.string().optional(),
+    SMS_GATEWAY_PASSWORD: z.string().optional(),
+    // JWT con alcance mínimo messages:send. Si existe, tiene precedencia sobre
+    // Basic Auth; su rotación/expiración se administra fuera de Kuni.
+    SMS_GATEWAY_TOKEN: z.string().optional(),
+    SMS_GATEWAY_DEVICE_ID: z.string().optional(),
+    SMS_GATEWAY_SIM_NUMBER: z.coerce.number().int().min(1).max(3).optional(),
+    SMS_GATEWAY_TTL_SECONDS: z.coerce.number().int().min(5).max(86_400).default(3600),
+    SMS_GATEWAY_TIMEOUT_MS: z.coerce.number().int().min(500).max(30_000).default(10_000),
     // URL pública exacta (sin "/" final) que Twilio ve al llamar los
     // webhooks. Debe coincidir con la configurada en el panel de Twilio:
     // la validación de firma recalcula la firma sobre esta URL + los
@@ -67,19 +80,41 @@ const serverEnvSchema = z
     ML_TIMEOUT_MS: z.coerce.number().int().min(100).max(10_000).default(2000),
   })
   .superRefine((env, ctx) => {
-    if (env.WHATSAPP_PROVIDER !== "twilio") return;
-    const required = {
-      TWILIO_ACCOUNT_SID: env.TWILIO_ACCOUNT_SID,
-      TWILIO_AUTH_TOKEN: env.TWILIO_AUTH_TOKEN,
-      TWILIO_WHATSAPP_FROM: env.TWILIO_WHATSAPP_FROM,
-      APP_PUBLIC_URL: env.APP_PUBLIC_URL,
-    } as const;
-    for (const [key, value] of Object.entries(required)) {
-      if (!value) {
+    const provider = env.MESSAGE_PROVIDER ?? env.WHATSAPP_PROVIDER;
+    if (provider === "twilio") {
+      const required = {
+        TWILIO_ACCOUNT_SID: env.TWILIO_ACCOUNT_SID,
+        TWILIO_AUTH_TOKEN: env.TWILIO_AUTH_TOKEN,
+        TWILIO_WHATSAPP_FROM: env.TWILIO_WHATSAPP_FROM,
+        APP_PUBLIC_URL: env.APP_PUBLIC_URL,
+      } as const;
+      for (const [key, value] of Object.entries(required)) {
+        if (!value) {
+          ctx.addIssue({
+            code: "custom",
+            path: [key],
+            message: `Falta ${key}: obligatorio cuando el proveedor efectivo es twilio.`,
+          });
+        }
+      }
+    }
+    if (provider === "smsgate") {
+      if (!env.SMS_GATEWAY_BASE_URL) {
+        ctx.addIssue({ code: "custom", path: ["SMS_GATEWAY_BASE_URL"], message: "Falta SMS_GATEWAY_BASE_URL para smsgate." });
+      }
+      const hasBasicAuth = Boolean(env.SMS_GATEWAY_USERNAME && env.SMS_GATEWAY_PASSWORD);
+      if (!env.SMS_GATEWAY_TOKEN && !hasBasicAuth) {
         ctx.addIssue({
           code: "custom",
-          path: [key],
-          message: `Falta ${key}: obligatorio cuando WHATSAPP_PROVIDER=twilio.`,
+          path: ["SMS_GATEWAY_TOKEN"],
+          message: "Configura SMS_GATEWAY_TOKEN o el par SMS_GATEWAY_USERNAME/SMS_GATEWAY_PASSWORD para smsgate.",
+        });
+      }
+      if (Boolean(env.SMS_GATEWAY_USERNAME) !== Boolean(env.SMS_GATEWAY_PASSWORD)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["SMS_GATEWAY_USERNAME"],
+          message: "SMS_GATEWAY_USERNAME y SMS_GATEWAY_PASSWORD deben configurarse juntos.",
         });
       }
     }
@@ -91,6 +126,7 @@ function loadServerEnv() {
     NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
     SUPABASE_SECRET_KEY: process.env.SUPABASE_SECRET_KEY,
     WHATSAPP_PROVIDER: process.env.WHATSAPP_PROVIDER,
+    MESSAGE_PROVIDER: process.env.MESSAGE_PROVIDER,
     TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
     TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
     TWILIO_WHATSAPP_FROM: process.env.TWILIO_WHATSAPP_FROM,
@@ -99,6 +135,14 @@ function loadServerEnv() {
     TWILIO_MEASUREMENT_BP_CONTENT_SID: process.env.TWILIO_MEASUREMENT_BP_CONTENT_SID,
     TWILIO_APPOINTMENT_CONTENT_SID: process.env.TWILIO_APPOINTMENT_CONTENT_SID,
     TWILIO_NONRESPONSE_CONTENT_SID: process.env.TWILIO_NONRESPONSE_CONTENT_SID,
+    SMS_GATEWAY_BASE_URL: process.env.SMS_GATEWAY_BASE_URL,
+    SMS_GATEWAY_USERNAME: process.env.SMS_GATEWAY_USERNAME,
+    SMS_GATEWAY_PASSWORD: process.env.SMS_GATEWAY_PASSWORD,
+    SMS_GATEWAY_TOKEN: process.env.SMS_GATEWAY_TOKEN,
+    SMS_GATEWAY_DEVICE_ID: process.env.SMS_GATEWAY_DEVICE_ID,
+    SMS_GATEWAY_SIM_NUMBER: process.env.SMS_GATEWAY_SIM_NUMBER,
+    SMS_GATEWAY_TTL_SECONDS: process.env.SMS_GATEWAY_TTL_SECONDS,
+    SMS_GATEWAY_TIMEOUT_MS: process.env.SMS_GATEWAY_TIMEOUT_MS,
     APP_PUBLIC_URL: process.env.APP_PUBLIC_URL,
     CRON_SECRET: process.env.CRON_SECRET,
     ML_ENDPOINT_URL: process.env.ML_ENDPOINT_URL,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useId } from "react";
 import { useFormStatus } from "react-dom";
 
 import { login, type LoginState } from "@/actions/auth";
@@ -10,6 +10,7 @@ function SubmitButton() {
 
   return (
     <button
+      aria-busy={pending}
       className="mt-1 flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-[#001d39] px-5 text-sm font-bold text-white shadow-lg shadow-slate-900/10 transition hover:bg-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-wait disabled:opacity-60"
       disabled={pending}
       type="submit"
@@ -26,35 +27,48 @@ export function LoginForm({ redirectTo = "/dashboard", initialError = null }: {
 }) {
   const initialState: LoginState = { error: initialError };
   const [state, action] = useActionState(login, initialState);
+  const errorId = useId();
+  const hasError = Boolean(state.error);
+  const fieldDescribedBy = hasError ? errorId : undefined;
 
   return (
-    <form action={action} className="mt-8 grid gap-5">
+    <form action={action} className="mt-8 grid gap-5" noValidate>
       <input name="redirectTo" type="hidden" value={redirectTo} />
-      <label className="grid gap-2 text-xs font-bold text-slate-700">
+      <label className="grid gap-2 text-xs font-bold text-slate-700" htmlFor="login-email">
         Correo de la unidad
         <input
+          aria-describedby={fieldDescribedBy}
+          aria-invalid={hasError}
           autoComplete="username"
-          className="min-h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100"
+          className="min-h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100 aria-[invalid=true]:border-rose-400 aria-[invalid=true]:bg-rose-50/40"
+          id="login-email"
           name="email"
           required
           type="email"
         />
       </label>
-      <label className="grid gap-2 text-xs font-bold text-slate-700">
-        <span className="flex items-center justify-between">
+      <label className="grid gap-2 text-xs font-bold text-slate-700" htmlFor="login-password">
+        <span className="flex items-center justify-between gap-3">
           Contraseña
-          <span className="font-medium text-slate-400">Acceso de la unidad</span>
+          <span className="font-medium text-slate-500">Acceso de la unidad</span>
         </span>
         <input
+          aria-describedby={fieldDescribedBy}
+          aria-invalid={hasError}
           autoComplete="current-password"
-          className="min-h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-900 shadow-sm outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100"
+          className="min-h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-900 shadow-sm outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100 aria-[invalid=true]:border-rose-400 aria-[invalid=true]:bg-rose-50/40"
+          id="login-password"
           name="password"
           required
           type="password"
         />
       </label>
       {state.error ? (
-        <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700" role="alert">
+        <p
+          className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800"
+          id={errorId}
+          role="alert"
+        >
           {state.error}
         </p>
       ) : null}

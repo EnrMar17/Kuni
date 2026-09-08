@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   revalidateSend: vi.fn(),
   sendFreeformMessage: vi.fn(),
   sendTemplateMessage: vi.fn(),
+  channel: undefined as "sms" | undefined,
   // B5: cada test configura los Content SID que necesite; vacío por default,
   // igual que un despliegue sin plantillas aprobadas todavía.
   serverEnv: {
@@ -26,6 +27,7 @@ vi.mock("@/lib/whatsapp/provider", async () => {
     ...actual,
     getWhatsAppProvider: async () => ({
       dbProviderValue: "demo",
+      channel: mocks.channel,
       sendFreeformMessage: mocks.sendFreeformMessage,
       sendTemplateMessage: mocks.sendTemplateMessage,
     }),
@@ -82,6 +84,7 @@ beforeEach(() => {
   });
   mocks.sendFreeformMessage.mockReset();
   mocks.sendTemplateMessage.mockReset();
+  mocks.channel = undefined;
   mocks.serverEnv.TWILIO_MEDICATION_CONTENT_SID = undefined;
   mocks.serverEnv.TWILIO_MEASUREMENT_GLUCOSE_CONTENT_SID = undefined;
   mocks.serverEnv.TWILIO_MEASUREMENT_BP_CONTENT_SID = undefined;
@@ -176,6 +179,28 @@ describe("sendDueInteractions", () => {
     expect(updateChain.update).toHaveBeenCalledWith(
       expect.objectContaining({ delivery_status: "failed", failure_code: "template_not_configured" }),
     );
+  });
+
+  it("SMSGate manda texto libre sin depender de la ventana ni de plantillas WhatsApp", async () => {
+    mocks.channel = "sms";
+    mocks.rpc.mockResolvedValue({ data: [medicationInteraction], error: null });
+    const updateChain = makeChain({ error: null });
+    queueFrom({
+      patients: [makeChain({ data: [{ id: "patient-1", whatsapp_e164: "+525512345678" }], error: null })],
+      patient_messaging_state: [makeChain({ data: [], error: null })],
+      bot_interactions: [updateChain],
+    });
+    mocks.sendFreeformMessage.mockResolvedValue({
+      providerMessageId: "sms-1",
+      acceptedAt: new Date("2026-09-08T14:00:00.000Z"),
+    });
+
+    expect(await sendDueInteractions()).toEqual({ claimed: 1, sent: 1, failed: 0 });
+    expect(mocks.sendFreeformMessage).toHaveBeenCalledWith({
+      toE164: "+525512345678",
+      body: expect.stringContaining("SI A7F3"),
+    });
+    expect(mocks.sendTemplateMessage).not.toHaveBeenCalled();
   });
 
   it("B5: sin sesión reciente PERO con plantilla configurada, manda por Content SID y marca 'accepted'", async () => {

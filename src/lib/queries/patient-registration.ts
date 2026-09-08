@@ -2,8 +2,22 @@ import "server-only";
 import { z } from "zod";
 import { AppError } from "@/contracts/errors";
 import { patientRegistrationSchema, patientRevisionSchema, type PatientEditData } from "@/contracts/patient-registration";
+import type { MedicationOption } from "@/contracts/clinical";
 import { requireClinicalWriteContext } from "@/lib/auth/context";
 import { createClient } from "@/lib/supabase/server";
+
+// U08 fase 2: catálogo para el picker de la receta inicial en el alta. Solo
+// medicamentos activos de la unidad — coincide con la verificación que hace
+// register_patient (0009) del lado del servidor, así que el formulario no
+// puede ofrecer algo que la RPC vaya a rechazar.
+export async function listActiveMedications(): Promise<MedicationOption[]> {
+  const context = await requireClinicalWriteContext();
+  const client = await createClient();
+  const { data, error } = await client.from("medications").select("id,name,strength")
+    .eq("unit_id", context.unitId).eq("active", true).order("name");
+  if (error) throw new AppError("INTERNAL", "No se pudo cargar el catálogo de medicamentos.");
+  return data ?? [];
+}
 
 export async function getPatientRegistration(patientId: string): Promise<PatientEditData | null> {
   const context = await requireClinicalWriteContext();

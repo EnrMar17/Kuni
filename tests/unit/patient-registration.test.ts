@@ -11,7 +11,7 @@ import { getPatientRegistration } from "@/lib/queries/patient-registration";
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const updatedAt = "2026-09-08T12:00:00.123456+00:00";
-const value = (): SavePatientInput => ({ patientId: id(1), revision: null, reason: "Alta de paciente",
+const value = (): SavePatientInput => ({ patientId: id(1), revision: null, reason: "Alta de paciente", initialCare: null,
   input: { fullName: "Paciente de prueba", birthDate: "1980-01-01", sex: "unknown", clinicalRecord: "A1", curp: null,
     whatsappE164: "+525500000001", bloodType: null, initialRisk: "unknown", initialRiskReason: "Sin valorar",
     diagnoses: ["hypertension"], consent: null } });
@@ -27,8 +27,26 @@ describe("patient registration action", () => {
     expect(await savePatient(value())).toEqual({ data: { id: id(1), updatedAt }, error: null });
     expect(mocks.rpc).toHaveBeenCalledWith("register_patient", {
       p_patient_id: id(1), p_room_id: id(3), p_doctor_id: id(4), p_input: value().input,
+      p_prescription: null, p_plans: null,
     });
     expect(mocks.revalidate).toHaveBeenCalledWith(`/pacientes/${id(1)}`);
+  });
+  it("U08 fase 2: manda receta y planes iniciales al alta cuando initialCare viene con datos", async () => {
+    const prescription = { medicationId: id(6), doseText: "1 tableta", instructions: "Con alimentos", endsAt: null,
+      schedules: [{ weekday: 1, localTime: "08:00" }] };
+    const plans = [{ kind: "glucose" as const, localTime: "07:00", weekdays: [1, 2, 3], measurementContext: "fasting" as const,
+      glucoseMinMgDl: 70, glucoseMaxMgDl: 140, criticalGlucoseMinMgDl: 50, criticalGlucoseMaxMgDl: 250,
+      systolicMinMmHg: null, systolicMaxMmHg: null, diastolicMinMmHg: null, diastolicMaxMmHg: null,
+      criticalSystolicMinMmHg: null, criticalSystolicMaxMmHg: null, criticalDiastolicMinMmHg: null, criticalDiastolicMaxMmHg: null }];
+    await savePatient({ ...value(), initialCare: { prescription, plans } });
+    expect(mocks.rpc).toHaveBeenCalledWith("register_patient", expect.objectContaining({ p_prescription: prescription, p_plans: plans }));
+  });
+  it("nunca manda receta/planes en una edición: la validación del contrato lo rechaza antes de llamar al servidor", () => {
+    const prescription = { medicationId: id(6), doseText: "1 tableta", instructions: "", endsAt: null,
+      schedules: [{ weekday: 1, localTime: "08:00" }] };
+    const parsed = savePatientSchema.safeParse({ ...value(),
+      revision: { updatedAt, consentId: null, diagnoses: [] }, initialCare: { prescription, plans: [] } });
+    expect(parsed.success).toBe(false);
   });
   it("sends revision and reason for editing without losing timestamp precision", async () => {
     const data = { ...value(), revision: { updatedAt, consentId: null, diagnoses: [{ id: id(5), updatedAt }] } };

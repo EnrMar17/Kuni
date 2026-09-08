@@ -11,6 +11,7 @@ import { AppointmentForm } from "@/components/appointment-form";
 import { StatisticsView } from "@/components/statistics-view";
 import { PatientCreateForm } from "@/components/patient-create-form";
 import type { PatientEditData } from "@/contracts/patient-registration";
+import type { MedicationOption } from "@/contracts/clinical";
 import { AlertActions, ComplicationPanel, MeasurementCorrection, MedicationClassification, PrescriptionAdjustment } from "@/components/clinical-actions";
 import type { DashboardData, DashboardPatient } from "@/lib/domain/dashboard";
 import {
@@ -93,28 +94,30 @@ function PatientsView({ data }: { data: DashboardData }) {
         description="Consulta el censo del consultorio autorizado. La prioridad se calcula al leer registros y no se sustituye por valores de demostración."
       >
         <Link
-          className="rounded-xl bg-[#001d39] px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-slate-900"
+          className="rounded-xl bg-[#001d39] px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-slate-900 motion-safe:hover:-translate-y-0.5"
           href="/pacientes/nuevo"
         >
           + Nuevo paciente
         </Link>
       </PageHeader>
       <section className="mt-6 rounded-3xl border border-slate-200/70 bg-white p-4 shadow-sm">
-        <div className="flex flex-col gap-3 md:flex-row md:flex-wrap">
-          <label className="flex-1">
+        <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-end">
+          <label className="min-w-0 flex-1" htmlFor="censo-buscar">
             <span className="sr-only">Buscar pacientes</span>
             <input
-              className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100"
+              className="w-full min-w-0 rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100"
+              id="censo-buscar"
               onChange={(event) => updateQuery(event.target.value)}
               placeholder="Buscar nombre, CURP, expediente o diagnóstico"
               type="search"
               value={query}
             />
           </label>
-          <label className="text-sm font-semibold text-slate-600">
+          <label className="flex min-w-0 flex-col gap-1 text-sm font-semibold text-slate-700" htmlFor="censo-prioridad">
             Prioridad
             <select
-              className="ml-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+              id="censo-prioridad"
               onChange={(event) => {
                 setPriority(event.target.value as typeof priority);
                 setPage(0);
@@ -128,10 +131,11 @@ function PatientsView({ data }: { data: DashboardData }) {
               <option value="unknown">Sin evaluar</option>
             </select>
           </label>
-          <label className="text-sm font-semibold text-slate-600">
+          <label className="flex min-w-0 flex-col gap-1 text-sm font-semibold text-slate-700" htmlFor="censo-diagnostico">
             Diagnóstico
             <select
-              className="ml-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+              id="censo-diagnostico"
               onChange={(event) => {
                 setDiagnosis(event.target.value);
                 setPage(0);
@@ -146,7 +150,7 @@ function PatientsView({ data }: { data: DashboardData }) {
               ))}
             </select>
           </label>
-          <label className="flex items-center gap-2 text-sm font-semibold text-slate-600">
+          <label className="flex min-h-[42px] items-center gap-2 text-sm font-semibold text-slate-700">
             <input
               checked={pendingOnly}
               onChange={(event) => {
@@ -163,16 +167,19 @@ function PatientsView({ data }: { data: DashboardData }) {
         aria-live="polite"
         className="mt-5 overflow-hidden rounded-3xl border border-slate-200/70 bg-white shadow-sm"
       >
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] text-left text-sm">
-            <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+        <div className="table-scroll" tabIndex={0} role="region" aria-label="Tabla del censo clínico">
+          <table className="w-full min-w-[640px] text-left text-sm">
+            <caption className="sr-only">
+              Pacientes del consultorio. Página {page + 1} de {maxPage + 1}.
+            </caption>
+            <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-600">
               <tr>
-                <th className="px-5 py-4">Paciente</th>
-                <th className="px-5 py-4">Diagnósticos</th>
-                <th className="px-5 py-4">Prioridad actual</th>
-                <th className="px-5 py-4">Seguimiento</th>
-                <th className="px-5 py-4">Última respuesta</th>
-                <th className="px-5 py-4">
+                <th className="px-4 py-4 sm:px-5" scope="col">Paciente</th>
+                <th className="px-4 py-4 sm:px-5" scope="col">Diagnósticos</th>
+                <th className="px-4 py-4 sm:px-5" scope="col">Prioridad actual</th>
+                <th className="px-4 py-4 sm:px-5" scope="col">Seguimiento</th>
+                <th className="px-4 py-4 sm:px-5" scope="col">Última respuesta</th>
+                <th className="px-4 py-4 sm:px-5" scope="col">
                   <span className="sr-only">Abrir ficha</span>
                 </th>
               </tr>
@@ -180,67 +187,67 @@ function PatientsView({ data }: { data: DashboardData }) {
             <tbody className="divide-y divide-slate-100">
               {visible.map((patient, index) => (
                 <tr
-                  className="motion-safe:animate-[kuni-rise_360ms_ease-out_both] transition hover:bg-indigo-50/40"
+                  className="transition hover:bg-indigo-50/40 motion-safe:animate-[kuni-rise_360ms_ease-out_both]"
                   key={patient.id}
                   style={{ animationDelay: `${index * 35}ms` }}
                 >
-                  <td className="px-5 py-4">
+                  <td className="px-4 py-4 sm:px-5">
                     <div className="flex items-center gap-3">
-                      <span className="grid size-9 place-items-center rounded-full bg-indigo-100 text-xs font-extrabold text-indigo-700">
+                      <span className="grid size-9 shrink-0 place-items-center rounded-full bg-indigo-100 text-xs font-extrabold text-indigo-800">
                         {initials(patient.fullName)}
                       </span>
-                      <div>
-                        <strong className="block text-slate-900">
+                      <div className="min-w-0">
+                        <strong className="block truncate text-slate-900">
                           {patient.fullName}
                         </strong>
-                        <span className="font-mono-data text-xs text-slate-500">
+                        <span className="font-mono-data text-xs text-slate-600">
                           {patient.clinicalRecord}
                         </span>
                       </div>
                     </div>
                   </td>
-                  <td className="px-5 py-4 text-slate-600">
+                  <td className="px-4 py-4 text-slate-700 sm:px-5">
                     {patient.diagnoses.join(" · ") ||
                       "Sin diagnóstico registrado"}
                   </td>
-                  <td className="px-5 py-4">
+                  <td className="px-4 py-4 sm:px-5">
                     <span
                       className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-bold ${riskClass[patient.risk.level]}`}
                     >
                       {riskLabels[patient.risk.level]}
                     </span>
                   </td>
-                  <td className="px-5 py-4 text-slate-600">
+                  <td className="px-4 py-4 text-slate-700 sm:px-5">
                     {dateTime(patient.lastResponseAt, data.timezone)}
                   </td>
-                  <td className="px-5 py-4">
+                  <td className="px-4 py-4 sm:px-5">
                     <div className="flex flex-wrap gap-1.5 text-xs font-semibold">
                       {patient.alerts.length ? (
-                        <span className="rounded-full bg-rose-50 px-2 py-1 text-rose-700">
+                        <span className="rounded-full bg-rose-50 px-2 py-1 text-rose-800">
                           {patient.alerts.length} alerta{patient.alerts.length === 1 ? "" : "s"}
                         </span>
                       ) : null}
                       {patient.nonresponse.pending ? (
-                        <span className="rounded-full bg-amber-50 px-2 py-1 text-amber-700">
+                        <span className="rounded-full bg-amber-50 px-2 py-1 text-amber-800">
                           {patient.nonresponse.pending} pendiente{patient.nonresponse.pending === 1 ? "" : "s"}
                         </span>
                       ) : null}
                       {patient.appointments[0] ? (
-                        <span className="rounded-full bg-sky-50 px-2 py-1 text-sky-700">
+                        <span className="rounded-full bg-sky-50 px-2 py-1 text-sky-800">
                           Cita {dateTime(patient.appointments[0].startsAt, data.timezone)}
                         </span>
                       ) : null}
                       {!patient.alerts.length && !patient.nonresponse.pending && !patient.appointments[0] ? (
-                        <span className="text-slate-400">Sin pendientes</span>
+                        <span className="text-slate-500">Sin pendientes</span>
                       ) : null}
                     </div>
                   </td>
-                  <td className="px-5 py-4 text-right">
+                  <td className="px-4 py-4 text-right sm:px-5">
                     <Link
-                      className="text-xs font-bold text-indigo-600 hover:text-indigo-800"
+                      className="text-xs font-bold text-indigo-700 hover:text-indigo-900"
                       href={`/pacientes/${patient.id}`}
                     >
-                      Ver ficha →
+                      Ver ficha <span aria-hidden="true">→</span>
                     </Link>
                   </td>
                 </tr>
@@ -258,15 +265,17 @@ function PatientsView({ data }: { data: DashboardData }) {
             </tbody>
           </table>
         </div>
-        <footer className="flex items-center justify-between border-t border-slate-100 px-5 py-3 text-xs text-slate-500">
+        <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-5 py-3 text-xs text-slate-600">
           <span>
             {matches.length} resultados
             {data.hasMorePatients
               ? " · el servidor indicó una lista parcial"
               : ""}
+            {" · "}página {page + 1} de {maxPage + 1}
           </span>
           <div className="flex gap-2">
             <button
+              aria-label="Página anterior del censo"
               className="rounded-lg border border-slate-200 px-3 py-1.5 font-semibold disabled:opacity-40"
               disabled={page === 0}
               onClick={() => setPage((current) => current - 1)}
@@ -275,6 +284,7 @@ function PatientsView({ data }: { data: DashboardData }) {
               Anterior
             </button>
             <button
+              aria-label="Página siguiente del censo"
               className="rounded-lg border border-slate-200 px-3 py-1.5 font-semibold disabled:opacity-40"
               disabled={page === maxPage}
               onClick={() => setPage((current) => current + 1)}
@@ -289,14 +299,14 @@ function PatientsView({ data }: { data: DashboardData }) {
   );
 }
 
-function NewPatientView({ initial }: { initial?: PatientEditData }) {
+function NewPatientView({ initial, medications }: { initial?: PatientEditData; medications: MedicationOption[] }) {
   return (
     <>
       <PageHeader
         title={initial ? "Editar expediente" : "Alta de paciente"}
         description="Datos personales, valoración y consentimiento del paciente."
       />
-      <PatientCreateForm initial={initial} />
+      <PatientCreateForm initial={initial} medications={medications} />
     </>
   );
 }
@@ -398,17 +408,19 @@ export function ClinicalWorkspace({
   mode,
   context,
   patientEdit,
+  medications = [],
 }: {
   data: DashboardData;
   mode: WorkspaceMode;
   context: ClinicalTopBarContext;
   patientEdit?: PatientEditData;
+  medications?: MedicationOption[];
 }) {
   const content =
     mode === "patients" ? (
       <PatientsView data={data} />
     ) : mode === "new-patient" ? (
-      <NewPatientView initial={patientEdit} />
+      <NewPatientView initial={patientEdit} medications={medications} />
     ) : mode === "appointments" ? (
       <AppointmentsView data={data} />
     ) : mode === "statistics" ? (
@@ -417,7 +429,7 @@ export function ClinicalWorkspace({
       <AlertsView data={data} />
     );
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_12%_2%,#e0e7ff_0,transparent_31%),radial-gradient(circle_at_94%_18%,#dbeafe_0,transparent_28%),#e8ebf2] p-3 text-slate-800 md:p-6 lg:p-8">
+    <main id="contenido-principal" className="min-h-screen bg-[radial-gradient(circle_at_12%_2%,#e0e7ff_0,transparent_31%),radial-gradient(circle_at_94%_18%,#dbeafe_0,transparent_28%),#e8ebf2] p-3 text-slate-800 md:p-6 lg:p-8">
       <div className="mx-auto w-full max-w-[1480px] rounded-[36px] border border-white/80 bg-[#f7f8fc]/90 p-4 shadow-2xl shadow-slate-900/10 md:p-8">
         <ClinicalHeader context={context} data={data} />
         <div className="clinical-page-content" key={mode}>
@@ -442,7 +454,7 @@ export function PatientProfile({
   canWrite?: boolean;
 }) {
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_12%_2%,#e0e7ff_0,transparent_31%),radial-gradient(circle_at_94%_18%,#dbeafe_0,transparent_28%),#e8ebf2] p-3 text-slate-800 md:p-6 lg:p-8">
+    <main id="contenido-principal" className="min-h-screen bg-[radial-gradient(circle_at_12%_2%,#e0e7ff_0,transparent_31%),radial-gradient(circle_at_94%_18%,#dbeafe_0,transparent_28%),#e8ebf2] p-3 text-slate-800 md:p-6 lg:p-8">
       <div className="mx-auto w-full max-w-[1480px] rounded-[36px] border border-white/80 bg-[#f7f8fc]/90 p-4 shadow-2xl shadow-slate-900/10 md:p-8">
         <ClinicalHeader context={context} data={data} />
         <div className="clinical-page-content">
@@ -534,7 +546,7 @@ export function PatientProfile({
               <div className="mt-4 grid gap-3 md:grid-cols-2">
                 {patient.prescriptions.map((prescription) => (
                   <article
-                    className="rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50/70 to-white p-4 transition hover:-translate-y-0.5 hover:shadow-md"
+                    className="rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50/70 to-white p-4 transition motion-safe:hover:-translate-y-0.5 hover:shadow-md"
                     key={prescription.id}
                   >
                     <strong className="text-sm text-slate-900">

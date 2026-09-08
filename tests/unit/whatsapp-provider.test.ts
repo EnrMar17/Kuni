@@ -1,9 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const state = vi.hoisted(() => ({ provider: "mock" as "mock" | "twilio" | "meta" }));
+const state = vi.hoisted(() => ({
+  provider: "mock" as "mock" | "twilio" | "meta",
+  messageProvider: undefined as "mock" | "twilio" | "meta" | "smsgate" | undefined,
+}));
 vi.mock("@/lib/env/server", () => ({
   get serverEnv() {
-    return { WHATSAPP_PROVIDER: state.provider };
+    return { WHATSAPP_PROVIDER: state.provider, MESSAGE_PROVIDER: state.messageProvider };
   },
 }));
 
@@ -14,6 +17,14 @@ const twilioFactory = vi.hoisted(() => vi.fn(() => ({
   verifyWebhookSignature: vi.fn(),
 })));
 vi.mock("@/lib/whatsapp/twilio", () => ({ createTwilioWhatsAppProvider: twilioFactory }));
+const smsGateFactory = vi.hoisted(() => vi.fn(() => ({
+  dbProviderValue: "smsgate" as const,
+  channel: "sms" as const,
+  sendTemplateMessage: vi.fn(),
+  sendFreeformMessage: vi.fn(),
+  verifyWebhookSignature: vi.fn(),
+})));
+vi.mock("@/lib/whatsapp/smsgate", () => ({ createSmsGateProvider: smsGateFactory }));
 
 import { WhatsAppProviderError } from "@/lib/whatsapp/provider";
 
@@ -29,7 +40,9 @@ async function loadProviderModule() {
 
 beforeEach(() => {
   state.provider = "mock";
+  state.messageProvider = undefined;
   twilioFactory.mockClear();
+  smsGateFactory.mockClear();
 });
 
 describe("proveedor de WhatsApp — selección", () => {
@@ -79,6 +92,19 @@ describe("proveedor de WhatsApp — WHATSAPP_PROVIDER=meta", () => {
     state.provider = "meta";
     const { getWhatsAppProvider } = await loadProviderModule();
     await expect(getWhatsAppProvider()).rejects.toThrow(/meta/i);
+  });
+});
+
+describe("proveedor de mensajes — MESSAGE_PROVIDER=smsgate", () => {
+  it("selecciona el adaptador SMS sin alterar el selector histórico de WhatsApp", async () => {
+    state.provider = "twilio";
+    state.messageProvider = "smsgate";
+    const { getWhatsAppProvider } = await loadProviderModule();
+    const provider = await getWhatsAppProvider();
+    expect(provider.dbProviderValue).toBe("smsgate");
+    expect(provider.channel).toBe("sms");
+    expect(smsGateFactory).toHaveBeenCalledTimes(1);
+    expect(twilioFactory).not.toHaveBeenCalled();
   });
 });
 

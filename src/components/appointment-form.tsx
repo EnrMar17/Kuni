@@ -43,7 +43,7 @@ export function AppointmentForm({ data }: { data: DashboardData }) {
     },
   });
   const props = (name: keyof AppointmentDraft) => ({
-    "aria-invalid": Boolean(errors[name]),
+    "aria-invalid": Boolean(errors[name]) || undefined,
     "aria-describedby": errors[name] ? name + "-error" : undefined,
   });
   const error = (name: keyof AppointmentDraft) =>

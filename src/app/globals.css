@@ -24,20 +24,56 @@
   box-sizing: border-box;
 }
 
+html {
+  overflow-x: clip;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
+  overflow-x: clip;
 }
 
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
 }
 
 button,
 a {
   -webkit-tap-highlight-color: transparent;
+}
+
+/* Visible keyboard focus for controls outside specialized clinical shells. */
+:where(a, button, input, select, textarea, summary):focus-visible {
+  outline: 3px solid #6366f1;
+  outline-offset: 2px;
+}
+
+.skip-link {
+  position: absolute;
+  left: 1rem;
+  top: 0;
+  z-index: 100;
+  padding: 0.65rem 1rem;
+  border-radius: 0 0 0.75rem 0.75rem;
+  background: #001d39;
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 700;
+  text-decoration: none;
+  transform: translateY(-120%);
+  transition: transform 160ms ease;
+}
+
+.skip-link:focus,
+.skip-link:focus-visible {
+  transform: translateY(0);
+  outline: 3px solid #a5b4fc;
+  outline-offset: 3px;
 }
 
 ::selection {
@@ -70,12 +106,22 @@ a {
   box-shadow: 0 25px 50px -12px rgb(15 23 42 / 15%), 0 10px 20px -5px rgb(15 23 42 / 4%);
 }
 
-.clinical-page-content {
-  animation: kuni-rise 420ms cubic-bezier(.2,.75,.25,1) both;
-}
+@media (prefers-reduced-motion: no-preference) {
+  .clinical-page-content {
+    animation: kuni-rise 420ms cubic-bezier(.2,.75,.25,1) both;
+  }
 
-.clinical-topbar {
-  animation: kuni-drop 460ms cubic-bezier(.2,.75,.25,1) both;
+  .clinical-topbar {
+    animation: kuni-drop 460ms cubic-bezier(.2,.75,.25,1) both;
+  }
+
+  .login-card {
+    animation: kuni-rise 350ms ease-out both;
+  }
+
+  .skeleton-bone {
+    animation: kuni-shimmer 1.7s linear infinite;
+  }
 }
 
 .clinical-panel {
@@ -205,7 +251,7 @@ a {
   outline: 3px solid #818cf8;
   outline-offset: 3px;
 }
-@media (hover: hover) {
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
   .clinical-button:hover,
   .clinical-page-content button:not(:disabled):hover { transform: translateY(-1px); box-shadow: 0 6px 12px -7px #52627a; }
 }
@@ -230,22 +276,66 @@ a {
 .diagnosis-option input { width: 17px; height: 17px; accent-color: #6366f1; flex-shrink: 0; }
 .form-actions { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem; padding: 1.2rem; border: 1px solid #dfe5f2; border-radius: 20px; background: #fff; box-shadow: 0 12px 28px -24px #334155; }
 .draft-notice { border: 1px solid #e3dfcb; border-radius: 14px; padding: .9rem 1rem; background: #fffdf5; color: #746134; font-size: .8125rem; }
-.login-card { box-shadow: 0 20px 50px -28px rgb(15 23 42 / .3); animation: kuni-rise 350ms ease-out both; }
-.skeleton-bone { border-radius: 8px; background: linear-gradient(100deg,#e8edf6 20%,#f5f7fc 40%,#e8edf6 60%); background-size: 200% 100%; animation: kuni-shimmer 1.7s linear infinite; }
+.login-card { box-shadow: 0 20px 50px -28px rgb(15 23 42 / .3); }
+.skeleton-bone {
+  border-radius: 8px;
+  background: #e8edf6;
+  background-image: linear-gradient(100deg, #e8edf6 20%, #f5f7fc 40%, #e8edf6 60%);
+  background-size: 200% 100%;
+}
 @keyframes kuni-shimmer { to { background-position: -200% 0; } }
 
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+.table-scroll:focus-visible {
+  outline: 3px solid #818cf8;
+  outline-offset: 2px;
+}
+
+.clinical-inline-panel {
+  border-radius: 1rem;
+  border: 1px solid #c7d2fe;
+  background: #eef2ff;
+  padding: 1rem;
+}
+
+.clinical-inline-panel[data-tone="warn"] {
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+
 @media print {
-  body { background: white !important; }
+  .skip-link { display: none !important; }
+  body { background: white !important; color: black !important; }
   body:has(.report-preview) main { padding: 0 !important; background: white !important; }
-  body:has(.report-preview) main > div { max-width: none !important; padding: 0 !important; border: 0 !important; box-shadow: none !important; background: white !important; }
+  body:has(.report-preview) main > div { max-width: none !important; padding: 0 !important; border: 0 !important; box-shadow: none !important; background: white !important; border-radius: 0 !important; }
   body:has(.report-preview) .clinical-header,
   .statistics-view > header,
   .statistics-view > section,
   .report-controls { display: none !important; }
   .statistics-view > div { display: block !important; }
-  .report-preview { border: 0; padding: 0; box-shadow: none; background: white; }
+  .report-preview {
+    border: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    background: white !important;
+    break-inside: avoid;
+  }
+  .report-preview table { width: 100%; border-collapse: collapse; }
+  .report-preview th,
+  .report-preview td {
+    border-bottom: 1px solid #cbd5e1;
+    padding: 0.5rem 0;
+    color: black !important;
+  }
   .report-preview tr { break-inside: avoid; }
+  .report-preview a { text-decoration: none; color: black; }
 }
+
 @media (prefers-reduced-motion: no-preference) {
   .clinical-page-content > :is(section, form, div) { animation: kuni-rise 380ms ease-out both; }
   .clinical-page-content > :nth-child(2) { animation-delay: 45ms; }
@@ -259,10 +349,44 @@ a {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, ::before, ::after {
+  *,
+  ::before,
+  ::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+  }
+
+  .skeleton-bone {
+    background-image: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .form-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .form-actions > div {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .form-actions .clinical-button {
+    width: 100%;
+  }
+
+  .clinical-header > nav {
+    width: 100%;
+  }
+
+  .clinical-nav-link {
+    font-size: 0.75rem;
+    padding: 0.55rem 0.7rem;
   }
 }

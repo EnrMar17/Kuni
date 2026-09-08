@@ -35,7 +35,7 @@ export default async function LoginPage({ searchParams }: {
   if (destination) redirect(destination);
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#e8ebf2] px-5 py-10">
+    <main id="contenido-principal" className="flex min-h-screen items-center justify-center bg-[#e8ebf2] px-5 py-10">
       <section className="login-card w-full max-w-[460px] rounded-[28px] border border-white bg-white px-6 py-9 sm:px-9 sm:py-11">
         <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">Bienvenido de nuevo</h1>
         <LoginForm redirectTo={redirectTo} initialError={initialError} />

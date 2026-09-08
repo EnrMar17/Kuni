@@ -107,7 +107,7 @@ export async function PatientPredictionPanel({ patient, asOf, timezone }: { pati
           <strong>Techo de riesgo clínico.</strong> {prediction.message}
           {probability != null ? (
             <p className="mt-1 text-xs text-rose-800">
-              El {probability}% no es "¿llegará a este nivel?" —ya llegó—, sino la probabilidad estimada de que siga empeorando más allá de este punto.
+              El {probability}% no es &ldquo;¿llegará a este nivel?&rdquo; —ya llegó—, sino la probabilidad estimada de que siga empeorando más allá de este punto.
             </p>
           ) : null}
         </div>

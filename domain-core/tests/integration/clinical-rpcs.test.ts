@@ -106,7 +106,7 @@ beforeAll(async () => {
     grant execute on function auth.uid() to anon,authenticated,service_role;
     set timezone = 'UTC';
   `);
-  for (const file of ['0001_kuni.sql', '0002_clinical_derivations.sql', '0003_clinical_commands.sql', '0004_patient_complications.sql', '0005_medication_therapeutic_class.sql', '0006_inbound_commands.sql', '0007_external_derivatives.sql', '0008_patient_registration.sql']) {
+  for (const file of ['0001_kuni.sql', '0002_clinical_derivations.sql', '0003_clinical_commands.sql', '0004_patient_complications.sql', '0005_medication_therapeutic_class.sql', '0006_inbound_commands.sql', '0007_external_derivatives.sql', '0008_patient_registration.sql', '0009_patient_initial_care.sql']) {
     await db.exec(await readFile(new URL(`../../../supabase/migrations/${file}`, import.meta.url), 'utf8'));
   }
 }, 30_000);
@@ -267,6 +267,85 @@ describe('U08 patient registration phase 1', () => {
     for (const table of ['patients', 'patient_diagnoses', 'consent_events']) {
       expect(await query(`select count(*)::integer as value from ${table} where ${table === 'patients' ? 'id' : 'patient_id'}=$1`, [target])).toBe(0);
     }
+  });
+});
+
+describe('U08 patient registration phase 2 — receta y planes iniciales', () => {
+  const target = id(810);
+  const input = () => ({ fullName: 'Paciente con receta inicial', birthDate: '1975-05-05', sex: 'unknown',
+    clinicalRecord: 'CON-CUIDADO', curp: null, whatsappE164: '+525500000810', bloodType: null,
+    initialRisk: 'medium', initialRiskReason: 'Valoracion de prueba', diagnoses: ['diabetes_type_2'], consent: null });
+  const prescription = () => ({ medicationId: medication, doseText: '1 tableta', instructions: 'Con alimentos',
+    endsAt: null, schedules: [{ weekday: 1, localTime: '08:00' }, { weekday: 3, localTime: '08:00' }] });
+  const glucosePlan = () => ({ kind: 'glucose', localTime: '07:00', weekdays: [1, 2, 3, 4, 5], measurementContext: 'fasting',
+    glucoseMinMgDl: 70, glucoseMaxMgDl: 140, criticalGlucoseMinMgDl: 50, criticalGlucoseMaxMgDl: 250,
+    systolicMinMmHg: null, systolicMaxMmHg: null, diastolicMinMmHg: null, diastolicMaxMmHg: null,
+    criticalSystolicMinMmHg: null, criticalSystolicMaxMmHg: null, criticalDiastolicMinMmHg: null, criticalDiastolicMaxMmHg: null });
+  const bpPlan = () => ({ kind: 'blood_pressure', localTime: '09:00', weekdays: [1, 2, 3, 4, 5, 6, 7], measurementContext: null,
+    glucoseMinMgDl: null, glucoseMaxMgDl: null, criticalGlucoseMinMgDl: null, criticalGlucoseMaxMgDl: null,
+    systolicMinMmHg: 100, systolicMaxMmHg: 140, diastolicMinMmHg: 60, diastolicMaxMmHg: 90,
+    criticalSystolicMinMmHg: 80, criticalSystolicMaxMmHg: 180, criticalDiastolicMinMmHg: 40, criticalDiastolicMaxMmHg: 120 });
+  const create = (p: unknown = null, plans: unknown = null, targetId = target) =>
+    attempt(() => query<{ data: { patient: { id: string } }; error: null }>(
+      'select public.register_patient($1,$2,$3,$4,$5,$6) as value', [targetId, room, doctor, input(), p, plans]));
+
+  it('crea receta activa version 1 y sus horarios junto con el alta, en la misma transaccion', async () => {
+    expect((await create(prescription())).data.patient.id).toBe(target);
+    const row = await query<{ status: string; version: number; supersedes_id: string | null }>(
+      "select to_jsonb(pr) as value from prescriptions pr where patient_id=$1", [target]);
+    expect(row).toMatchObject({ status: 'active', version: 1, supersedes_id: null });
+    expect(await query('select count(*)::integer as value from prescription_schedules where prescription_id=(select id from prescriptions where patient_id=$1)', [target])).toBe(1);
+  });
+  it('crea un plan de glucosa y uno de presion, sin mezclar sus umbrales', async () => {
+    expect((await create(null, [glucosePlan(), bpPlan()])).data.patient.id).toBe(target);
+    const rows = await query<{ kind: string; glucose_min_mg_dl: string | null; systolic_min_mm_hg: number | null }[]>(
+      "select coalesce(jsonb_agg(to_jsonb(mp) order by kind),'[]'::jsonb) as value from monitoring_plans mp where patient_id=$1", [target]);
+    expect(rows).toHaveLength(2);
+    const glucose = rows.find(r => r.kind === 'glucose')!;
+    const bp = rows.find(r => r.kind === 'blood_pressure')!;
+    expect(glucose.systolic_min_mm_hg).toBeNull();
+    expect(bp.glucose_min_mg_dl).toBeNull();
+  });
+  it('permite un plan sin ningun umbral capturado (NULL a proposito, no un default)', async () => {
+    const bare = { ...glucosePlan(), glucoseMinMgDl: null, glucoseMaxMgDl: null, criticalGlucoseMinMgDl: null, criticalGlucoseMaxMgDl: null };
+    expect((await create(null, [bare])).data.patient.id).toBe(target);
+    expect(await query('select glucose_min_mg_dl as value from monitoring_plans where patient_id=$1', [target])).toBeNull();
+  });
+  it('rechaza un plan de glucosa con umbrales de presion mezclados', async () => {
+    await expect(create(null, [{ ...glucosePlan(), systolicMinMmHg: 100 }])).rejects.toMatchObject({ code: 'PT422' });
+    expect(await query('select count(*)::integer as value from patients where id=$1', [target])).toBe(0);
+  });
+  it('rechaza dos planes de la misma variable o mas de dos planes', async () => {
+    await expect(create(null, [glucosePlan(), glucosePlan()])).rejects.toMatchObject({ code: 'PT422' });
+    await expect(create(null, [glucosePlan(), bpPlan(), glucosePlan()])).rejects.toMatchObject({ code: 'PT422' });
+  });
+  it('rechaza umbrales min>max via el CHECK de la tabla, mapeado a PT422', async () => {
+    await expect(create(null, [{ ...glucosePlan(), glucoseMinMgDl: 200, glucoseMaxMgDl: 100 }])).rejects.toMatchObject({ code: 'PT422' });
+    expect(await query('select count(*)::integer as value from patients where id=$1', [target])).toBe(0);
+  });
+  it('rechaza un medicamento de otra unidad o inactivo', async () => {
+    await owner();
+    const foreignMed = id(811), inactiveMed = id(812);
+    await db.query('insert into medications(id,unit_id,name) values($1,$2,\'Medicamento ajeno\')', [foreignMed, otherUnit]);
+    await db.query('insert into medications(id,unit_id,name,active) values($1,$2,\'Medicamento inactivo\',false)', [inactiveMed, unit]);
+    await login();
+    await expect(create({ ...prescription(), medicationId: foreignMed })).rejects.toMatchObject({ code: 'PT403' });
+    await expect(create({ ...prescription(), medicationId: inactiveMed })).rejects.toMatchObject({ code: 'PT403' });
+  });
+  it('rechaza una fecha final anterior al inicio y horarios duplicados', async () => {
+    await expect(create({ ...prescription(), endsAt: '2000-01-01' })).rejects.toMatchObject({ code: 'PT422' });
+    await expect(create({ ...prescription(), schedules: [{ weekday: 1, localTime: '08:00' }, { weekday: 1, localTime: '08:00' }] }))
+      .rejects.toMatchObject({ code: 'PT422' });
+  });
+  it('la edicion nunca acepta receta ni planes iniciales: la firma publica no los expone', async () => {
+    await create();
+    const token = await query('select jsonb_build_object(\'updatedAt\',p.updated_at,\'consentId\',\
+      (select id from consent_events where patient_id=p.id order by sequence_no desc limit 1),\'diagnoses\',\
+      (select coalesce(jsonb_agg(jsonb_build_object(\'id\',d.id,\'updatedAt\',d.updated_at) order by d.id),\'[]\'::jsonb)\
+      from patient_diagnoses d where d.patient_id=p.id and d.active)) as value from patients p where id=$1', [target]);
+    await expect(attempt(() => query('select public.update_patient_registration($1,$2,$3,$4,$5,$6,$7,$8) as value',
+      [target, room, doctor, input(), token, 'Intento invalido', prescription(), [glucosePlan()]])))
+      .rejects.toThrow();
   });
 });
 

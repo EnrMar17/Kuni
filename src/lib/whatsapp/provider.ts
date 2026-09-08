@@ -18,10 +18,12 @@ import { serverEnv } from "@/lib/env/server";
  *   es responsable de esa decisión; el proveedor no la valida.
  *
  * `dbProviderValue` es el valor que se persiste en `bot_interactions.provider`
- * / `webhook_events.provider` (constraint SQL: 'twilio' | 'meta' | 'demo').
+ * / `webhook_events.provider` (incluye 'smsgate' desde la migración 0010).
  */
 export interface WhatsAppProvider {
-  readonly dbProviderValue: "twilio" | "meta" | "demo";
+  readonly dbProviderValue: "twilio" | "meta" | "demo" | "smsgate";
+  /** SMS no está sujeto a la ventana/plantillas de WhatsApp. */
+  readonly channel: "whatsapp" | "sms";
 
   sendTemplateMessage(input: SendTemplateMessageInput): Promise<WhatsAppSendResult>;
 
@@ -115,6 +117,7 @@ export class WhatsAppProviderError extends Error {
  */
 class DemoWhatsAppProvider implements WhatsAppProvider {
   readonly dbProviderValue = "demo" as const;
+  readonly channel = "whatsapp" as const;
 
   async sendTemplateMessage(input: SendTemplateMessageInput): Promise<WhatsAppSendResult> {
     return this.fakeAccept(input.toE164);
@@ -141,13 +144,14 @@ class DemoWhatsAppProvider implements WhatsAppProvider {
 let cachedProvider: WhatsAppProvider | null = null;
 
 /**
- * Selecciona el adaptador según `WHATSAPP_PROVIDER`. Import dinámico del
- * adaptador de Twilio para que el SDK real no se cargue en modo demo/meta.
+ * Selecciona según `MESSAGE_PROVIDER`, con WHATSAPP_PROVIDER como fallback
+ * compatible. Los adaptadores reales se importan dinámicamente.
  */
 export async function getWhatsAppProvider(): Promise<WhatsAppProvider> {
   if (cachedProvider) return cachedProvider;
 
-  switch (serverEnv.WHATSAPP_PROVIDER) {
+  const selectedProvider = serverEnv.MESSAGE_PROVIDER ?? serverEnv.WHATSAPP_PROVIDER;
+  switch (selectedProvider) {
     case "mock":
       cachedProvider = new DemoWhatsAppProvider();
       return cachedProvider;
@@ -160,5 +164,10 @@ export async function getWhatsAppProvider(): Promise<WhatsAppProvider> {
       throw new Error(
         "WHATSAPP_PROVIDER=meta no tiene adaptador implementado todavía (alternativa del plan, sección 6).",
       );
+    case "smsgate": {
+      const { createSmsGateProvider } = await import("./smsgate");
+      cachedProvider = createSmsGateProvider();
+      return cachedProvider;
+    }
   }
 }

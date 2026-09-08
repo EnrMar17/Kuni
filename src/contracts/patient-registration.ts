@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createPatientInputSchema } from "./clinical";
+import { createPatientInputSchema, initialCareSchema } from "./clinical";
 
 export const diagnosisCodeSchema = z.enum([
   "diabetes_type_1", "diabetes_type_2", "diabetes_gestational", "diabetes_other", "hypertension", "other",
@@ -29,7 +29,14 @@ export const savePatientSchema = z.object({
   input: patientRegistrationSchema,
   revision: patientRevisionSchema.nullable(),
   reason: z.string().trim().min(1).max(2000),
-}).strict();
+  // U08 fase 2: solo tiene sentido en el alta (revision === null). El
+  // servidor la rechaza igual si llega en una edición — esto es defensa en
+  // profundidad en el cliente, no la única barrera.
+  initialCare: initialCareSchema.nullable(),
+}).strict().refine(value => value.revision === null || value.initialCare === null, {
+  message: "La receta y los planes iniciales solo aplican al alta.",
+  path: ["initialCare"],
+});
 
 export type PatientRegistration = z.infer<typeof patientRegistrationSchema>;
 export type PatientRevision = z.infer<typeof patientRevisionSchema>;
