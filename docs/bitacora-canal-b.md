@@ -245,3 +245,40 @@ Entregable verificable declarado en el README que nunca se había ejecutado cont
 - Verificado: `tsc --noEmit`, ESLint y `next build` de producción sin errores; **337 pruebas en 32 archivos** (antes 322).
 
 **Siguiente en la cola de B:** B8 (CSP, apagar SMS de Twilio), y B5 al final (plantillas de Twilio, depende de aprobación externa).
+
+## 2026-09-08 — B8: CSP con nonce por request, probado en caliente
+
+Pendiente diferido desde la revisión OWASP inicial (§A05, 2026-09-07) "por el riesgo de romper el build si se configura mal en el tiempo disponible". Esta vez sí se probó en caliente antes de darlo por cerrado, como pedía ese mismo comentario.
+
+**Primer intento (descartado):** una CSP estática en `next.config.ts` (`script-src 'self'`, sin nonce). Compiló, pasó `tsc`/ESLint/`next build` sin errores — pero al abrir `/login` en el navegador real (vía `ngrok`, con el `next dev` del equipo), la consola mostró:
+
+```
+Executing inline script violates the following Content Security Policy directive 'script-src 'self' 'unsafe-eval''...
+Uncaught (in promise) InvariantError: Expected a request ID to be defined... via self.__next_r. This is a bug in Next.js.
+```
+
+Next.js App Router inyecta scripts inline (`self.__next_f.push(...)`) para hidratar el streaming de RSC — **en producción también, no solo en dev**. `script-src 'self'` sin excepción los bloquea y rompe la hidratación de verdad, no solo la política. Es exactamente el riesgo que ya se había señalado y por el que se difirió la primera vez.
+
+**Solución (la documentada oficialmente por Next.js para App Router):** un nonce único por request, generado en el middleware, mandado dos veces con el mismo valor — en `request.headers` (para que Next lo detecte al renderizar y marque sus propios `<script>` con ese nonce) y en `response.headers` (lo que recibe el navegador). Implementado en `updateSession()` (`src/lib/supabase/proxy.ts`), que ya era el único lugar donde corre lógica de request/response por navegación:
+
+- `script-src 'self' 'nonce-<random>' 'strict-dynamic'` (+ `'unsafe-eval'` solo si `NODE_ENV !== 'production'`, que es lo que exige el HMR de Turbopack en `npm run dev`; `next build`/producción no lo necesita).
+- `style-src 'self' 'unsafe-inline'`: cuatro vistas usan `style={{...}}` de React (`clinical-workspace.tsx`, `clinical-dashboard.tsx`, `statistics-view.tsx`, `global-error.tsx`); nonar cada estilo inline es una refactorización aparte fuera de este pendiente, y el riesgo de inyección CSS es mucho menor que uno de script.
+- `connect-src 'self'` + origen https/wss del proyecto Supabase real (leído de `serverEnv.NEXT_PUBLIC_SUPABASE_URL`, no hardcodeado) — el navegador nunca habla con Twilio ni con el servicio de ML, ambos server-only.
+- El resto de directivas (`img-src`, `font-src`, `form-action`, `frame-ancestors`, `base-uri`, `object-src`) estrictas: el repo no carga scripts, fuentes ni imágenes de terceros (verificado: cero uso de `next/font`, `next/image` con `remotePatterns`, o `<script src=` externo).
+- `next.config.ts` conserva las cabeceras estáticas de siempre (`X-Frame-Options`, HSTS, etc.) para todas las rutas, más una CSP mínima y estática (`default-src 'none'; frame-ancestors 'none'; base-uri 'none'`) solo para las tres rutas que el matcher del proxy excluye a propósito (`api/webhooks/*`, `api/jobs/*`, `api/health` — se autentican con firma de Twilio/Bearer, no con cookies): son JSON puro sin HTML, así que una CSP con nonce ahí no aporta nada y una estática muy estricta es perfectamente segura.
+
+**Verificado en caliente, contra la app real** (no solo `next build`): con el `next dev` + `ngrok` del equipo ya corriendo, se pidió reiniciar el proceso dos veces (`next.config.ts`/middleware no se recargan en caliente) — primero con el diseño roto (confirmando el error real en consola), después con el nonce:
+
+- Header `Content-Security-Policy` con nonce distinto en cada request, confirmado por `fetch()` directo desde la consola del navegador.
+- `/login` renderiza sin ningún error de CSP en consola, con estilos inline aplicados correctamente.
+- Redirect de `/dashboard` (sin sesión) a `/login` también lleva el mismo header con nonce.
+- `/api/health` lleva la CSP mínima estática (`default-src 'none'`), confirmado con `curl`.
+- El único error de consola que quedó (`WebSocket ... /_next/hmr failed`) no es una violación de CSP — es la conexión de HMR de Turbopack sobre el túnel de `ngrok`, ajeno a este cambio.
+
+Tests nuevos: `tests/unit/auth-proxy.test.ts` — 3 casos (`Content-Security-Policy` con nonce en `script-src` cuando no redirige, el mismo header también en la respuesta de redirect a `/login`, y que dos requests distintos generan nonces distintos). Suite completa: `tsc --noEmit`, ESLint y `next build` de producción sin errores; **340 pruebas en 32 archivos** (antes 337).
+
+**Segundo pendiente de B8, manual — hecho:** proveedor SMS apagado en Supabase (Authentication → Sign In/Providers → Phone → OFF). Verificado después con el recordatorio explícito del bug del 2026-09-08 (esa vez se había apagado Email por accidente junto con SMS): `curl -X POST ".../auth/v1/token?grant_type=password"` con credenciales inventadas devolvió `400 invalid_credentials`, no `422 email_provider_disabled` — Email sigue activo, login del equipo no se rompió.
+
+Con esto, **B8 queda completo.**
+
+**Siguiente en la cola de B:** B5 (plantillas aprobadas de Twilio), el último punto de la lista original — depende de aprobación externa (Twilio/Meta), fuera del control directo de B.
