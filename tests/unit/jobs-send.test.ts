@@ -4,9 +4,20 @@ const mocks = vi.hoisted(() => ({
   from: vi.fn(),
   rpc: vi.fn(),
   sendFreeformMessage: vi.fn(),
+  sendTemplateMessage: vi.fn(),
+  // B5: cada test configura los Content SID que necesite; vacío por default,
+  // igual que un despliegue sin plantillas aprobadas todavía.
+  serverEnv: {
+    WHATSAPP_PROVIDER: "mock" as const,
+    TWILIO_MEDICATION_CONTENT_SID: undefined as string | undefined,
+    TWILIO_MEASUREMENT_GLUCOSE_CONTENT_SID: undefined as string | undefined,
+    TWILIO_MEASUREMENT_BP_CONTENT_SID: undefined as string | undefined,
+    TWILIO_APPOINTMENT_CONTENT_SID: undefined as string | undefined,
+    TWILIO_NONRESPONSE_CONTENT_SID: undefined as string | undefined,
+  },
 }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({ from: mocks.from, rpc: mocks.rpc }) }));
-vi.mock("@/lib/env/server", () => ({ serverEnv: { WHATSAPP_PROVIDER: "mock" } }));
+vi.mock("@/lib/env/server", () => ({ serverEnv: mocks.serverEnv }));
 vi.mock("@/lib/whatsapp/provider", async () => {
   const actual = await vi.importActual<typeof import("@/lib/whatsapp/provider")>("@/lib/whatsapp/provider");
   return {
@@ -14,6 +25,7 @@ vi.mock("@/lib/whatsapp/provider", async () => {
     getWhatsAppProvider: async () => ({
       dbProviderValue: "demo",
       sendFreeformMessage: mocks.sendFreeformMessage,
+      sendTemplateMessage: mocks.sendTemplateMessage,
     }),
   };
 });
@@ -54,6 +66,12 @@ beforeEach(() => {
   mocks.from.mockReset();
   mocks.rpc.mockReset();
   mocks.sendFreeformMessage.mockReset();
+  mocks.sendTemplateMessage.mockReset();
+  mocks.serverEnv.TWILIO_MEDICATION_CONTENT_SID = undefined;
+  mocks.serverEnv.TWILIO_MEASUREMENT_GLUCOSE_CONTENT_SID = undefined;
+  mocks.serverEnv.TWILIO_MEASUREMENT_BP_CONTENT_SID = undefined;
+  mocks.serverEnv.TWILIO_APPOINTMENT_CONTENT_SID = undefined;
+  mocks.serverEnv.TWILIO_NONRESPONSE_CONTENT_SID = undefined;
 });
 
 describe("sendDueInteractions", () => {
@@ -105,6 +123,82 @@ describe("sendDueInteractions", () => {
     expect(updateChain.update).toHaveBeenCalledWith(
       expect.objectContaining({ delivery_status: "failed", failure_code: "template_not_configured" }),
     );
+  });
+
+  it("B5: sin sesión reciente PERO con plantilla configurada, manda por Content SID y marca 'accepted'", async () => {
+    mocks.serverEnv.TWILIO_MEDICATION_CONTENT_SID = "HXmedication123";
+    mocks.rpc.mockResolvedValue({ data: [medicationInteraction], error: null });
+    const updateChain = makeChain({ error: null });
+    queueFrom({
+      patients: [makeChain({ data: [{ id: "patient-1", whatsapp_e164: "+5215512345678" }], error: null })],
+      patient_messaging_state: [makeChain({ data: [], error: null })], // nunca escribió: sin ventana de sesión
+      bot_interactions: [updateChain],
+    });
+    mocks.sendTemplateMessage.mockResolvedValue({ providerMessageId: "demo-tpl-1", acceptedAt: new Date("2026-09-08T14:00:00.000Z") });
+
+    const result = await sendDueInteractions();
+
+    expect(result).toEqual({ claimed: 1, sent: 1, failed: 0 });
+    expect(mocks.sendFreeformMessage).not.toHaveBeenCalled();
+    expect(mocks.sendTemplateMessage).toHaveBeenCalledWith({
+      toE164: "+5215512345678",
+      contentSid: "HXmedication123",
+      contentVariables: { "1": "Metformina — 1 tableta", "2": "A7F3" },
+    });
+    expect(updateChain.update).toHaveBeenCalledWith(
+      expect.objectContaining({ delivery_status: "accepted", provider_message_id: "demo-tpl-1" }),
+    );
+  });
+
+  it("B5: mediciones de glucosa y presión usan Content SID distintos", async () => {
+    mocks.serverEnv.TWILIO_MEASUREMENT_GLUCOSE_CONTENT_SID = "HXglucose123";
+    const glucoseInteraction = {
+      id: "bi-glucose",
+      patient_id: "patient-1",
+      kind: "measurement",
+      reply_code: "G1G1",
+      payload_snapshot: { variable: "glucose" },
+    };
+    mocks.rpc.mockResolvedValue({ data: [glucoseInteraction], error: null });
+    queueFrom({
+      patients: [makeChain({ data: [{ id: "patient-1", whatsapp_e164: "+5215512345678" }], error: null })],
+      patient_messaging_state: [makeChain({ data: [], error: null })],
+      bot_interactions: [makeChain({ error: null })],
+    });
+    mocks.sendTemplateMessage.mockResolvedValue({ providerMessageId: "demo-tpl-2", acceptedAt: new Date("2026-09-08T14:00:00.000Z") });
+
+    const result = await sendDueInteractions();
+
+    expect(result).toEqual({ claimed: 1, sent: 1, failed: 0 });
+    expect(mocks.sendTemplateMessage).toHaveBeenCalledWith({
+      toE164: "+5215512345678",
+      contentSid: "HXglucose123",
+      contentVariables: { "1": "G1G1" },
+    });
+  });
+
+  it("B5: presión arterial sin su propio Content SID configurado (aunque glucosa sí lo tenga) sigue fallando explícito", async () => {
+    mocks.serverEnv.TWILIO_MEASUREMENT_GLUCOSE_CONTENT_SID = "HXglucose123"; // configurado, pero no aplica a blood_pressure
+    const bpInteraction = {
+      id: "bi-bp",
+      patient_id: "patient-1",
+      kind: "measurement",
+      reply_code: "B2B2",
+      payload_snapshot: { variable: "blood_pressure" },
+    };
+    mocks.rpc.mockResolvedValue({ data: [bpInteraction], error: null });
+    const updateChain = makeChain({ error: null });
+    queueFrom({
+      patients: [makeChain({ data: [{ id: "patient-1", whatsapp_e164: "+5215512345678" }], error: null })],
+      patient_messaging_state: [makeChain({ data: [], error: null })],
+      bot_interactions: [updateChain],
+    });
+
+    const result = await sendDueInteractions();
+
+    expect(result).toEqual({ claimed: 1, sent: 0, failed: 1 });
+    expect(mocks.sendTemplateMessage).not.toHaveBeenCalled();
+    expect(updateChain.update).toHaveBeenCalledWith(expect.objectContaining({ failure_code: "template_not_configured" }));
   });
 
   it("una sesión de hace más de 24h ya no cuenta como reciente", async () => {

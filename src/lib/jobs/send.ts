@@ -1,6 +1,7 @@
 import "server-only";
 import type { Database } from "@/types/database.types";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { serverEnv } from "@/lib/env/server";
 import { getWhatsAppProvider, WhatsAppProviderError } from "@/lib/whatsapp/provider";
 import { renderReminderBody } from "@/lib/whatsapp/message-body";
 
@@ -16,11 +17,13 @@ import { renderReminderBody } from "@/lib/whatsapp/message-body";
  * 1. Si el paciente escribió hace menos de 24h (`patient_messaging_state.
  *    last_inbound_at`), se manda texto libre — sirve para probar el
  *    circuito real hoy mismo con el número que ya se unió al Sandbox.
- * 2. Si no, se necesita una plantilla aprobada para ese tipo de mensaje.
- *    Ninguna existe todavía para medicamento/medición (solo hay una
- *    plantilla de ejemplo para citas, sin variables confirmadas) — se
- *    marca `failed` con un código explícito en vez de inventar contenido de
- *    plantilla o intentar un texto libre que WhatsApp va a rechazar.
+ * 2. Si no, se usa la plantilla aprobada de Twilio para ese `kind` (B5,
+ *    `templateFor()` abajo) — CADA una de las cinco tiene su propio Content
+ *    SID en `serverEnv` porque el texto y las variables de una plantilla
+ *    aprobada son fijos, no se puede reutilizar una para contenido distinto.
+ *    Si el SID de ese `kind` todavía no está configurado (plantilla sin
+ *    aprobar), se marca `failed` con un código explícito en vez de inventar
+ *    contenido de plantilla o mandar texto libre que WhatsApp rechazaría.
  */
 
 type ClaimedInteraction = Database["public"]["Functions"]["claim_due_interactions"]["Returns"][number];
@@ -110,14 +113,15 @@ async function sendOne(
   }
 
   if (!ctx.recentSession) {
-    // TODO: cuando exista una plantilla aprobada real con variables
-    // confirmadas para medicamento/medición, resolverla aquí por `kind` en
-    // vez de fallar. `TWILIO_APPOINTMENT_CONTENT_SID` (env) es solo un
-    // ejemplo de cita, sin variables verificadas — no se usa a ciegas para
-    // otros tipos de mensaje.
-    return markFailed(
-      "template_not_configured",
-      "Sin ventana de sesión reciente (paciente no escribió en las últimas 24h) y sin plantilla aprobada configurada para este tipo de mensaje.",
+    const template = templateFor(interaction);
+    if (!template) {
+      return markFailed(
+        "template_not_configured",
+        `Sin ventana de sesión reciente (paciente no escribió en las últimas 24h) y sin plantilla aprobada configurada para kind='${interaction.kind}'.`,
+      );
+    }
+    return sendAndRecord(ctx, interaction, () =>
+      ctx.provider.sendTemplateMessage({ toE164: ctx.phoneE164!, contentSid: template.contentSid, contentVariables: template.contentVariables }),
     );
   }
 
@@ -126,8 +130,16 @@ async function sendOne(
     return markFailed("unsupported_kind", `No hay redacción de texto libre para kind='${interaction.kind}'.`);
   }
 
+  return sendAndRecord(ctx, interaction, () => ctx.provider.sendFreeformMessage({ toE164: ctx.phoneE164!, body }));
+}
+
+async function sendAndRecord(
+  ctx: { admin: ReturnType<typeof createAdminClient> },
+  interaction: ClaimedInteraction,
+  send: () => Promise<{ providerMessageId: string; acceptedAt: Date }>,
+): Promise<"sent" | "failed"> {
   try {
-    const result = await ctx.provider.sendFreeformMessage({ toE164: ctx.phoneE164, body });
+    const result = await send();
     await ctx.admin
       .from("bot_interactions")
       .update({
@@ -183,6 +195,50 @@ function renderMessageBody(interaction: ClaimedInteraction): string | null {
   }
   if (interaction.kind === "nonresponse_summary") {
     return renderReminderBody({ kind: "nonresponse_summary" });
+  }
+  return null;
+}
+
+/**
+ * B5 — plantilla aprobada para mandar fuera de la ventana de sesión. `null`
+ * si el Content SID de ese `kind` (o esa variable de medición) no está
+ * configurado: el llamador ya sabe fallar explícito con
+ * `template_not_configured` en ese caso, igual que antes de B5.
+ *
+ * Las claves de `contentVariables` ("1", "2", ...) son las que Twilio
+ * Content API espera para mapear a `{{1}}`/`{{2}}` del cuerpo de la
+ * plantilla aprobada — el texto exacto enviado a revisión está en
+ * `docs/bitacora-canal-b.md` 2026-09-08 (B5); si Twilio pide cambiar el
+ * texto o el orden de variables durante la revisión, este es el único lugar
+ * que hay que ajustar.
+ */
+function templateFor(interaction: ClaimedInteraction): { contentSid: string; contentVariables: Record<string, string> } | null {
+  if (interaction.kind === "medication") {
+    if (!serverEnv.TWILIO_MEDICATION_CONTENT_SID) return null;
+    const snapshot = medicationSnapshot(interaction.payload_snapshot);
+    const medication = snapshot.medicationName ? `${snapshot.medicationName} — ${snapshot.doseText}` : snapshot.doseText;
+    return {
+      contentSid: serverEnv.TWILIO_MEDICATION_CONTENT_SID,
+      contentVariables: { "1": medication, "2": interaction.reply_code },
+    };
+  }
+  if (interaction.kind === "measurement") {
+    const variable = measurementVariable(interaction.payload_snapshot);
+    const contentSid = variable === "glucose" ? serverEnv.TWILIO_MEASUREMENT_GLUCOSE_CONTENT_SID : serverEnv.TWILIO_MEASUREMENT_BP_CONTENT_SID;
+    if (!contentSid) return null;
+    return { contentSid, contentVariables: { "1": interaction.reply_code } };
+  }
+  if (interaction.kind === "appointment") {
+    if (!serverEnv.TWILIO_APPOINTMENT_CONTENT_SID) return null;
+    const snapshot = appointmentSnapshot(interaction.payload_snapshot);
+    return {
+      contentSid: serverEnv.TWILIO_APPOINTMENT_CONTENT_SID,
+      contentVariables: { "1": snapshot.roomName ?? "tu unidad de salud", "2": snapshot.startsAtLocal },
+    };
+  }
+  if (interaction.kind === "nonresponse_summary") {
+    if (!serverEnv.TWILIO_NONRESPONSE_CONTENT_SID) return null;
+    return { contentSid: serverEnv.TWILIO_NONRESPONSE_CONTENT_SID, contentVariables: {} };
   }
   return null;
 }
