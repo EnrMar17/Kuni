@@ -6,6 +6,10 @@ const { requireClinicalWriteContext, createClient } = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/auth/context", () => ({ requireClinicalWriteContext }));
 vi.mock("@/lib/supabase/server", () => ({ createClient }));
+// `revalidatePath` exige un contexto de request real de Next.js
+// ("static generation store missing" fuera de uno) — se mockea como no-op,
+// igual que se mockean auth/context y supabase/server.
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
 import {
   resolveAlert,
@@ -89,7 +93,7 @@ function makeSupabase(options: {
       if (table === "patient_complications") return chain(complicationsResult);
       throw new Error(`tabla inesperada en el mock: ${table}`);
     }),
-    rpc: vi.fn(async () => rpcResult),
+    rpc: vi.fn(async (_fn: string, _args: Record<string, unknown>) => rpcResult),
   };
 }
 
@@ -202,8 +206,9 @@ describe("correctMeasurement", () => {
     expect(call.p_patient_id).toBe(patientId);
     expect(call.p_measurement_id).toBe(measurementId);
     expect(call.p_input).toEqual({ kind: "glucose", patientId, observedAt: input.observedAt, glucoseMgDl: 110, context: "fasting" });
-    expect(call.p_input.measurementId).toBeUndefined();
-    expect(call.p_input.reason).toBeUndefined();
+    const pInput = call.p_input as Record<string, unknown>;
+    expect(pInput.measurementId).toBeUndefined();
+    expect(pInput.reason).toBeUndefined();
   });
 
   it("mapea PT422 a VALIDATION", async () => {
@@ -267,9 +272,12 @@ describe("adjustPrescription", () => {
     doseText: "500mg",
     instructions: "Cada 12 horas con alimentos.",
     endsAt: null,
+    // El schema de A usa z.iso.time({ precision: 0 }) — exige segundos
+    // (HH:MM:SS), a diferencia del regex HH:MM que validaba nuestro schema
+    // original en contracts/clinical.ts.
     schedules: [
-      { weekday: 1, localTime: "08:00" },
-      { weekday: 1, localTime: "20:00" },
+      { weekday: 1, localTime: "08:00:00" },
+      { weekday: 1, localTime: "20:00:00" },
     ],
     reason: "Ajuste por hipoglucemia recurrente.",
   };
@@ -289,9 +297,10 @@ describe("adjustPrescription", () => {
     expect(result.error).toBeNull();
     expect(result.data).toEqual({ id: prescriptionId });
     const call = supabase.rpc.mock.calls[0][1];
-    expect(call.p_input.startsAt).toBe("2026-09-08");
-    expect(call.p_input.previousPrescriptionId).toBe(prescriptionId);
-    expect(call.p_input.prescribedByDoctorId).toBe(doctorId);
+    const pInput = call.p_input as Record<string, unknown>;
+    expect(pInput.startsAt).toBe("2026-09-08");
+    expect(pInput.previousPrescriptionId).toBe(prescriptionId);
+    expect(pInput.prescribedByDoctorId).toBe(doctorId);
   });
 
   it("mapea PT422 a VALIDATION cuando startsAt no coincide con 'hoy'", async () => {
