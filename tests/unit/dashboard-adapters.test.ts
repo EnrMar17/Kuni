@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildDashboardData, lastExpectedAt, toAdherenceInput, type DashboardRows, type Row } from "../../src/lib/domain/dashboard";
+import { buildDashboardData, lastExpectedAt, toAdherenceInput, type DashboardRows, type PrescriptionRow, type Row } from "../../src/lib/domain/dashboard";
 
 const now = new Date("2026-09-08T18:00:00.000Z");
 const scope = { unitId: "unit-a", roomId: "room-a", timezone: "America/Mexico_City" };
@@ -40,6 +40,14 @@ const complication = (overrides: Partial<Row<"patient_complications">> = {}): Ro
   id: "complication-a", unit_id: "unit-a", patient_id: "patient-a", code: "E110", diagnosed_on: "2026-01-01",
   active: true, correction_reason: null, notes: null, attributed_doctor_id: "doctor-a",
   created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z", ...overrides,
+});
+const prescription = (overrides: Partial<PrescriptionRow> = {}): PrescriptionRow => ({
+  id: "rx-a", unit_id: "unit-a", patient_id: "patient-a", medication_id: "med-a", series_id: "series-a", supersedes_id: null,
+  attributed_doctor_id: "doctor-a", dose_text: "1 tableta", route: "oral", instructions: null, status: "active", change_reason: null,
+  start_date: "2026-01-01", end_date: null, version: 1, created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z",
+  medications: { name: "Metformina", strength: "850mg", therapeutic_class: "antidiabetic" },
+  prescription_schedules: [{ local_time: "08:00:00", weekdays: [1, 2, 3, 4, 5, 6, 7] }],
+  ...overrides,
 });
 const rows = (overrides: Partial<DashboardRows> = {}): DashboardRows => ({
   patients: [patient()], diagnoses: [], plans: [], measurements: [], interactions: [], responses: [], prescriptions: [],
@@ -159,5 +167,48 @@ describe("dashboard SQL adapters", () => {
     expect(data.patients[0].interactions[0].expectsResponse).toBe(true);
     const informative = buildDashboardData(rows({ interactions: [interaction({ kind: "appointment", expects_response: false, response_at: null })] }), scope, now);
     expect(informative.patients[0].interactions[0].expectsResponse).toBe(false);
+  });
+
+  it("computes confirmed adherence for the classified prescription's own therapeutic class only", () => {
+    const data = buildDashboardData(rows({ prescriptions: [prescription()], interactions: [interaction()], responses: [response()] }), scope, now);
+    expect(data.patients[0].therapeuticAdherence.antidiabetic).toMatchObject({ y: 1, n: 0, confirmedAdherencePct: 100, hasData: true });
+    expect(data.patients[0].therapeuticAdherence.antihypertensive).toMatchObject({ hasData: false, confirmedAdherencePct: null });
+  });
+
+  it("never attributes an unclassified or 'other' medication's adherence to either therapeutic class", () => {
+    const unclassified = buildDashboardData(rows({
+      prescriptions: [prescription({ medications: { name: "Genérico", strength: null, therapeutic_class: null } })],
+      interactions: [interaction()], responses: [response()],
+    }), scope, now);
+    expect(unclassified.patients[0].therapeuticAdherence.antidiabetic).toMatchObject({ hasData: false, confirmedAdherencePct: null });
+    expect(unclassified.patients[0].therapeuticAdherence.antihypertensive).toMatchObject({ hasData: false, confirmedAdherencePct: null });
+    expect(unclassified.patients[0].prescriptions[0].therapeuticClass).toBeNull();
+
+    const other = buildDashboardData(rows({
+      prescriptions: [prescription({ medications: { name: "Suplemento", strength: null, therapeutic_class: "other" } })],
+      interactions: [interaction()], responses: [response()],
+    }), scope, now);
+    expect(other.patients[0].therapeuticAdherence.antidiabetic).toMatchObject({ hasData: false });
+    expect(other.patients[0].therapeuticAdherence.antihypertensive).toMatchObject({ hasData: false });
+  });
+
+  it("sums cohorts across several active prescriptions of the same class instead of averaging their percentages", () => {
+    const second = prescription({ id: "rx-b", medication_id: "med-b", medications: { name: "Glibenclamida", strength: "5mg", therapeutic_class: "antidiabetic" } });
+    const secondInteractions = Array.from({ length: 9 }, (_, index) => interaction({ id: `rx-b-${index}`, prescription_id: "rx-b" }));
+    const secondResponses = secondInteractions.map((i) => response({ id: `response-${i.id}`, interaction_id: i.id, taken: false }));
+    const data = buildDashboardData(rows({
+      prescriptions: [prescription(), second],
+      interactions: [interaction(), ...secondInteractions],
+      responses: [response(), ...secondResponses],
+    }), scope, now);
+    expect(data.patients[0].therapeuticAdherence.antidiabetic).toMatchObject({ y: 1, n: 9, confirmedAdherencePct: 10 });
+  });
+
+  it("excludes an inactive or not-yet-started prescription from the therapeutic-class cohort", () => {
+    const data = buildDashboardData(rows({
+      prescriptions: [prescription({ status: "superseded" }), prescription({ id: "rx-future", start_date: "2099-01-01" })],
+      interactions: [interaction()], responses: [response()],
+    }), scope, now);
+    expect(data.patients[0].therapeuticAdherence.antidiabetic).toMatchObject({ hasData: false, confirmedAdherencePct: null });
   });
 });
