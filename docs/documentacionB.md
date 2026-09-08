@@ -6,6 +6,17 @@ B mantiene la persistencia, autorización de datos y transporte. La base disponi
 
 La prueba previa de Twilio fue una recepción del comando de ingreso al Sandbox y un envío desde su consola. Acredita la viabilidad del proveedor; todavía no acredita un circuito de envío/respuesta iniciado por la aplicación.
 
+Las migraciones `0002_clinical_derivations.sql` y `0003_clinical_commands.sql` (RPC clínicas de C) ya están aplicadas al proyecto Supabase real y los tipos regenerados: era el bloqueo número uno de todo el proyecto según `docs/auditoria-integracion.md` §2.1 y `docs/pendientes-y-modelo.md` (B1). Ver detalle en `bitacora-canal-b.md` 2026-09-08.
+
+`0004_patient_complications.sql` (RF28) también está aplicada al proyecto real y los tipos regenerados incluyen `patient_complications` (B3, ver `bitacora-canal-b.md` 2026-09-08). Con B1+B3 ya en remoto, tres de las cinco variables que `buildMlFeatureVector()` reportaba en `gaps` (`num_complicaciones_dm`, `tiene_complicacion_dm`, `complicacion_grave_dm`) tienen ya una fuente de datos real en la base — falta que alguien la llene y que C escriba el adaptador (C2/C7 en `docs/pendientes-y-modelo.md`). Las otras dos (`adherencia_antidiabeticos`/`antihipertensivos`) siguen esperando B4 (clase terapéutica en `medications`).
+
+**Lo que esto ya desbloquea para A y C, concretamente:**
+- **A** puede escribir Server Actions reales contra las cinco RPC clínicas (`adjust_prescription`, `correct_measurement`, `correct_medication_response`, `mark_urgent`, `resolve_alert`) — ya están en `src/types/database.types.ts` con sus firmas. Sugerencia de la auditoría: empezar por `resolve_alert` (menor superficie) para acordar el mapeo `PT401/403/422/409 → {data, error}` una sola vez y replicarlo en las otras cuatro (A6 en `docs/pendientes-y-modelo.md`).
+- **A** puede construir la captura/edición de complicaciones (RF28) contra `patient_complications` — tabla, RLS y catálogo `E110-E119` ya existen y están probados.
+- **C** puede declarar las cinco RPC como integradas (C6) y escribir el adaptador de complicaciones hacia `buildMlFeatureVector()` (parte de C2/C7): `patient_complications` ya tiene filas vigentes por código, `active`, `diagnosed_on` y la regla de que `E119` nunca convive con una complicación real — el mapeo a `MlComplicationsCapture.codes` es directo (ausencia total de fila = `complications: null`, fila(s) activa(s) = `codes: [...]`).
+- Sigue bloqueado hasta B4: `adherencia_antidiabeticos`/`antihipertensivos` (necesitan `medications.therapeutic_class`).
+- Sigue bloqueado hasta que A/B/C se sienten diez minutos: el nombre del campo de presión arterial (§2.3 de la auditoría, `systolicMmhg` vs `systolicMmHg`) y los rangos de captura (§2.4) — nada de lo aplicado hoy cambia eso.
+
 ## Lo que se hizo de B
 
 ### Persistencia y acceso existentes
@@ -37,6 +48,8 @@ La prueba previa de Twilio fue una recepción del comando de ingreso al Sandbox 
 - `src/lib/jobs/materialize.ts` / `send.ts`: cola de materialización y envío real por WhatsApp.
 - `src/app/api/webhooks/whatsapp/route.ts` / `status/route.ts`: webhooks entrante y de estado — firma, deduplicación, wiring a Supabase.
 - `src/app/api/jobs/tick/route.ts`: disparador del Cron (Bearer `CRON_SECRET`).
+- `supabase/migrations/0004_patient_complications.sql`: RF28, tabla `patient_complications`, catálogo `E110-E119`, RLS, auditoría.
+- `domain-core/tests/integration/patient-complications.test.ts`: 12 pruebas de integración (PGlite) de RLS y reglas de negocio de `0004`.
 - `tests/unit/dashboard-adapters.test.ts`: regresiones de cohortes, riesgo, horarios e información faltante.
 - `tests/unit/dashboard-queries.test.ts`: límites, paginación, errores y filtros de autorización en las consultas.
 - `tests/unit/whatsapp-*.test.ts`, `tests/unit/jobs-*.test.ts`: proveedor/adaptador/estado/webhooks/cola del canal WhatsApp.
@@ -69,10 +82,10 @@ B es responsable del esquema, migraciones incrementales, RLS, tipos, datos de pr
 
 ## Qué falta de B
 
-1. Migración incremental de complicaciones DM, estados de tratamiento y trazabilidad; regenerar tipos y probar RLS/constraints. No modificar la migración base ya aplicada.
-2. ~~Interfaz de proveedor y adaptador Twilio, validación de firma, webhooks entrante y de estado, deduplicación~~ — hecho (`src/lib/whatsapp/{provider,twilio,status}.ts`, `src/app/api/webhooks/whatsapp/{route,status/route}.ts`, ver `bitacora-canal-b.md` 2026-09-08). Falta el **procesamiento transaccional con C**: el webhook entrante guarda el mensaje ya interpretado pero no escribe el efecto clínico (medición, confirmación de toma) — eso exige las RPC de registro de C.
+1. ~~Migración `0002`/`0003` (RPC clínicas de C) aplicadas al Supabase remoto; tipos regenerados~~ — hecho (§B1, ver `bitacora-canal-b.md` 2026-09-08). Las cinco RPC (`adjust_prescription`, `correct_measurement`, `correct_medication_response`, `mark_urgent`, `resolve_alert`) ya aparecen en `src/types/database.types.ts`. ~~Migración incremental de complicaciones DM (RF28)~~ — hecho (§B3 más abajo). Sigue pendiente clase terapéutica de medicamentos (B4). No modificar la migración base ni `0002`/`0003`/`0004` ya aplicadas.
+2. ~~Interfaz de proveedor y adaptador Twilio, validación de firma, webhooks entrante y de estado, deduplicación~~ — hecho (`src/lib/whatsapp/{provider,twilio,status}.ts`, `src/app/api/webhooks/whatsapp/{route,status/route}.ts`, ver `bitacora-canal-b.md` 2026-09-08). Falta el **procesamiento transaccional con C**: el webhook entrante guarda el mensaje ya interpretado pero no escribe el efecto clínico (medición, confirmación de toma) — eso exige las RPC de registro de C, que ya están aplicadas (#1) pero nadie las llama todavía desde el webhook.
 3. ~~Materialización y envío, endpoint `api/jobs/tick`, prueba real de ida y vuelta desde la app~~ — hecho (`src/lib/jobs/{materialize,send}.ts`, `src/app/api/jobs/tick/route.ts`; mensaje real enviado y confirmado `delivered`/`read`, respuesta del paciente recibida — ver `bitacora-canal-b.md` 2026-09-08). Falta programar el Cron (Supabase Cron / externo) que llame ese endpoint solo; hoy se dispara a mano. `appointment` y `nonresponse_summary` quedan fuera del materializador a propósito (sin plantilla real / disparador preciso).
-4. Normalizar `+521XXXXXXXXXX` vs `+52XXXXXXXXXX` (números de WhatsApp de México) al resolver paciente por teléfono en el webhook entrante — bug real encontrado en la prueba end-to-end, corregido solo en el dato demo, no en el código. Integrar BAJA, plantillas aprobadas de Twilio para medicamento/medición (`send.ts` hoy solo puede mandar dentro de la ventana de sesión de 24h, sin plantilla configurada para esos tipos), respuestas tardías e incidencias técnicas con la cola existente (los callbacks desordenados de entrega ya están cubiertos por `status.ts`, con concurrencia optimista).
+4. ~~Normalizar `+521XXXXXXXXXX` vs `+52XXXXXXXXXX` (números de WhatsApp de México) al resolver paciente por teléfono en el webhook entrante~~ — hecho (`src/lib/whatsapp/phone.ts`, `phoneLookupCandidates()`, ver auditoría §3.1 y `bitacora-canal-b.md` 2026-09-08). Falta integrar BAJA, plantillas aprobadas de Twilio para medicamento/medición (`send.ts` hoy solo puede mandar dentro de la ventana de sesión de 24h, sin plantilla configurada para esos tipos), respuestas tardías e incidencias técnicas con la cola existente (los callbacks desordenados de entrega ya están cubiertos por `status.ts`, con concurrencia optimista).
 5. Completar con C las RPC de corrección, ajustes, urgencia y resolución con auditoría y recálculo coherente; las dos RPC actuales de cola no realizan esas acciones.
 6. Probar aislamiento real entre dos unidades y roles, concurrencia de workers y consentimiento revocado durante un envío.
 7. Medir rendimiento con datos reales del tamaño de la demo; para mayor escala, consultar agregados/snapshot mediante RPC y paginar el censo desde servidor.
