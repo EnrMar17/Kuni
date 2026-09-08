@@ -158,6 +158,14 @@ async function sendOne(
   }
 }
 
+function appointmentSnapshot(payload: unknown): { startsAtLocal: string; roomName: string | null } {
+  const p = (payload ?? {}) as Record<string, unknown>;
+  return {
+    startsAtLocal: typeof p.startsAtLocal === "string" ? p.startsAtLocal : "próximamente",
+    roomName: typeof p.roomName === "string" ? p.roomName : null,
+  };
+}
+
 function renderMessageBody(interaction: ClaimedInteraction): string | null {
   if (interaction.kind === "medication") {
     const snapshot = medicationSnapshot(interaction.payload_snapshot);
@@ -169,6 +177,12 @@ function renderMessageBody(interaction: ClaimedInteraction): string | null {
       replyCode: interaction.reply_code,
       variable: measurementVariable(interaction.payload_snapshot),
     });
+  }
+  if (interaction.kind === "appointment") {
+    return renderReminderBody({ kind: "appointment", ...appointmentSnapshot(interaction.payload_snapshot) });
+  }
+  if (interaction.kind === "nonresponse_summary") {
+    return renderReminderBody({ kind: "nonresponse_summary" });
   }
   return null;
 }

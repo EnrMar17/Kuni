@@ -225,3 +225,23 @@ Entregable verificable declarado en el README que nunca se había ejecutado cont
 - No se tocaron los datos demo existentes (los tres pacientes ficticios, la unidad Morelia). No se envió WhatsApp ni se corrió ningún otro job durante la verificación.
 
 **Siguiente en la cola de B:** B7 (`appointment`/`nonresponse_summary` en el materializador), después B8 (CSP, apagar SMS de Twilio) y B5 al final.
+
+## 2026-09-08 — B7: `appointment` y `nonresponse_summary` en el materializador
+
+`materialize.ts` los dejaba fuera a propósito desde su primera entrega: `appointment` porque no había plantilla aprobada con contenido real, `nonresponse_summary` porque su disparador ("al siguiente contacto permitido") nunca quedó definido con precisión en el plan. Antes de escribir código, dos decisiones de producto se acordaron con el equipo (no las inventé):
+
+- **Anticipación del recordatorio de cita:** 24h antes de `starts_at`.
+- **`nonresponse_summary`** — va dirigido al **paciente** (por WhatsApp) y también debe verse en el dashboard; se dispara con el mismo criterio que ya usa `evaluateRisk()` para elevar a riesgo medio (≥3 no-respuestas), pero **una sola vez por racha**, no cada tick mientras la racha sigue viva; tono deliberadamente amable, sin presión.
+
+**Diseño del disparador de `nonresponse_summary`** (la parte no trivial): en vez de una ventana móvil de 7 días — que se volvería a disparar en cada tick mientras la racha sigue activa — se cuenta *desde la última respuesta del paciente* (o desde siempre, si nunca ha respondido) sus no-respuestas seguidas. Al llegar a 3, el `id` de esa 3ª no-respuesta se usa como **ancla fija** de la clave de deduplicación (`nonresponse_summary:<patient_id>:<anchorId>`): aunque la racha siga creciendo a 4, 5, 10 no-respuestas, el ancla no cambia, así que el `upsert` con `ignoreDuplicates` nunca vuelve a insertar el mismo mensaje. La racha solo "se rompe" — y una nueva podría volver a disparar un mensaje, con un ancla distinta — en cuanto el paciente responde cualquier cosa. Implementado como función pura (`nonresponseStreakAnchors()`), testeable sin base de datos, igual que el resto del dominio.
+
+- `src/lib/jobs/materialize.ts`: dos bloques nuevos por unidad —
+  - `appointment`: consulta `appointments` con `status='scheduled'` y `starts_at` futuro; materializa cuando `starts_at - 24h <= now`. `expects_response=false`, dedup key `appointment:<id>:reminder`. El texto local de la cita (`startsAtLocal`) se formatea en el momento de materializar con la zona horaria de la unidad (mismo patrón que ya usa el snapshot de medicamento/medición), para que `send.ts` no necesite conocer la zona horaria.
+  - `nonresponse_summary`: consulta el historial de `bot_interactions` de medicamento/medición con `timeout_at`/`response_at`, agrupa por paciente y aplica `nonresponseStreakAnchors()` (nueva, exportada, pura).
+- `src/lib/whatsapp/message-body.ts`: `AppointmentReminderInput` (informativo, sin código de respuesta) y `NonresponseSummaryReminderInput` (tono amable, sin presión, sin pedir dato alguno).
+- `src/lib/jobs/send.ts`: `renderMessageBody()` ahora cubre los cuatro `kind`; ambos nuevos reutilizan el mismo flujo de entrega que medicamento/medición — **misma limitación conocida**: sin ventana de sesión reciente, fallan con `template_not_configured` hasta que exista plantilla aprobada (B5). No hice ningún tratamiento especial para "esperar a que el paciente escriba": el sistema ya no tiene un mecanismo de reintento distinto de eso para ningún `kind`, así que introducir uno solo para `nonresponse_summary` habría sido inconsistente con el resto.
+- Visibilidad en el dashboard: gratis, sin tocar nada — `src/lib/domain/dashboard.ts` ya mapea cualquier `kind` de `bot_interactions` a los "hitos de interacción" de la ficha (línea `interactions: ...map((r) => ({ id: r.id, kind: r.kind, ... }))`), sin narrowing a un enum cerrado.
+- Tests: `tests/unit/jobs-materialize.test.ts` — 3 casos nuevos de integración (recordatorio de cita a tiempo, cita todavía lejana no genera nada, check-in disparado al cruzar el umbral) + 5 casos unitarios de `nonresponseStreakAnchors()` (sin racha, ancla estable al crecer la racha, una respuesta rompe la racha, una racha nueva usa un ancla distinta, dos pacientes se evalúan por separado). `tests/unit/jobs-send.test.ts` — 2 casos nuevos (cita se manda con sesión reciente, check-in se manda sin código de respuesta en el texto).
+- Verificado: `tsc --noEmit`, ESLint y `next build` de producción sin errores; **337 pruebas en 32 archivos** (antes 322).
+
+**Siguiente en la cola de B:** B8 (CSP, apagar SMS de Twilio), y B5 al final (plantillas de Twilio, depende de aprobación externa).
