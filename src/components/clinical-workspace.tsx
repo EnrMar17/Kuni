@@ -10,6 +10,7 @@ import {
 import { AppointmentForm } from "@/components/appointment-form";
 import { StatisticsView } from "@/components/statistics-view";
 import { PatientCreateForm } from "@/components/patient-create-form";
+import { AlertActions, ComplicationPanel, MeasurementCorrection, PrescriptionAdjustment } from "@/components/clinical-actions";
 import type { DashboardData, DashboardPatient } from "@/lib/domain/dashboard";
 import {
   availableDiagnoses,
@@ -355,14 +356,7 @@ function AlertsView({ data }: { data: DashboardData }) {
                 · Estado: {alert.status}
               </p>
             </div>
-            <button
-              className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-400"
-              disabled
-              title="Disponible al integrar resolveAlert de C"
-              type="button"
-            >
-              Revisar alerta
-            </button>
+            <AlertActions alert={alert} />
           </article>
         ))}
         {!data.alerts.length ? (
@@ -446,6 +440,8 @@ export function PatientProfile({
                     "Sin diagnóstico registrado"
                   }
                 />
+                {patient.latestGlucose ? <MeasurementCorrection measurement={patient.latestGlucose} patientId={patient.id} /> : null}
+                {patient.latestBloodPressure ? <MeasurementCorrection measurement={patient.latestBloodPressure} patientId={patient.id} /> : null}
                 <Detail
                   label="Prioridad actual"
                   value={riskLabels[patient.risk.level]}
@@ -524,6 +520,7 @@ export function PatientProfile({
                         .map((schedule) => schedule.localTime.slice(0, 5))
                         .join(", ") || "Sin horarios"}
                     </p>
+                    <PrescriptionAdjustment patientId={patient.id} prescription={prescription} />
                   </article>
                 ))}
                 {!patient.prescriptions.length ? (
@@ -533,6 +530,7 @@ export function PatientProfile({
                 ) : null}
               </div>
             </section>
+            <ComplicationPanel complications={patient.complications} patientId={patient.id} />
           </div>
         </div>
       </div>
