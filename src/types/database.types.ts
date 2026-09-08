@@ -1050,6 +1050,91 @@ export type Database = {
           },
         ]
       }
+      patient_complications: {
+        Row: {
+          active: boolean
+          attributed_doctor_id: string
+          code: string
+          correction_reason: string | null
+          created_at: string
+          diagnosed_on: string | null
+          id: string
+          notes: string | null
+          patient_id: string
+          unit_id: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          attributed_doctor_id: string
+          code: string
+          correction_reason?: string | null
+          created_at?: string
+          diagnosed_on?: string | null
+          id?: string
+          notes?: string | null
+          patient_id: string
+          unit_id: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          attributed_doctor_id?: string
+          code?: string
+          correction_reason?: string | null
+          created_at?: string
+          diagnosed_on?: string | null
+          id?: string
+          notes?: string | null
+          patient_id?: string
+          unit_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patient_complications_unit_id_attributed_doctor_id_fkey"
+            columns: ["unit_id", "attributed_doctor_id"]
+            isOneToOne: false
+            referencedRelation: "doctors"
+            referencedColumns: ["unit_id", "id"]
+          },
+          {
+            foreignKeyName: "patient_complications_unit_id_patient_id_fkey"
+            columns: ["unit_id", "patient_id"]
+            isOneToOne: false
+            referencedRelation: "current_patient_risk"
+            referencedColumns: ["unit_id", "patient_id"]
+          },
+          {
+            foreignKeyName: "patient_complications_unit_id_patient_id_fkey"
+            columns: ["unit_id", "patient_id"]
+            isOneToOne: false
+            referencedRelation: "patient_adherence"
+            referencedColumns: ["unit_id", "patient_id"]
+          },
+          {
+            foreignKeyName: "patient_complications_unit_id_patient_id_fkey"
+            columns: ["unit_id", "patient_id"]
+            isOneToOne: false
+            referencedRelation: "patient_consent_status"
+            referencedColumns: ["unit_id", "patient_id"]
+          },
+          {
+            foreignKeyName: "patient_complications_unit_id_patient_id_fkey"
+            columns: ["unit_id", "patient_id"]
+            isOneToOne: false
+            referencedRelation: "patient_nonresponse_counts"
+            referencedColumns: ["unit_id", "patient_id"]
+          },
+          {
+            foreignKeyName: "patient_complications_unit_id_patient_id_fkey"
+            columns: ["unit_id", "patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["unit_id", "id"]
+          },
+        ]
+      }
       patient_diagnoses: {
         Row: {
           active: boolean
@@ -1929,6 +2014,18 @@ export type Database = {
       }
     }
     Functions: {
+      adjust_prescription: {
+        Args: {
+          p_doctor_id: string
+          p_expected_updated_at: string
+          p_expected_version: number
+          p_input: Json
+          p_patient_id: string
+          p_prescription_id: string
+          p_reason: string
+        }
+        Returns: Json
+      }
       claim_due_interactions: {
         Args: { batch_size?: number }
         Returns: {
@@ -1967,7 +2064,51 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      correct_measurement: {
+        Args: {
+          p_doctor_id: string
+          p_expected_updated_at: string
+          p_input: Json
+          p_measurement_id: string
+          p_patient_id: string
+          p_reason: string
+        }
+        Returns: Json
+      }
+      correct_medication_response: {
+        Args: {
+          p_doctor_id: string
+          p_expected_updated_at: string
+          p_patient_id: string
+          p_reason: string
+          p_response_id: string
+          p_schedule_id: string
+          p_scheduled_at: string
+          p_taken: boolean
+        }
+        Returns: Json
+      }
       expire_due_interactions: { Args: never; Returns: number }
+      mark_urgent: {
+        Args: {
+          p_doctor_id: string
+          p_event_id: string
+          p_patient_id: string
+          p_reason: string
+        }
+        Returns: Json
+      }
+      resolve_alert: {
+        Args: {
+          p_alert_id: string
+          p_doctor_id: string
+          p_expected_updated_at: string
+          p_next_status: string
+          p_patient_id: string
+          p_reason: string
+        }
+        Returns: Json
+      }
     }
     Enums: {
       [_ in never]: never
