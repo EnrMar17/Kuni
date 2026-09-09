@@ -12,7 +12,7 @@ import { StatisticsView } from "@/components/statistics-view";
 import { PatientCreateForm } from "@/components/patient-create-form";
 import type { PatientEditData } from "@/contracts/patient-registration";
 import type { MedicationOption } from "@/contracts/clinical";
-import { AlertActions, ComplicationPanel, MeasurementCorrection, MedicationClassification, MedicationResponseCorrection, PrescriptionAdjustment } from "@/components/clinical-actions";
+import { AlertActions, ComplicationPanel, ManualSmsTestAction, MeasurementCorrection, MedicationClassification, MedicationResponseCorrection, PrescriptionAdjustment } from "@/components/clinical-actions";
 import type { DashboardData, DashboardPatient } from "@/lib/domain/dashboard";
 import {
   availableDiagnoses,
@@ -524,7 +524,7 @@ export function PatientProfile({
                 Contacto y consentimiento
               </h2>
               <dl className="mt-4 space-y-3">
-                <Detail label="WhatsApp" value={patient.whatsappE164} />
+                <Detail label="Teléfono de mensajería" value={patient.whatsappE164} />
                 <Detail
                   label="Consentimiento"
                   value={
@@ -538,6 +538,13 @@ export function PatientProfile({
                   value={dateTime(patient.lastResponseAt, data.timezone)}
                 />
               </dl>
+              {canWrite ? (
+                <ManualSmsTestAction
+                  patientId={patient.id}
+                  phoneE164={patient.whatsappE164}
+                  consentGranted={patient.consentGranted}
+                />
+              ) : null}
             </aside>
             <section className="clinical-panel p-5 lg:col-span-3">
               <h2 className="text-base font-extrabold text-slate-900">

@@ -314,3 +314,13 @@ Con esto, **B8 queda completo.**
 3. Copiar cada Content SID aprobado (`HX...`) a `.env.local`. Sin más cambios de código: `templateFor()` ya sabe usarlos en cuanto detecta el valor.
 
 No se aplicó nada al proyecto Supabase durante esta entrega; todo lo de Twilio/Meta se hizo en la cuenta real del usuario, con su decisión explícita de pagar el upgrade.
+
+## 2026-09-08 — Prueba SMS desde la ficha y continuidad automática
+
+- Se agregó `0013_manual_sms_test.sql`: amplía `bot_interactions.kind` con `manual_test` y publica la RPC autenticada `request_manual_sms_test`.
+- La RPC revalida membresía de escritura, unidad, consultorio, paciente activo y consentimiento; serializa clics concurrentes, conserva idempotencia por `requestId` y limita una prueba por paciente cada 30 segundos.
+- `src/lib/jobs/manual-sms-test.ts` usa el mismo adaptador SMS configurado que el cron, guarda `accepted/failed/unknown` con compare-and-set y nunca trata una aceptación HTTP como entrega confirmada.
+- `src/actions/messaging.ts` es la frontera de Server Action: valida UUID, vuelve a autenticar/autorizar y solo devuelve el estado mínimo necesario a la interfaz.
+- La ficha del paciente incluye confirmación previa con destino y texto fijo. El botón solo sirve para prueba inmediata; no altera el `POST /api/jobs/tick`, que sigue materializando y enviando recordatorios programados.
+- En iPhone, la generación/encolado puede ocurrir automáticamente, pero iOS puede exigir escoger SIM y confirmar físicamente el SMS. La interfaz lo dice de forma explícita.
+- Las pruebas `tests/unit/manual-sms-test.test.ts` cubren éxito, idempotencia, proveedor incorrecto, límite de frecuencia y fallo ambiguo. No realizan envíos reales.

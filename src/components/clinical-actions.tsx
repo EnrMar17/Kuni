@@ -13,6 +13,8 @@ import {
   adjustPrescription,
   setMedicationTherapeuticClass,
 } from "@/actions/clinical";
+import { sendManualSmsTestAction } from "@/actions/messaging";
+import { MANUAL_SMS_TEST_BODY } from "@/contracts/messaging";
 import type {
   DashboardAlert,
   DashboardComplication,
@@ -24,7 +26,7 @@ import type {
 function ActionMessage({ message }: { message: string | null }) {
   if (!message) return null;
   const isSuccess =
-    /^(La alerta se actualizó|Se registró la urgencia clínica|Complicación registrada|Complicación retirada|Medición corregida|Toma de medicamento corregida|Ajuste de receta registrado)\.?$/i.test(
+    /^(La alerta se actualizó|Se registró la urgencia clínica|Complicación registrada|Complicación retirada|Medición corregida|Toma de medicamento corregida|Ajuste de receta registrado|SMS de prueba solicitado\. Confirma el envío en el iPhone|Esta prueba SMS ya estaba solicitada)\.?$/i.test(
       message.trim(),
     );
   return (
@@ -50,6 +52,98 @@ function useDismissOnEscape(active: boolean, onDismiss: () => void) {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [active, onDismiss]);
+}
+
+export function ManualSmsTestAction({
+  patientId,
+  phoneE164,
+  consentGranted,
+}: {
+  patientId: string;
+  phoneE164: string;
+  consentGranted: boolean;
+}) {
+  const panelId = useId();
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  const closePanel = () => {
+    setExpanded(false);
+    queueMicrotask(() => triggerRef.current?.focus());
+  };
+  useDismissOnEscape(expanded, closePanel);
+
+  const sendTest = () => {
+    setMessage(null);
+    startTransition(async () => {
+      const result = await sendManualSmsTestAction({
+        patientId,
+        requestId: crypto.randomUUID(),
+      });
+      if (result.error) return setMessage(result.error.message);
+      setExpanded(false);
+      setMessage(
+        result.data.status === "accepted"
+          ? "SMS de prueba solicitado. Confirma el envío en el iPhone."
+          : "Esta prueba SMS ya estaba solicitada.",
+      );
+    });
+  };
+
+  return (
+    <div className="mt-5 border-t border-indigo-100 pt-4">
+      <p className="text-xs leading-relaxed text-slate-500">
+        Los recordatorios se generan automáticamente a su hora. Este control solo adelanta una prueba.
+      </p>
+      <button
+        ref={triggerRef}
+        aria-controls={panelId}
+        aria-expanded={expanded}
+        className="mt-3 w-full rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+        disabled={!consentGranted || isPending}
+        onClick={() => {
+          setExpanded((value) => !value);
+          setMessage(null);
+        }}
+        type="button"
+      >
+        {isPending ? "Solicitando…" : "Enviar SMS de prueba"}
+      </button>
+      {!consentGranted ? (
+        <p className="mt-2 text-xs font-medium text-amber-700">
+          Se necesita consentimiento vigente para habilitar la prueba.
+        </p>
+      ) : null}
+      {expanded ? (
+        <div className="clinical-inline-panel mt-3" id={panelId} role="region" aria-label="Confirmar SMS de prueba">
+          <p className="text-sm font-extrabold text-slate-900">Confirmar envío de prueba</p>
+          <p className="mt-2 text-xs text-slate-500">Destino: {phoneE164}</p>
+          <p className="mt-3 rounded-xl bg-white p-3 text-sm leading-relaxed text-slate-700">
+            {MANUAL_SMS_TEST_BODY}
+          </p>
+          <p className="mt-2 text-xs leading-relaxed text-amber-700">
+            SMS8 lo pondrá en cola; iOS todavía puede pedirte elegir el chip y confirmar.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button className="clinical-button" disabled={isPending} onClick={sendTest} type="button">
+              {isPending ? "Enviando…" : "Sí, enviar prueba"}
+            </button>
+            <button
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700"
+              disabled={isPending}
+              onClick={closePanel}
+              type="button"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      ) : null}
+      <ActionMessage message={message} />
+    </div>
+  );
 }
 
 export function AlertActions({ alert }: { alert: DashboardAlert }) {

@@ -4,7 +4,7 @@
 /* Librería de animaciones CSS puras (sin JS) — utilidades .animate__* de
    apoyo para transiciones/entradas en toda la app, además de las
    animaciones propias "kuni-*" ya existentes. */
-@import "animate.css";
+@import "animate.css/animate.min.css";
 
 :root {
   --background: #f4f7f6;
