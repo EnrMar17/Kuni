@@ -13,6 +13,7 @@ import {
 } from "@/contracts/clinical";
 import { resolveAlertRpcInputSchema, medicationTherapeuticClassInputSchema } from "@/contracts/clinical-actions";
 import { requireClinicalWriteContext } from "@/lib/auth/context";
+import { DIABETES_COMPLICATION_CODES } from "@/lib/clinical/diabetes-complications";
 import { mapClinicalRpcFailure } from "@/lib/clinical/rpc-errors";
 import { createClient } from "@/lib/supabase/server";
 
@@ -30,13 +31,10 @@ const urgentInputSchema = patientIdSchema.extend({
   eventId: z.uuid(),
   reason: z.string().trim().min(1).max(2_000),
 });
-const complicationCodeSchema = z.enum([
-  "E110", "E111", "E112", "E113", "E114", "E115", "E116", "E117", "E118", "E119",
-]);
+const complicationCodeSchema = z.enum(DIABETES_COMPLICATION_CODES);
 const complicationInputSchema = patientIdSchema.extend({
   code: complicationCodeSchema,
   diagnosedOn: z.iso.date().nullable(),
-  notes: z.string().trim().max(2_000).nullable(),
 });
 const deactivateComplicationInputSchema = patientIdSchema.extend({
   complicationId: z.uuid(),
@@ -172,14 +170,29 @@ export async function addPatientComplication(input: ComplicationInput): Promise<
   if (!parsed.success) return { data: null, error: { code: "VALIDATION", message: "Revisa el código y la fecha de la complicación." } };
   try {
     const { context, supabase } = await assertPatientInSelectedRoom(parsed.data.patientId);
+    const todayInUnit = formatInTimeZone(new Date(), context.timezone, "yyyy-MM-dd");
+    if (parsed.data.diagnosedOn && parsed.data.diagnosedOn > todayInUnit) {
+      throw new AppError(
+        "VALIDATION",
+        "La fecha de diagnóstico o revisión no puede estar en el futuro.",
+      );
+    }
     const { data, error } = await supabase.from("patient_complications").insert({
       unit_id: context.unitId,
       patient_id: parsed.data.patientId,
       attributed_doctor_id: context.consultingRoom.doctorId,
       code: parsed.data.code,
       diagnosed_on: parsed.data.diagnosedOn,
-      notes: parsed.data.notes || null,
     }).select("id").single();
+    if (error?.code === "23505") {
+      throw new AppError("CONFLICT", "Ese código ya está vigente en la ficha.");
+    }
+    if (error?.code === "P0001") {
+      throw new AppError(
+        "CONFLICT",
+        "Actualiza primero el estado vigente: sin complicaciones y las complicaciones clínicas no pueden coexistir.",
+      );
+    }
     if (error) throw mapClinicalRpcFailure(error);
     refreshClinicalViews();
     return ok({ id: data.id });

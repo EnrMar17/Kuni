@@ -741,7 +741,11 @@ export function PatientProfile({
                   ) : null}
                 </div>
               </details>
-              <ComplicationPanel complications={patient.complications} patientId={patient.id} />
+              <ComplicationPanel
+                canWrite={canWrite}
+                complications={patient.complications}
+                patientId={patient.id}
+              />
             </aside>
             {/* Tratamiento y medicación: fila propia, a todo lo ancho de las dos columnas de arriba. */}
             <section className="clinical-panel p-5 lg:col-span-12">
