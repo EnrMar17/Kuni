@@ -27,9 +27,9 @@ type WorkspaceMode =
   "patients" | "new-patient" | "appointments" | "alerts" | "statistics";
 
 const riskClass = {
-  high: "border-rose-200 bg-rose-50 text-rose-700",
-  medium: "border-amber-200 bg-amber-50 text-amber-700",
-  low: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  high: "border-[#0a4470]/40 bg-[#0a4470]/10 text-[#0a4470]",
+  medium: "border-sky-300 bg-sky-100 text-sky-800",
+  low: "border-sky-200 bg-sky-50 text-sky-700",
   unknown: "border-slate-200 bg-slate-100 text-slate-600",
 } as const;
 
@@ -240,17 +240,17 @@ function PatientsView({ data }: { data: DashboardData }) {
                   <td className="px-4 py-4 sm:px-5">
                     <div className="flex flex-wrap gap-1.5 text-xs font-semibold">
                       {patient.alerts.length ? (
-                        <span className="rounded-full bg-rose-50 px-2 py-1 text-rose-800">
+                        <span className="rounded-full bg-[#0a4470]/10 px-2 py-1 text-[#0a4470]">
                           {patient.alerts.length} alerta{patient.alerts.length === 1 ? "" : "s"}
                         </span>
                       ) : null}
                       {patient.nonresponse.pending ? (
-                        <span className="rounded-full bg-amber-50 px-2 py-1 text-amber-800">
+                        <span className="rounded-full bg-sky-100 px-2 py-1 text-sky-800">
                           {patient.nonresponse.pending} pendiente{patient.nonresponse.pending === 1 ? "" : "s"}
                         </span>
                       ) : null}
                       {patient.appointments[0] ? (
-                        <span className="rounded-full bg-sky-50 px-2 py-1 text-sky-800">
+                        <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">
                           Cita {dateTime(patient.appointments[0].startsAt, data.timezone)}
                         </span>
                       ) : null}
@@ -264,7 +264,8 @@ function PatientsView({ data }: { data: DashboardData }) {
                       className="text-xs font-bold text-sky-700 hover:text-sky-900"
                       href={`/pacientes/${patient.id}`}
                     >
-                      Ver ficha <span aria-hidden="true">→</span>
+                      <span className="sr-only">Ver ficha de {patient.fullName}</span>
+                      <span aria-hidden="true">→</span>
                     </Link>
                   </td>
                 </tr>
@@ -474,35 +475,77 @@ export function PatientProfile({
 }) {
   const isComorbid = patient.diagnosisCodes.some((code) => diabetesDiagnosisCodes.includes(code))
     && patient.diagnosisCodes.includes("hypertension");
+  const medicationInteractions = patient.interactions.filter((interaction) => interaction.kind === "medication").slice(0, 6);
   return (
     <main id="contenido-principal" className="min-h-screen bg-[radial-gradient(circle_at_12%_2%,#eaf6ff_0,transparent_31%),radial-gradient(circle_at_94%_18%,#e7edf3_0,transparent_28%),#e8ebf2] p-3 text-slate-800 md:p-6 lg:p-8">
       <div className="mx-auto w-full max-w-[1480px] rounded-[36px] border border-white/80 bg-[#f7f8fc]/90 p-4 shadow-2xl shadow-slate-900/10 md:p-8">
         <ClinicalHeader context={context} data={data} />
         <div className="clinical-page-content">
-          <PageHeader
-            title={patient.fullName}
-            description={`Expediente ${patient.clinicalRecord}`}
-          >
-            {canWrite ? <Link className="clinical-button" href={`/pacientes/${patient.id}/editar`}>Editar expediente</Link> : null}
-            <Link
-              className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 shadow-sm"
-              href="/pacientes"
-            >
-              Volver al censo
-            </Link>
-          </PageHeader>
-          <div className="mt-6 grid gap-5 lg:grid-cols-3">
-            <section className="clinical-panel p-5 lg:col-span-2">
-              <h2 className="text-base font-extrabold text-slate-900">
-                Resumen clínico
-              </h2>
-              <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                <div>
-                  <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">
-                    Diagnósticos
-                  </dt>
+          {/* Tarjeta resumen del paciente: identidad, prioridad, contacto y consentimiento de un vistazo. */}
+          <section className="clinical-panel p-5">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-center gap-4">
+                <span className="grid size-14 shrink-0 place-items-center rounded-2xl border border-sky-100 bg-sky-50 text-xl font-extrabold text-sky-800">
+                  {initials(patient.fullName)}
+                </span>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <h1 className="text-xl font-extrabold tracking-tight text-slate-900">
+                      {patient.fullName}
+                    </h1>
+                    <span className="font-mono-data rounded border border-slate-200 bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
+                      {patient.clinicalRecord}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
+                    <span className="flex items-center gap-1.5">
+                      <span className="font-medium text-slate-400">Prioridad:</span>
+                      <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-bold ${riskClass[patient.risk.level]}`}>
+                        {riskLabels[patient.risk.level]}
+                      </span>
+                    </span>
+                    <span className="text-slate-300">•</span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="font-medium text-slate-400">Teléfono:</span>
+                      <a className="font-mono-data font-semibold text-sky-700 hover:underline" href={`tel:${patient.whatsappE164}`}>
+                        {patient.whatsappE164}
+                      </a>
+                    </span>
+                    <span className="text-slate-300">•</span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="font-medium text-slate-400">Consentimiento:</span>
+                      <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${patient.consentGranted ? "bg-sky-100 text-sky-800" : "bg-slate-100 text-slate-600"}`}>
+                        {patient.consentGranted ? "Vigente" : "No registrado"}
+                      </span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 border-t border-slate-100 pt-3 md:border-t-0 md:pt-0">
+                {canWrite ? <Link className="clinical-button" href={`/pacientes/${patient.id}/editar`}>Editar expediente</Link> : null}
+                <Link className="clinical-button clinical-button-primary" href="/pacientes">
+                  Volver al censo
+                </Link>
+              </div>
+            </div>
+          </section>
+          <div className="mt-5 grid gap-5 lg:grid-cols-12">
+            {/* Columna principal: resumen clínico + triage, tratamiento y complicaciones. */}
+            <div className="flex flex-col gap-5 lg:col-span-8">
+              <section className="clinical-panel p-5">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <h2 className="flex items-center gap-2 text-base font-extrabold text-slate-900">
+                    <span className="size-2.5 rounded-full bg-sky-500" />
+                    Resumen clínico
+                  </h2>
+                  <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-bold uppercase tracking-wide text-slate-500">
+                    Triage
+                  </span>
+                </div>
+                <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3.5">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Diagnósticos</p>
                   {patient.diagnoses.length ? (
-                    <dd className="mt-1 space-y-0.5 text-sm font-medium leading-relaxed text-slate-700">
+                    <div className="mt-1 space-y-0.5 text-sm font-medium leading-relaxed text-slate-800">
                       {patient.diagnoses.map((label, index) => {
                         const code = patient.diagnosisCodes[index];
                         const date = patient.diagnosedOn[code];
@@ -514,169 +557,179 @@ export function PatientProfile({
                         );
                       })}
                       {isComorbid ? (
-                        <span className="mt-1 inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-[11px] font-bold text-amber-800">
+                        <span className="mt-1 inline-flex rounded-full border border-sky-200 bg-sky-50 px-2.5 py-0.5 text-[11px] font-bold text-sky-800">
                           Comorbilidad: diabetes + hipertensión
                         </span>
                       ) : null}
-                    </dd>
+                      {patient.diabetesTreatmentPhase ? (
+                        <p className="text-xs font-normal text-slate-500">
+                          Fase — diabetes: {diabetesTreatmentPhaseLabels[patient.diabetesTreatmentPhase] ?? patient.diabetesTreatmentPhase}
+                        </p>
+                      ) : null}
+                      {patient.hypertensionTreatmentPhase ? (
+                        <p className="text-xs font-normal text-slate-500">
+                          Fase — hipertensión: {hypertensionTreatmentPhaseLabels[patient.hypertensionTreatmentPhase] ?? patient.hypertensionTreatmentPhase}
+                        </p>
+                      ) : null}
+                    </div>
                   ) : (
-                    <dd className="mt-1 text-sm font-medium text-slate-700">Sin diagnóstico registrado</dd>
+                    <p className="mt-1 text-sm font-medium text-slate-700">Sin diagnóstico registrado</p>
                   )}
                 </div>
-                {patient.diabetesTreatmentPhase ? (
-                  <Detail
-                    label="Fase de tratamiento — diabetes"
-                    value={diabetesTreatmentPhaseLabels[patient.diabetesTreatmentPhase] ?? patient.diabetesTreatmentPhase}
-                  />
-                ) : null}
-                {patient.hypertensionTreatmentPhase ? (
-                  <Detail
-                    label="Fase de tratamiento — hipertensión"
-                    value={hypertensionTreatmentPhaseLabels[patient.hypertensionTreatmentPhase] ?? patient.hypertensionTreatmentPhase}
-                  />
-                ) : null}
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Glucosa más reciente</span>
+                    <div className="mt-2 flex items-baseline justify-between">
+                      <span className="text-lg font-semibold text-slate-800">
+                        {patient.latestGlucose?.glucoseMgDl ?? "Sin dato"}
+                      </span>
+                      <span className="font-mono-data text-xs text-slate-400">mg/dL</span>
+                    </div>
+                    {patient.latestGlucose ? (
+                      <p className="mt-1 text-xs text-slate-400">{dateTime(patient.latestGlucose.observedAt, data.timezone)}</p>
+                    ) : null}
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Presión más reciente</span>
+                    <div className="mt-2 flex items-baseline justify-between">
+                      <span className="text-lg font-semibold text-slate-800">
+                        {patient.latestBloodPressure?.systolicMmHg != null
+                          ? `${patient.latestBloodPressure.systolicMmHg}/${patient.latestBloodPressure.diastolicMmHg}`
+                          : "Sin dato"}
+                      </span>
+                      <span className="font-mono-data text-xs text-slate-400">mmHg</span>
+                    </div>
+                    {patient.latestBloodPressure ? (
+                      <p className="mt-1 text-xs text-slate-400">{dateTime(patient.latestBloodPressure.observedAt, data.timezone)}</p>
+                    ) : null}
+                  </div>
+                </div>
                 {patient.latestGlucose ? <MeasurementCorrection measurement={patient.latestGlucose} patientId={patient.id} /> : null}
                 {patient.latestBloodPressure ? <MeasurementCorrection measurement={patient.latestBloodPressure} patientId={patient.id} /> : null}
-                <Detail
-                  label="Prioridad actual"
-                  value={riskLabels[patient.risk.level]}
-                />
-                <Detail
-                  label="Glucosa más reciente"
-                  value={
-                    patient.latestGlucose?.glucoseMgDl != null
-                      ? `${patient.latestGlucose.glucoseMgDl} mg/dL · ${dateTime(patient.latestGlucose.observedAt, data.timezone)}`
-                      : "Sin dato"
-                  }
-                />
-                <Detail
-                  label="Presión más reciente"
-                  value={
-                    patient.latestBloodPressure?.systolicMmHg != null
-                      ? `${patient.latestBloodPressure.systolicMmHg}/${patient.latestBloodPressure.diastolicMmHg} mmHg · ${dateTime(patient.latestBloodPressure.observedAt, data.timezone)}`
-                      : "Sin dato"
-                  }
-                />
-              </div>
-              <h3 className="mt-6 text-sm font-extrabold text-slate-900">
-                Motivos de prioridad
-              </h3>
-              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-600">
-                {patient.risk.reasons.map((reason) => (
-                  <li key={reason}>{reason}</li>
-                ))}
-                {!patient.risk.reasons.length ? (
-                  <li>Sin motivos registrados.</li>
-                ) : null}
-              </ul>
-            </section>
-            {predictionPanel}
-            <aside className="clinical-panel bg-gradient-to-b from-white to-sky-50/45 p-5">
-              <h2 className="text-base font-extrabold text-slate-900">
-                Contacto y consentimiento
-              </h2>
-              <dl className="mt-4 space-y-3">
-                <Detail label="Teléfono de mensajería" value={patient.whatsappE164} />
-                <Detail
-                  label="Consentimiento"
-                  value={
-                    patient.consentGranted
-                      ? "Vigente"
-                      : "No registrado o revocado"
-                  }
-                />
-                <Detail
-                  label="Última respuesta"
-                  value={dateTime(patient.lastResponseAt, data.timezone)}
-                />
-              </dl>
-              {canWrite ? testMessageChannels.map((channel) => (
-                <ManualMessageTestAction
-                  key={channel}
-                  patientId={patient.id}
-                  phoneE164={patient.whatsappE164}
-                  consentGranted={patient.consentGranted}
-                  channel={channel}
-                />
-              )) : null}
-            </aside>
-            <section className="clinical-panel p-5 lg:col-span-3">
-              <h2 className="text-base font-extrabold text-slate-900">
-                Tratamiento vigente
-              </h2>
-              <div className="mt-4 grid gap-3 md:grid-cols-2">
-                {patient.prescriptions.map((prescription) => (
-                  <article
-                    className="rounded-2xl border border-sky-100 bg-gradient-to-br from-sky-50/70 to-white p-4 transition motion-safe:hover:-translate-y-0.5 hover:shadow-md"
-                    key={prescription.id}
-                  >
-                    <strong className="text-sm text-slate-900">
-                      {prescription.medicationName}
-                    </strong>
-                    <p className="mt-1 text-sm text-slate-600">
-                      {prescription.doseText}
-                      {prescription.instructions
-                        ? ` · ${prescription.instructions}`
-                        : ""}
-                    </p>
-                    <p className="mt-2 text-xs text-slate-500">
-                      Horarios:{" "}
-                      {prescription.schedules
-                        .map((schedule) => schedule.localTime.slice(0, 5))
-                        .join(", ") || "Sin horarios"}
-                    </p>
-                    <PrescriptionAdjustment patientId={patient.id} prescription={prescription} />
-                    <MedicationClassification patientId={patient.id} prescription={prescription} />
-                  </article>
-                ))}
-                {!patient.prescriptions.length ? (
-                  <p className="text-sm text-slate-500">
-                    Sin recetas activas disponibles.
-                  </p>
-                ) : null}
-              </div>
-            </section>
-            <section className="clinical-panel p-5 lg:col-span-3">
-              <h2 className="text-base font-extrabold text-slate-900">
-                Tomas de medicamento recientes
-              </h2>
-              <div className="mt-4 grid gap-3 md:grid-cols-2">
-                {patient.interactions.filter((interaction) => interaction.kind === "medication").slice(0, 6).map((interaction) => (
-                  <article
-                    className="rounded-2xl border border-slate-100 bg-white p-4"
-                    key={interaction.id}
-                  >
-                    <strong className="text-sm text-slate-900">
-                      {interaction.medicationName ?? "Medicamento"}
-                    </strong>
-                    <p className="mt-1 text-sm text-slate-600">
-                      {interaction.doseText}
-                    </p>
-                    <p className="mt-2 text-xs text-slate-500">
-                      Programada: {dateTime(interaction.scheduledAt, data.timezone)}
-                      {" · "}
-                      {interaction.medicationTaken == null
-                        ? "Sin respuesta registrada"
-                        : interaction.medicationTaken
-                          ? "Confirmó que sí la tomó"
-                          : "Confirmó que no la tomó"}
-                    </p>
-                    {interaction.response ? (
-                      <MedicationResponseCorrection
-                        interaction={interaction as typeof interaction & { response: NonNullable<typeof interaction.response> }}
-                        patientId={patient.id}
-                      />
+                <div className={`mt-4 rounded-xl border p-4 ${riskClass[patient.risk.level]}`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wide">Prioridad actual</span>
+                    <span className={`rounded-md border px-2.5 py-0.5 text-xs font-bold ${riskClass[patient.risk.level]}`}>
+                      {riskLabels[patient.risk.level]}
+                    </span>
+                  </div>
+                  <p className="mt-2.5 text-xs font-bold">Motivos:</p>
+                  <ul className="mt-1 list-disc space-y-1 pl-4 text-xs leading-relaxed">
+                    {patient.risk.reasons.map((reason) => (
+                      <li key={reason}>{reason}</li>
+                    ))}
+                    {!patient.risk.reasons.length ? <li>Sin motivos registrados.</li> : null}
+                  </ul>
+                </div>
+                {predictionPanel ? <div className="mt-4 border-t border-slate-100 pt-4">{predictionPanel}</div> : null}
+              </section>
+              <section className="clinical-panel p-5">
+                <h2 className="text-base font-extrabold text-slate-900">
+                  Tratamiento y medicación
+                </h2>
+                <div className="mt-4">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Tratamiento vigente</p>
+                  <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                    {patient.prescriptions.map((prescription) => (
+                      <article
+                        className="rounded-2xl border border-sky-100 bg-gradient-to-br from-sky-50/70 to-white p-4 transition motion-safe:hover:-translate-y-0.5 hover:shadow-md"
+                        key={prescription.id}
+                      >
+                        <strong className="text-sm text-slate-900">
+                          {prescription.medicationName}
+                        </strong>
+                        <p className="mt-1 text-sm text-slate-600">
+                          {prescription.doseText}
+                          {prescription.instructions
+                            ? ` · ${prescription.instructions}`
+                            : ""}
+                        </p>
+                        <p className="mt-2 text-xs text-slate-500">
+                          Horarios:{" "}
+                          {prescription.schedules
+                            .map((schedule) => schedule.localTime.slice(0, 5))
+                            .join(", ") || "Sin horarios"}
+                        </p>
+                        <PrescriptionAdjustment patientId={patient.id} prescription={prescription} />
+                        <MedicationClassification patientId={patient.id} prescription={prescription} />
+                      </article>
+                    ))}
+                    {!patient.prescriptions.length ? (
+                      <p className="text-sm text-slate-500">Sin recetas activas disponibles.</p>
                     ) : null}
-                  </article>
-                ))}
-                {!patient.interactions.some((interaction) => interaction.kind === "medication") ? (
-                  <p className="text-sm text-slate-500">
-                    Sin recordatorios de medicamento recientes.
-                  </p>
-                ) : null}
-              </div>
-            </section>
-            <ComplicationPanel complications={patient.complications} patientId={patient.id} />
+                  </div>
+                </div>
+                <div className="mt-5">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Tomas de medicamento recientes</p>
+                  <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                    {medicationInteractions.map((interaction) => (
+                      <article
+                        className="rounded-2xl border border-slate-100 bg-white p-4"
+                        key={interaction.id}
+                      >
+                        <strong className="text-sm text-slate-900">
+                          {interaction.medicationName ?? "Medicamento"}
+                        </strong>
+                        <p className="mt-1 text-sm text-slate-600">
+                          {interaction.doseText}
+                        </p>
+                        <p className="mt-2 text-xs text-slate-500">
+                          Programada: {dateTime(interaction.scheduledAt, data.timezone)}
+                          {" · "}
+                          {interaction.medicationTaken == null
+                            ? "Sin respuesta registrada"
+                            : interaction.medicationTaken
+                              ? "Confirmó que sí la tomó"
+                              : "Confirmó que no la tomó"}
+                        </p>
+                        {interaction.response ? (
+                          <MedicationResponseCorrection
+                            interaction={interaction as typeof interaction & { response: NonNullable<typeof interaction.response> }}
+                            patientId={patient.id}
+                          />
+                        ) : null}
+                      </article>
+                    ))}
+                    {!medicationInteractions.length ? (
+                      <p className="text-sm text-slate-500">Sin recordatorios de medicamento recientes.</p>
+                    ) : null}
+                  </div>
+                </div>
+              </section>
+            </div>
+            {/* Columna lateral: contacto, consentimiento, complicaciones y pruebas de mensajería. */}
+            <aside className="flex flex-col gap-5 lg:col-span-4">
+              <section className="clinical-panel bg-gradient-to-b from-white to-sky-50/45 p-5">
+                <h2 className="text-base font-extrabold text-slate-900">
+                  Contacto y consentimiento
+                </h2>
+                <dl className="mt-4 space-y-3">
+                  <Detail label="Teléfono de mensajería" value={patient.whatsappE164} />
+                  <Detail
+                    label="Consentimiento"
+                    value={
+                      patient.consentGranted
+                        ? "Vigente"
+                        : "No registrado o revocado"
+                    }
+                  />
+                  <Detail
+                    label="Última respuesta"
+                    value={dateTime(patient.lastResponseAt, data.timezone)}
+                  />
+                </dl>
+                {canWrite ? testMessageChannels.map((channel) => (
+                  <ManualMessageTestAction
+                    key={channel}
+                    patientId={patient.id}
+                    phoneE164={patient.whatsappE164}
+                    consentGranted={patient.consentGranted}
+                    channel={channel}
+                  />
+                )) : null}
+              </section>
+              <ComplicationPanel complications={patient.complications} patientId={patient.id} />
+            </aside>
           </div>
         </div>
       </div>

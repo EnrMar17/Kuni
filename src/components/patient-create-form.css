@@ -1,0 +1,180 @@
+.patient-form .patient-form-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  gap: 0;
+  background: #fff;
+}
+
+.patient-form .form-section {
+  min-width: 0;
+  padding: 24px;
+  border: 0;
+  border-bottom: 1px solid #e2e7ec;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.patient-form .form-section-heading {
+  align-items: flex-start;
+  flex-wrap: nowrap;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.patient-form .form-section-heading > div { min-width: 0; }
+.patient-form .form-section-heading h2 { font-size: 14px; line-height: 1.5; }
+.patient-form .form-section-heading p { font-size: 12px; line-height: 1.6; }
+.patient-form .section-number { width: 28px; height: 28px; border-radius: 6px; }
+.patient-form .patient-assessment .section-number { background: #e7f3ed; color: #22654c; }
+.patient-form .patient-treatment .section-number { background: #fff3d9; color: #855d16; }
+.patient-form .patient-consent .section-number { background: #edf0f4; color: #4a586b; }
+
+.patient-form .patient-identity .form-section-heading { flex-wrap: wrap; }
+.patient-form .patient-doctor {
+  flex-basis: 100%;
+  padding-left: 38px;
+  overflow-wrap: anywhere;
+}
+
+.patient-form .care-group-heading {
+  color: #657282;
+  font-size: 11px;
+  line-height: 1.5;
+  letter-spacing: 0;
+  margin: 18px 0 10px;
+}
+
+.patient-form .form-fields {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px 16px;
+}
+
+.patient-form .form-fields > *,
+.patient-form .patient-diagnosis-grid > * { min-width: 0; }
+.patient-form .form-fields > label:has(textarea),
+.patient-form .form-fields > fieldset { grid-column: 1 / -1; }
+.patient-form .form-fields label { font-size: 12px; line-height: 1.5; gap: 6px; }
+.patient-form .form-fields :is(input:not([type="checkbox"]), select, textarea) {
+  min-height: 40px;
+  padding: 9px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.patient-form .form-fields textarea { resize: vertical; }
+.patient-form .field-hint { font-size: 11px; line-height: 1.4; }
+.patient-form .field-error { font-size: 12px; line-height: 1.5; }
+.patient-form input[readonly] { background: #f4f6f8; color: #627083; }
+
+.patient-form .patient-diagnosis-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+}
+.patient-form .diagnosis-option {
+  min-height: 42px;
+  height: auto;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 10px;
+  cursor: pointer;
+}
+.patient-form .diagnosis-option input { width: 16px; height: 16px; }
+.patient-form .patient-diagnosis-grid input[type="date"] { min-width: 0; min-height: 40px; }
+
+.patient-form .patient-care-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+.patient-form .patient-care-layout > div { min-width: 0; }
+.patient-form .patient-care-layout > div > .care-group-heading { margin-top: 0; }
+.patient-form .care-module {
+  border: 0;
+  border-bottom: 1px solid #e2e7ec;
+  border-radius: 0;
+  overflow: visible;
+  background: transparent;
+}
+.patient-form .care-module + .care-module { margin-top: 12px; }
+.patient-form .care-module-toggle {
+  min-height: 48px;
+  padding: 12px;
+  background: #f4f6f8;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.patient-form .care-module-toggle:has(:checked) { background: #eaf4f0; color: #22654c; }
+.patient-form .care-module-toggle:has(:disabled) { color: #707b89; cursor: not-allowed; }
+.patient-form .care-module-body { padding: 18px 0; border: 0; }
+.patient-form .field-grid-tight { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 12px; }
+.patient-form .patient-schedule-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) auto;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.patient-form .patient-schedule-row button { min-height: 40px; }
+.patient-form .patient-monitoring .diagnosis-option { padding: 8px; }
+.patient-form .patient-monitoring .form-fields .diagnosis-option { display: flex; gap: 6px; }
+.patient-form .patient-monitoring .diagnosis-option input { width: 16px; height: 16px; padding: 0; }
+
+.patient-form .patient-edit-reason { padding: 24px; }
+.patient-form .patient-save-error { margin: 16px 24px; }
+.patient-form .form-actions {
+  grid-column: 1 / -1;
+  border: 0;
+  border-top: 1px solid #e2e7ec;
+  border-radius: 0;
+  padding: 18px 24px;
+  box-shadow: none;
+  gap: 12px;
+}
+.patient-form .form-actions .clinical-button { border-radius: 6px; min-height: 44px; }
+
+@media (min-width: 560px) {
+  .patient-form .form-fields,
+  .patient-form .patient-diagnosis-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .patient-form .patient-personal-fields > label:first-child { grid-column: 1 / -1; }
+}
+
+@media (min-width: 1100px) {
+  .patient-form .patient-form-layout { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .patient-form .patient-identity,
+  .patient-form .patient-treatment { border-right: 1px solid #e2e7ec; }
+  .patient-form .patient-treatment .form-fields { grid-template-columns: minmax(0, 1fr); }
+  .patient-form .patient-care,
+  .patient-form .patient-edit-reason,
+  .patient-form .patient-save-error { grid-column: 1 / -1; }
+  .patient-form-layout:not(:has(.patient-treatment)) .patient-consent { grid-column: 1 / -1; }
+  .patient-form .patient-prescription .form-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .patient-form .patient-prescription .form-fields > label:has(textarea) { grid-column: span 2; }
+  .patient-form .patient-prescription .form-fields > fieldset { grid-column: span 1; }
+}
+
+@media (min-width: 1280px) {
+  .patient-form .patient-monitoring {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    column-gap: 24px;
+    align-items: start;
+  }
+  .patient-form .patient-monitoring > .care-group-heading { grid-column: 1 / -1; }
+  .patient-form .patient-monitoring .care-module + .care-module { margin-top: 0; }
+  .patient-form .patient-monitoring .form-fields { grid-template-columns: minmax(0, 1fr); }
+  .patient-form .patient-monitoring .form-fields > * { grid-column: 1 / -1; }
+}
+
+@media (max-width: 559px) {
+  .patient-form .form-section { padding: 20px 14px; }
+  .patient-form .form-actions { padding: 16px 14px; }
+  .patient-form .form-actions > div { flex-direction: row; gap: 8px; }
+  .patient-form .form-actions .clinical-button { padding-inline: 10px; }
+  .patient-form .form-fields > * { grid-column: 1 / -1; }
+}

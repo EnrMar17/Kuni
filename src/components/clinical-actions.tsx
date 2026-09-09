@@ -402,7 +402,7 @@ export function ComplicationPanel({
   };
 
   return (
-    <section className="clinical-panel p-5 lg:col-span-3">
+    <section className="clinical-panel p-5">
       <h2 className="text-base font-extrabold text-slate-900">
         Complicaciones de diabetes
       </h2>

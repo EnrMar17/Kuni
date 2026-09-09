@@ -7,6 +7,7 @@ import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import { savePatient } from "@/actions/patients";
 import { savePatientSchema, type PatientEditData } from "@/contracts/patient-registration";
 import type { InitialCare, MedicationOption } from "@/contracts/clinical";
+import "./patient-create-form.css";
 
 type ScheduleRow = { weekday: string; localTime: string };
 
@@ -279,21 +280,26 @@ export function PatientCreateForm({ initial, medications = [], doctorName }: { i
 
   return (
     <form
-      className="patient-form mt-6 grid gap-6"
+      className="patient-form mt-6 grid gap-4"
       noValidate
       onSubmit={(event) => { void handleSubmit(submit)(event); }}
       aria-busy={isSubmitting}
     >
-      <fieldset disabled={isSubmitting} className="grid min-w-0 gap-6">
-      <section className="form-section">
+      <fieldset disabled={isSubmitting} className="patient-form-layout">
+      <section className="form-section patient-identity" aria-labelledby="patient-identity-heading">
         <div className="form-section-heading">
           <span className="section-number">01</span>
           <div>
-            <h2>Identificación y contacto</h2>
+            <h2 id="patient-identity-heading">Identificación y contacto</h2>
             <p>Los datos que vinculan a la persona con su expediente.</p>
           </div>
+          <div className="patient-doctor">
+            <span className="field-hint block">Médico tratante</span>
+            <p className="text-xs font-semibold text-slate-700">{doctorName}</p>
+          </div>
         </div>
-        <div className="form-fields">
+        <p className="care-group-heading">Datos personales</p>
+        <div className="form-fields patient-personal-fields">
           <label>
             Nombre completo
             <input
@@ -329,6 +335,9 @@ export function PatientCreateForm({ initial, medications = [], doctorName }: { i
               <option value="intersex">Intersex</option>
             </select>
           </label>
+        </div>
+        <p className="care-group-heading">Identificadores y contacto</p>
+        <div className="form-fields">
           <label>
             Expediente clínico
             <input
@@ -356,6 +365,18 @@ export function PatientCreateForm({ initial, medications = [], doctorName }: { i
             {error("curp")}
           </label>
           <label>
+            Grupo sanguíneo
+            <select {...register("bloodType")}>
+              <option value="">No registrado</option>
+              {["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].map(
+                (value) => (
+                  <option key={value}>{value}</option>
+                ),
+              )}
+              <option value="unknown">Desconocido</option>
+            </select>
+          </label>
+          <label>
             WhatsApp
             <input
               type="tel"
@@ -374,41 +395,25 @@ export function PatientCreateForm({ initial, medications = [], doctorName }: { i
             />
             {error("whatsappE164")}
           </label>
-          <label>
-            Grupo sanguíneo
-            <select {...register("bloodType")}>
-              <option value="">No registrado</option>
-              {["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].map(
-                (value) => (
-                  <option key={value}>{value}</option>
-                ),
-              )}
-              <option value="unknown">Desconocido</option>
-            </select>
-          </label>
-          <div>
-            <span className="field-hint block">Médico tratante</span>
-            <p className="mt-1 text-sm font-semibold text-slate-700">{doctorName}</p>
-          </div>
         </div>
       </section>
-      <section className="form-section">
+      <section className="form-section patient-assessment" aria-labelledby="patient-assessment-heading">
         <div className="form-section-heading">
           <span className="section-number">02</span>
           <div>
-            <h2>Valoración inicial</h2>
+            <h2 id="patient-assessment-heading">Valoración inicial</h2>
             <p>Diagnósticos y prioridad indicada por el equipo médico.</p>
           </div>
         </div>
         <fieldset
           aria-describedby={errors.diagnoses ? "diagnoses-error" : undefined}
           aria-invalid={Boolean(errors.diagnoses) || undefined}
-          className="mb-6"
+          className="mb-4"
         >
-          <legend className="mb-3 text-sm font-bold text-slate-700">
+          <legend className="care-group-heading">
             Diagnósticos
           </legend>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="patient-diagnosis-grid">
             {diagnoses.map(([code, label]) => (
               <div key={code}>
                 <label className="diagnosis-option">
@@ -444,6 +449,7 @@ export function PatientCreateForm({ initial, medications = [], doctorName }: { i
             </p>
           ) : null}
         </fieldset>
+        <p className="care-group-heading">Prioridad</p>
         <div className="form-fields">
           <label>
             Prioridad inicial
@@ -470,11 +476,11 @@ export function PatientCreateForm({ initial, medications = [], doctorName }: { i
         </div>
       </section>
       {(hasDiabetesDiagnosis || hasHypertensionDiagnosis) ? (
-        <section className="form-section">
+        <section className="form-section patient-treatment" aria-labelledby="patient-treatment-heading">
           <div className="form-section-heading">
             <span className="section-number">03</span>
             <div>
-              <h2>Fase de tratamiento</h2>
+              <h2 id="patient-treatment-heading">Fase de tratamiento</h2>
               <p>A criterio médico; no hay ningún cálculo automático que la reclasifique.</p>
             </div>
           </div>
@@ -504,11 +510,11 @@ export function PatientCreateForm({ initial, medications = [], doctorName }: { i
           </div>
         </section>
       ) : null}
-      <section className="form-section">
+      <section className="form-section patient-consent" aria-labelledby="patient-consent-heading">
         <div className="form-section-heading">
           <span className="section-number">04</span>
           <div>
-            <h2>Consentimiento de contacto</h2>
+            <h2 id="patient-consent-heading">Consentimiento de contacto</h2>
             <p>
               Registrar un paciente no requiere activar los mensajes
               automatizados.
@@ -522,7 +528,7 @@ export function PatientCreateForm({ initial, medications = [], doctorName }: { i
           </span>
         </label>
         {consentChanged ? (
-          <div className="form-fields mt-5 clinical-page-content">
+          <div className="form-fields mt-3 clinical-page-content">
             <label>
               Versión del aviso
               <input
@@ -563,170 +569,192 @@ export function PatientCreateForm({ initial, medications = [], doctorName }: { i
         ) : null}
       </section>
       {!initial ? (
-        <section className="form-section">
+        <section className="form-section patient-care" aria-labelledby="patient-care-heading">
           <div className="form-section-heading">
             <span className="section-number">05</span>
             <div>
-              <h2>Receta y monitoreo iniciales</h2>
+              <h2 id="patient-care-heading">Receta y monitoreo iniciales</h2>
               <p>Opcional. Se guarda en la misma operación que el alta; se puede omitir y configurar después.</p>
             </div>
           </div>
-          <label className="diagnosis-option">
-            <input type="checkbox" disabled={medications.length === 0} {...register("prescriptionEnabled")} />
-            <span>
-              Agregar receta inicial
-              {medications.length === 0 ? <span className="field-hint"> — no hay medicamentos activos en la unidad</span> : null}
-            </span>
-          </label>
-          {prescriptionEnabled ? (
-            <div className="form-fields mt-3 clinical-page-content">
-              <label htmlFor={medicationFieldId}>
-                Medicamento
-                <select id={medicationFieldId} {...register("prescriptionMedicationId", {
-                  validate: value => (!prescriptionEnabled || Boolean(value)) || "Selecciona un medicamento.",
-                })} {...a11y("prescriptionMedicationId")}>
-                  <option value="">Selecciona…</option>
-                  {medications.map(medication => (
-                    <option key={medication.id} value={medication.id}>
-                      {medication.name}{medication.strength ? ` (${medication.strength})` : ""}
-                    </option>
+          <div className="patient-care-layout">
+          <div className="patient-prescription">
+          <p className="care-group-heading">Tratamiento farmacológico</p>
+          <div className="care-module">
+            <label className="care-module-toggle">
+              <input type="checkbox" disabled={medications.length === 0} {...register("prescriptionEnabled")} />
+              <span>
+                Receta inicial
+                {medications.length === 0 ? <span className="field-hint"> — no hay medicamentos activos en la unidad</span> : null}
+              </span>
+            </label>
+            {prescriptionEnabled ? (
+              <div className="care-module-body form-fields clinical-page-content">
+                <label htmlFor={medicationFieldId}>
+                  Medicamento
+                  <select id={medicationFieldId} {...register("prescriptionMedicationId", {
+                    validate: value => (!prescriptionEnabled || Boolean(value)) || "Selecciona un medicamento.",
+                  })} {...a11y("prescriptionMedicationId")}>
+                    <option value="">Selecciona…</option>
+                    {medications.map(medication => (
+                      <option key={medication.id} value={medication.id}>
+                        {medication.name}{medication.strength ? ` (${medication.strength})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  {error("prescriptionMedicationId")}
+                </label>
+                <label>
+                  Dosis
+                  <input {...register("prescriptionDoseText", {
+                    validate: value => (!prescriptionEnabled || Boolean(value?.trim())) || "Escribe la dosis.",
+                  })} {...a11y("prescriptionDoseText")} />
+                  {error("prescriptionDoseText")}
+                </label>
+                <label>
+                  Fecha final <span className="field-hint">Opcional</span>
+                  <input type="date" {...register("prescriptionEndsAt")} />
+                </label>
+                <label className="sm:col-span-2 lg:col-span-3">
+                  Indicaciones
+                  <textarea rows={2} {...register("prescriptionInstructions")} />
+                </label>
+                <fieldset className="sm:col-span-2 lg:col-span-3">
+                  <legend className="care-group-heading">Horarios</legend>
+                  {scheduleFields.map((field, index) => (
+                    <div className="patient-schedule-row" key={field.id}>
+                      <select {...register(`prescriptionSchedules.${index}.weekday` as const)}>
+                        {weekdayLabels.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                      </select>
+                      <input type="time" {...register(`prescriptionSchedules.${index}.localTime` as const)} />
+                      <button className="text-xs font-bold text-rose-700 underline-offset-2 hover:underline disabled:opacity-40"
+                        disabled={scheduleFields.length <= 1} onClick={() => removeSchedule(index)} type="button">
+                        Quitar
+                      </button>
+                    </div>
                   ))}
-                </select>
-                {error("prescriptionMedicationId")}
-              </label>
-              <label>
-                Dosis
-                <input {...register("prescriptionDoseText", {
-                  validate: value => (!prescriptionEnabled || Boolean(value?.trim())) || "Escribe la dosis.",
-                })} {...a11y("prescriptionDoseText")} />
-                {error("prescriptionDoseText")}
-              </label>
-              <label className="sm:col-span-2">
-                Indicaciones
-                <textarea rows={2} {...register("prescriptionInstructions")} />
-              </label>
-              <label>
-                Fecha final <span className="field-hint">Opcional</span>
-                <input type="date" {...register("prescriptionEndsAt")} />
-              </label>
-              <fieldset className="sm:col-span-2">
-                <legend className="mb-2 text-sm font-bold text-slate-700">Horarios</legend>
-                {scheduleFields.map((field, index) => (
-                  <div className="mb-2 flex items-center gap-2" key={field.id}>
-                    <select {...register(`prescriptionSchedules.${index}.weekday` as const)}>
-                      {weekdayLabels.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                    </select>
-                    <input type="time" {...register(`prescriptionSchedules.${index}.localTime` as const)} />
-                    <button className="text-xs font-bold text-rose-700 underline-offset-2 hover:underline disabled:opacity-40"
-                      disabled={scheduleFields.length <= 1} onClick={() => removeSchedule(index)} type="button">
-                      Quitar
-                    </button>
+                  <button className="text-xs font-bold text-sky-800 underline-offset-2 hover:underline"
+                    onClick={() => appendSchedule({ weekday: "1", localTime: "08:00" })} type="button">
+                    + Agregar horario
+                  </button>
+                </fieldset>
+              </div>
+            ) : null}
+          </div>
+          </div>
+          <div className="patient-monitoring">
+          <p className="care-group-heading">Monitoreo en casa</p>
+          <div className="care-module">
+            <label className="care-module-toggle">
+              <input type="checkbox" {...register("glucoseFastingPlanEnabled")} />
+              <span>Glucosa en ayuno</span>
+            </label>
+            {glucoseFastingPlanEnabled ? (
+              <div className="care-module-body form-fields clinical-page-content">
+                <label>
+                  Hora
+                  <input type="time" {...register("glucoseFastingLocalTime")} />
+                </label>
+                <label>
+                  Contexto
+                  <select {...register("glucoseFastingContext")}>
+                    <option value="fasting">Ayuno</option>
+                    <option value="before_meal">Antes de comer</option>
+                    <option value="random">Aleatorio</option>
+                    <option value="unspecified">Sin especificar</option>
+                  </select>
+                </label>
+                <fieldset className="sm:col-span-2 lg:col-span-3">
+                  <legend className="care-group-heading">Días</legend>
+                  <div className="flex flex-wrap gap-3">
+                    {weekdayLabels.map(([value, label]) => (
+                      <label className="diagnosis-option" key={value}>
+                        <input type="checkbox" value={value} {...register("glucoseFastingWeekdays")} />
+                        <span>{label}</span>
+                      </label>
+                    ))}
                   </div>
-                ))}
-                <button className="text-xs font-bold text-sky-800 underline-offset-2 hover:underline"
-                  onClick={() => appendSchedule({ weekday: "1", localTime: "08:00" })} type="button">
-                  + Agregar horario
-                </button>
-              </fieldset>
-            </div>
-          ) : null}
-          <label className="diagnosis-option mt-4">
-            <input type="checkbox" {...register("glucoseFastingPlanEnabled")} />
-            <span>Agregar plan de monitoreo de glucosa en ayuno</span>
-          </label>
-          {glucoseFastingPlanEnabled ? (
-            <div className="form-fields mt-3 clinical-page-content">
-              <label>
-                Hora
-                <input type="time" {...register("glucoseFastingLocalTime")} />
-              </label>
-              <label>
-                Contexto
-                <select {...register("glucoseFastingContext")}>
-                  <option value="fasting">Ayuno</option>
-                  <option value="before_meal">Antes de comer</option>
-                  <option value="random">Aleatorio</option>
-                  <option value="unspecified">Sin especificar</option>
-                </select>
-              </label>
-              <fieldset className="sm:col-span-2">
-                <legend className="mb-2 text-sm font-bold text-slate-700">Días</legend>
-                <div className="flex flex-wrap gap-3">
-                  {weekdayLabels.map(([value, label]) => (
-                    <label className="diagnosis-option" key={value}>
-                      <input type="checkbox" value={value} {...register("glucoseFastingWeekdays")} />
-                      <span>{label}</span>
-                    </label>
-                  ))}
+                </fieldset>
+                <div className="field-grid-tight">
+                  <label>Objetivo mínimo (mg/dL) <span className="field-hint">Opcional</span><input type="number" {...register("glucoseFastingMin")} /></label>
+                  <label>Objetivo máximo (mg/dL) <span className="field-hint">Opcional</span><input type="number" {...register("glucoseFastingMax")} /></label>
+                  <label>Crítico mínimo (mg/dL) <span className="field-hint">Opcional</span><input type="number" {...register("glucoseFastingCriticalMin")} /></label>
+                  <label>Crítico máximo (mg/dL) <span className="field-hint">Opcional</span><input type="number" {...register("glucoseFastingCriticalMax")} /></label>
                 </div>
-              </fieldset>
-              <label>Objetivo mínimo (mg/dL) <span className="field-hint">Opcional</span><input type="number" {...register("glucoseFastingMin")} /></label>
-              <label>Objetivo máximo (mg/dL) <span className="field-hint">Opcional</span><input type="number" {...register("glucoseFastingMax")} /></label>
-              <label>Crítico mínimo (mg/dL) <span className="field-hint">Opcional</span><input type="number" {...register("glucoseFastingCriticalMin")} /></label>
-              <label>Crítico máximo (mg/dL) <span className="field-hint">Opcional</span><input type="number" {...register("glucoseFastingCriticalMax")} /></label>
-            </div>
-          ) : null}
-          <label className="diagnosis-option mt-4">
-            <input type="checkbox" {...register("glucosePostprandialPlanEnabled")} />
-            <span>Agregar plan de monitoreo de glucosa postprandial</span>
-          </label>
-          {glucosePostprandialPlanEnabled ? (
-            <div className="form-fields mt-3 clinical-page-content">
-              <label>
-                Hora <span className="field-hint">Ej. 2h después del desayuno</span>
-                <input type="time" {...register("glucosePostprandialLocalTime")} />
-              </label>
-              <fieldset className="sm:col-span-2">
-                <legend className="mb-2 text-sm font-bold text-slate-700">Días</legend>
-                <div className="flex flex-wrap gap-3">
-                  {weekdayLabels.map(([value, label]) => (
-                    <label className="diagnosis-option" key={value}>
-                      <input type="checkbox" value={value} {...register("glucosePostprandialWeekdays")} />
-                      <span>{label}</span>
-                    </label>
-                  ))}
+              </div>
+            ) : null}
+          </div>
+          <div className="care-module">
+            <label className="care-module-toggle">
+              <input type="checkbox" {...register("glucosePostprandialPlanEnabled")} />
+              <span>Glucosa postprandial</span>
+            </label>
+            {glucosePostprandialPlanEnabled ? (
+              <div className="care-module-body form-fields clinical-page-content">
+                <label>
+                  Hora <span className="field-hint">Ej. 2h después del desayuno</span>
+                  <input type="time" {...register("glucosePostprandialLocalTime")} />
+                </label>
+                <fieldset className="sm:col-span-2 lg:col-span-3">
+                  <legend className="care-group-heading">Días</legend>
+                  <div className="flex flex-wrap gap-3">
+                    {weekdayLabels.map(([value, label]) => (
+                      <label className="diagnosis-option" key={value}>
+                        <input type="checkbox" value={value} {...register("glucosePostprandialWeekdays")} />
+                        <span>{label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+                <div className="field-grid-tight">
+                  <label>Objetivo mínimo (mg/dL) <span className="field-hint">Opcional</span><input type="number" {...register("glucosePostprandialMin")} /></label>
+                  <label>Objetivo máximo (mg/dL) <span className="field-hint">Opcional</span><input type="number" {...register("glucosePostprandialMax")} /></label>
+                  <label>Crítico mínimo (mg/dL) <span className="field-hint">Opcional</span><input type="number" {...register("glucosePostprandialCriticalMin")} /></label>
+                  <label>Crítico máximo (mg/dL) <span className="field-hint">Opcional</span><input type="number" {...register("glucosePostprandialCriticalMax")} /></label>
                 </div>
-              </fieldset>
-              <label>Objetivo mínimo (mg/dL) <span className="field-hint">Opcional</span><input type="number" {...register("glucosePostprandialMin")} /></label>
-              <label>Objetivo máximo (mg/dL) <span className="field-hint">Opcional</span><input type="number" {...register("glucosePostprandialMax")} /></label>
-              <label>Crítico mínimo (mg/dL) <span className="field-hint">Opcional</span><input type="number" {...register("glucosePostprandialCriticalMin")} /></label>
-              <label>Crítico máximo (mg/dL) <span className="field-hint">Opcional</span><input type="number" {...register("glucosePostprandialCriticalMax")} /></label>
-            </div>
-          ) : null}
-          <label className="diagnosis-option mt-4">
-            <input type="checkbox" {...register("bpPlanEnabled")} />
-            <span>Agregar plan de monitoreo de presión arterial</span>
-          </label>
-          {bpPlanEnabled ? (
-            <div className="form-fields mt-3 clinical-page-content">
-              <label>
-                Hora
-                <input type="time" {...register("bpLocalTime")} />
-              </label>
-              <fieldset className="sm:col-span-2">
-                <legend className="mb-2 text-sm font-bold text-slate-700">Días</legend>
-                <div className="flex flex-wrap gap-3">
-                  {weekdayLabels.map(([value, label]) => (
-                    <label className="diagnosis-option" key={value}>
-                      <input type="checkbox" value={value} {...register("bpWeekdays")} />
-                      <span>{label}</span>
-                    </label>
-                  ))}
+              </div>
+            ) : null}
+          </div>
+          <div className="care-module">
+            <label className="care-module-toggle">
+              <input type="checkbox" {...register("bpPlanEnabled")} />
+              <span>Presión arterial</span>
+            </label>
+            {bpPlanEnabled ? (
+              <div className="care-module-body form-fields clinical-page-content">
+                <label>
+                  Hora
+                  <input type="time" {...register("bpLocalTime")} />
+                </label>
+                <fieldset className="sm:col-span-2 lg:col-span-3">
+                  <legend className="care-group-heading">Días</legend>
+                  <div className="flex flex-wrap gap-3">
+                    {weekdayLabels.map(([value, label]) => (
+                      <label className="diagnosis-option" key={value}>
+                        <input type="checkbox" value={value} {...register("bpWeekdays")} />
+                        <span>{label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+                <div className="field-grid-tight">
+                  <label>Sistólica mínima <span className="field-hint">Opcional</span><input type="number" {...register("systolicMin")} /></label>
+                  <label>Sistólica máxima <span className="field-hint">Opcional</span><input type="number" {...register("systolicMax")} /></label>
+                  <label>Diastólica mínima <span className="field-hint">Opcional</span><input type="number" {...register("diastolicMin")} /></label>
+                  <label>Diastólica máxima <span className="field-hint">Opcional</span><input type="number" {...register("diastolicMax")} /></label>
+                  <label>Sistólica crítica mín. <span className="field-hint">Opcional</span><input type="number" {...register("systolicCriticalMin")} /></label>
+                  <label>Sistólica crítica máx. <span className="field-hint">Opcional</span><input type="number" {...register("systolicCriticalMax")} /></label>
+                  <label>Diastólica crítica mín. <span className="field-hint">Opcional</span><input type="number" {...register("diastolicCriticalMin")} /></label>
+                  <label>Diastólica crítica máx. <span className="field-hint">Opcional</span><input type="number" {...register("diastolicCriticalMax")} /></label>
                 </div>
-              </fieldset>
-              <label>Sistólica mínima <span className="field-hint">Opcional</span><input type="number" {...register("systolicMin")} /></label>
-              <label>Sistólica máxima <span className="field-hint">Opcional</span><input type="number" {...register("systolicMax")} /></label>
-              <label>Diastólica mínima <span className="field-hint">Opcional</span><input type="number" {...register("diastolicMin")} /></label>
-              <label>Diastólica máxima <span className="field-hint">Opcional</span><input type="number" {...register("diastolicMax")} /></label>
-              <label>Sistólica crítica mín. <span className="field-hint">Opcional</span><input type="number" {...register("systolicCriticalMin")} /></label>
-              <label>Sistólica crítica máx. <span className="field-hint">Opcional</span><input type="number" {...register("systolicCriticalMax")} /></label>
-              <label>Diastólica crítica mín. <span className="field-hint">Opcional</span><input type="number" {...register("diastolicCriticalMin")} /></label>
-              <label>Diastólica crítica máx. <span className="field-hint">Opcional</span><input type="number" {...register("diastolicCriticalMax")} /></label>
-            </div>
-          ) : null}
+              </div>
+            ) : null}
+          </div>
+          </div>
+          </div>
         </section>
       ) : null}
-      {initial ? <div className="form-fields"><label>
+      {initial ? <div className="form-fields patient-edit-reason"><label>
         Motivo de la edición
         <textarea rows={3} {...register("reason", { validate: value => Boolean(value?.trim()) || "Describe el motivo de la edición." })} {...a11y("reason")} />
         {error("reason")}
@@ -736,7 +764,7 @@ export function PatientCreateForm({ initial, medications = [], doctorName }: { i
           ref={saveErrorRef}
           role="alert"
           tabIndex={-1}
-          className="field-error rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 outline-none"
+          className="patient-save-error field-error rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 outline-none"
         >
           {saveError}
         </p>
