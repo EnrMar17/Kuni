@@ -1,0 +1,44 @@
+.patient-report-screen { min-height: 100vh; padding: 24px; background: #dcefff; color: #223b4c; }
+.patient-report-actions { max-width: 794px; margin: 0 auto 18px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.patient-report-document { max-width: 794px; margin: auto; padding: 32px; background: white; font: 13px/1.6 var(--font-sans); letter-spacing: 0; overflow-wrap: anywhere; }
+.patient-report-frame { width: 100%; border-collapse: collapse; table-layout: fixed; font: inherit; }
+.patient-report-frame > :is(thead,tbody,tfoot) > tr > td { padding: 0; font-weight: 400; }
+.patient-report-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; border-bottom: 3px solid #0a4470; padding-bottom: 16px; margin-bottom: 22px; }
+.patient-report-brand { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.patient-report-brand img { width: 48px; height: 40px; object-fit: contain; }
+.patient-report-brand strong { font-size: 28px; color: #001d39; font-weight: 800; }
+.patient-report-header > div:last-child { text-align: right; font-size: 10px; color: #0a4470; }
+.patient-report-header span { display: block; color: #526b7d; }
+.patient-report-title { margin: 0 0 20px; }
+.patient-report-title p { color: #1c7fb0; font-size: 11px; font-weight: 700; }
+.patient-report-title h1 { font-size: 25px; line-height: 1.3; font-weight: 800; margin-top: 4px; color: #001d39; }
+.patient-report-fields { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px 20px; margin: 14px 0; }
+.patient-report-fields dt { font-size: 10px; font-weight: 700; color: #526b7d; text-transform: uppercase; }
+.patient-report-fields dd { font-size: 12px; margin: 3px 0 0; }
+.patient-report-confidential { padding: 10px 12px; background: #eaf6ff; border-left: 3px solid #0a4470; margin: 20px 0; font-size: 11px; }
+.patient-report-section { margin: 22px 0; }
+.patient-report-section h2 { font-size: 15px; font-weight: 750; color: #001d39; padding-bottom: 8px; border-bottom: 1px solid #b9d6e9; margin-bottom: 12px; }
+.patient-report-section h3 { font-size: 12px; font-weight: 700; color: #0a4470; margin: 12px 0 4px; }
+.patient-report-section p { margin: 4px 0; white-space: pre-wrap; }
+.patient-report-section ul { padding-left: 18px; list-style: disc; }
+.patient-report-section li { margin-bottom: 6px; }
+.patient-report-entry { padding: 0 0 12px; border-bottom: 1px solid #e2eaf0; }
+.patient-report-note { font-size: 11px; color: #526b7d; }
+.patient-report-readings { width: 100%; border-collapse: collapse; margin-top: 12px; table-layout: fixed; }
+.patient-report-readings :is(th,td) { padding: 8px 10px; border-bottom: 1px solid #e2eaf0; text-align: left; font-size: 11px; }
+.patient-report-readings th { background: #eaf6ff; color: #0a4470; }
+.patient-report-readings :is(th,td):last-child { width: 30%; text-align: right; font-variant-numeric: tabular-nums; }
+.patient-report-readings span { display: block; font-size: 10px; color: #526b7d; }
+.patient-report-footer { border-top: 1px solid #b9cfdf; padding: 12px 0 0; margin-top: 16px; display: flex; justify-content: space-between; gap: 16px; font-size: 10px; color: #526b7d; }
+@media screen and (max-width:600px) { .patient-report-screen { padding: 12px; }.patient-report-document { padding: 18px; }.patient-report-header { flex-wrap: wrap; }.patient-report-header > div:last-child { text-align: left; }.patient-report-fields { grid-template-columns: 1fr; }.patient-report-title h1 { font-size: 22px; }.patient-report-footer { flex-wrap: wrap; } }
+@media print {
+  @page { size: A4; margin: 12mm; }
+  body:has(.patient-report-document),.patient-report-screen { margin: 0 !important; padding: 0 !important; background: white !important; }
+  .patient-report-actions { display: none !important; }
+  .patient-report-document { max-width: none; padding: 0; font-size: 11px; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .patient-report-frame > thead { display: table-header-group; }
+  .patient-report-frame > tfoot { display: table-footer-group; }
+  .patient-report-section h2,.patient-report-section h3 { break-after: avoid; }
+  .patient-report-fields > div,.patient-report-readings tr,.patient-report-entry { break-inside: avoid; }
+  .patient-report-section p { orphans: 3; widows: 3; }
+}

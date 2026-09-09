@@ -556,7 +556,8 @@ export function PatientProfile({
                   </div>
                 </div>
               </div>
-              <div className="flex items-center gap-2 border-t border-slate-100 pt-3 md:border-t-0 md:pt-0">
+              <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3 md:border-t-0 md:pt-0">
+                {canWrite ? <Link className="clinical-button" href={`/pacientes/${patient.id}/reporte`}>Reporte PDF</Link> : null}
                 {canWrite ? <Link className="clinical-button" href={`/pacientes/${patient.id}/editar`}>Editar expediente</Link> : null}
                 <Link className="clinical-button clinical-button-primary" href="/pacientes">
                   Volver al censo
