@@ -114,3 +114,39 @@ Antes de alternar proveedores con una cola pendiente, inspeccionar `bot_interact
 ## Pendiente para mensajería bidireccional
 
 Una fase posterior debe crear una ruta distinta, por ejemplo `/api/webhooks/sms`, y registrar `sms:received`, `sms:sent`, `sms:delivered` y `sms:failed`. SMSGate firma webhooks con HMAC-SHA256 sobre `rawBody + X-Timestamp`; la implementación debe comparar en tiempo constante, rechazar timestamps fuera de una ventana corta, deduplicar por el `id` del evento y normalizar el remitente antes de llamar al procesador clínico. Hasta entonces, las respuestas SMS no actualizan adherencia, mediciones ni BAJA en Kuni.
+
+## Variante de demo en iPhone: SMS8
+
+Para la demo sin Android, Kuni también admite `MESSAGE_PROVIDER=sms8`. La API de SMS8 recibe la solicitud desde el servidor y la app de SMS8 en el iPhone la muestra para completar el envío. Por una restricción de iOS, el paso final **no es desatendido**: el teléfono puede pedir elegir la SIM y confirmar. En Kuni, `accepted` significa que SMS8 aceptó/encoló la solicitud; no significa entrega confirmada al destinatario.
+
+Configuración privada de servidor:
+
+```dotenv
+MESSAGE_PROVIDER=sms8
+SMS8_API_KEY=REEMPLAZAR
+
+# Opcionales; fijarlos cuando la cuenta tenga más de un dispositivo/SIM.
+SMS8_DEVICE=1|0
+SMS8_BASE_URL=https://app.sms8.io/services
+SMS8_TIMEOUT_MS=10000
+```
+
+Aplicar en orden `0011_sms8_provider.sql`, `0012_schedule_appointment.sql` y `0013_manual_sms_test.sql`. Ningún secreto usa prefijo `NEXT_PUBLIC_` ni debe subirse al repositorio.
+
+### Dos vías dentro de Kuni
+
+1. **Funcionalidad programada.** Supabase Cron llama `POST /api/jobs/tick`; el job materializa los recordatorios que vencen, vuelve a validar paciente/consentimiento y los manda al adaptador configurado. Con SMS8, la solicitud aparece automáticamente en el iPhone a la hora prevista, pero iOS aún requiere la confirmación final descrita arriba.
+2. **Botón de prueba.** En la ficha del paciente, `Enviar SMS de prueba` permite comprobar el circuito sin esperar el recordatorio de 24 horas. Antes de enviar muestra destino y texto fijo. Solo aparece a perfiles con escritura y solo se habilita con consentimiento vigente.
+
+El botón no acepta texto arbitrario. Genera una interacción `manual_test`, sin respuesta esperada y sin receta/plan/cita asociados; por eso no afecta adherencia, mediciones, alertas por no-respuesta ni el materializador automático. La RPC `request_manual_sms_test` vuelve a autorizar unidad y consultorio, comprueba que el paciente/unidad sigan activos, verifica consentimiento, hace idempotente cada solicitud y limita a una prueba por paciente cada 30 segundos. El actor queda incluido en `payload_snapshot.requestedBy` para trazabilidad.
+
+Estados de la prueba:
+
+- `sending`: la solicitud quedó reclamada antes de llamar a SMS8;
+- `accepted`: SMS8 devolvió un id; en iPhone aún puede faltar confirmación humana;
+- `failed`: rechazo definitivo (por ejemplo, destinatario inválido);
+- `unknown`: timeout/fallo ambiguo; no se reintenta a ciegas para evitar duplicados.
+
+Texto fijo actual: “Kuni: este es un mensaje de prueba. Tu número está conectado correctamente para recibir recordatorios. No necesitas responder.”
+
+Para probar: abrir `Pacientes` → elegir paciente → en `Contacto y consentimiento`, pulsar `Enviar SMS de prueba` → revisar destino/texto → confirmar → terminar el envío en el iPhone. Esperar 30 segundos antes de repetir para el mismo paciente.
