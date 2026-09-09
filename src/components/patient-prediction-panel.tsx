@@ -1,6 +1,8 @@
 import type { DashboardPatient } from "@/lib/domain/dashboard";
 import { getPatientPrediction } from "@/lib/ml/predict-patient";
+import type { MlFeatureVector } from "../../domain-core/src/lib/ml/client";
 import { formatInTimeZone } from "date-fns-tz";
+import { PatientHistoryCharts } from "./patient-history-chart";
 import { PatientTrajectoryCharts } from "./patient-trajectory-chart";
 
 const levelStyle = {
@@ -20,6 +22,46 @@ function DataSignal({ label, complete }: { label: string; complete: boolean }) {
     <li className={`rounded-lg border px-2.5 py-2 text-xs font-semibold ${complete ? "border-emerald-100 bg-emerald-50 text-emerald-800" : "border-slate-200 bg-slate-50 text-slate-500"}`}>
       <span aria-hidden="true">{complete ? "✓" : "–"}</span> {label}
     </li>
+  );
+}
+
+function ModelInputs({ vector }: { vector: MlFeatureVector }) {
+  const rows = [
+    ["Edad", vector.age_at_wx, "age_at_wx"],
+    ["Diabetes", vector.diabetes_dx ? "Sí" : "No", "diabetes_dx"],
+    ["Hipertensión", vector.hypertension_dx ? "Sí" : "No", "hypertension_dx"],
+    ["Comorbilidad DM + HTA", vector.comorbido_dm_has ? "Sí" : "No", "comorbido_dm_has"],
+    ["Promedio sistólico", vector.fn_ta_systolic_mean == null ? "Sin dato" : `${vector.fn_ta_systolic_mean} mmHg`, "fn_ta_systolic_mean"],
+    ["Promedio diastólico", vector.fn_ta_diastolic_mean == null ? "Sin dato" : `${vector.fn_ta_diastolic_mean} mmHg`, "fn_ta_diastolic_mean"],
+    ["Tendencia sistólica", `${vector.tendencia_sistolica} mmHg/día`, "tendencia_sistolica"],
+    ["Tendencia diastólica", `${vector.tendencia_diastolica} mmHg/día`, "tendencia_diastolica"],
+    ["Presión empeorando", vector.pa_empeorando ? "Sí" : "No", "pa_empeorando"],
+    ["Promedio glucosa en ayuno", vector.in_glucose_mean == null ? "Sin dato" : `${vector.in_glucose_mean} mg/dL`, "in_glucose_mean"],
+    ["Tendencia de glucosa", `${vector.tendencia_glucosa} mg/dL/día`, "tendencia_glucosa"],
+    ["Glucosa empeorando", vector.glucosa_empeorando ? "Sí" : "No", "glucosa_empeorando"],
+    ["Adherencia antidiabéticos", `${Math.round(vector.adherencia_antidiabeticos * 100)}%`, "adherencia_antidiabeticos"],
+    ["Adherencia antihipertensivos", `${Math.round(vector.adherencia_antihipertensivos * 100)}%`, "adherencia_antihipertensivos"],
+    ["Complicaciones registradas", vector.num_complicaciones_dm, "num_complicaciones_dm"],
+    ["Tiene complicación", vector.tiene_complicacion_dm ? "Sí" : "No", "tiene_complicacion_dm"],
+    ["Complicación grave", vector.complicacion_grave_dm ? "Sí" : "No", "complicacion_grave_dm"],
+  ] as const;
+
+  return (
+    <details className="mt-4 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+      <summary className="cursor-pointer text-sm font-bold text-slate-800">Ver las 17 variables enviadas al modelo</summary>
+      <dl className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {rows.map(([label, value, code]) => (
+          <div className="rounded-lg border border-slate-200 bg-white px-3 py-2" key={code}>
+            <dt className="text-[11px] font-bold text-slate-500">{label}</dt>
+            <dd className="mt-0.5 text-sm font-extrabold text-slate-900">{value}</dd>
+            <code className="mt-1 block break-all text-[9px] text-slate-400">{code}</code>
+          </div>
+        ))}
+      </dl>
+      <p className="mt-3 text-xs leading-relaxed text-slate-500">
+        Esta lista acredita qué recibió el modelo, pero no atribuye causalidad. La versión desplegada no entrega importancia por variable ni valores SHAP.
+      </p>
+    </details>
   );
 }
 
@@ -45,7 +87,7 @@ export function PatientPredictionSkeleton() {
 }
 
 export async function PatientPredictionPanel({ patient, asOf, timezone }: { patient: DashboardPatient; asOf: string; timezone: string }) {
-  const { prediction, trajectory, gaps } = await getPatientPrediction(patient, new Date(asOf));
+  const { prediction, trajectory, gaps, vector } = await getPatientPrediction(patient, new Date(asOf));
 
   // The model is optional. Keep the panel visible, but never turn an absent
   // endpoint, timeout, or malformed response into a fabricated prediction.
@@ -75,6 +117,8 @@ export async function PatientPredictionPanel({ patient, asOf, timezone }: { pati
             </div>
           </div>
         </div>
+        <ModelInputs vector={vector} />
+        <PatientHistoryCharts measurements={patient.measurements} asOf={asOf} timezone={timezone} />
       </section>
     );
   }
@@ -122,6 +166,10 @@ export async function PatientPredictionPanel({ patient, asOf, timezone }: { pati
         </ul>
       </div>
 
+      <ModelInputs vector={vector} />
+
+      <PatientHistoryCharts measurements={patient.measurements} asOf={asOf} timezone={timezone} />
+
       {trajectory.status === "available" ? (
         <PatientTrajectoryCharts
           glucose={trajectory.glucose}
@@ -131,7 +179,11 @@ export async function PatientPredictionPanel({ patient, asOf, timezone }: { pati
           latestSystolicMmHg={patient.latestBloodPressure?.systolicMmHg ?? null}
           latestDiastolicMmHg={patient.latestBloodPressure?.diastolicMmHg ?? null}
         />
-      ) : null}
+      ) : (
+        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-600">
+          La versión desplegada todavía no publica la trayectoria futura a tres pasos. La gráfica histórica superior sigue siendo observada y la predicción principal permanece disponible.
+        </div>
+      )}
 
       {gaps.length ? (
         <details className="mt-4 rounded-xl border border-amber-200 bg-amber-50/70 p-3 text-sm text-amber-950">

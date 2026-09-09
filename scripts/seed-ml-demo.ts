@@ -41,12 +41,29 @@ const FIXTURE_KEY = "rf30-complete-v1";
 const PATIENT_RECORD = "AI-RF30-COMPLETE";
 const PATIENT_NAME = "Elena Martínez Soto (Paciente ficticia RF30)";
 const PATIENT_PHONE = "+524439990301";
-const FASTING_VALUES = [135, 140, 145, 150, 155, 160, 165, 170, 175, 180, 185, 190, 195, 200];
-const SYSTOLIC_VALUES = [128, 131, 134, 137, 140, 143, 146, 149, 152, 155, 158, 161, 164, 167];
-const DIASTOLIC_VALUES = [82, 83, 85, 86, 88, 89, 91, 92, 94, 95, 97, 98, 100, 101];
-const POSTPRANDIAL_VALUES = [188, 196, 204];
-const TAKEN_DAYS_DM = new Set([2, 5, 9, 13, 16, 19, 20]);
-const TAKEN_DAYS_HTA = new Set([1, 4, 7, 10, 13, 16, 19, 20]);
+const OBSERVATION_COUNT = 45;
+const FASTING_VALUES = Array.from({ length: OBSERVATION_COUNT }, (_, index) =>
+  index < 30
+    ? 132 + Math.round(index * 0.2) + [0, 2, -1, 1, -2][index % 5]
+    : 140 + (index - 30) * 5,
+);
+const SYSTOLIC_VALUES = Array.from({ length: OBSERVATION_COUNT }, (_, index) =>
+  index < 30
+    ? 124 + Math.round(index * 0.15) + [0, 2, -1, 1, 0][index % 5]
+    : 128 + (index - 30) * 3,
+);
+const DIASTOLIC_VALUES = Array.from({ length: OBSERVATION_COUNT }, (_, index) =>
+  index < 30
+    ? 76 + Math.round(index * 0.1) + [0, 1, -1, 0, 1][index % 5]
+    : 80 + Math.round((index - 30) * 1.5),
+);
+const POSTPRANDIAL_VALUES = Array.from({ length: 13 }, (_, index) =>
+  index < 9
+    ? 154 + Math.round(index * 0.8) + [0, 3, -2][index % 3]
+    : 180 + (index - 9) * 10,
+);
+const TAKEN_DAYS_DM_RECENT = new Set([2, 5, 8, 11, 14, 17, 20, 23, 26, 29]);
+const TAKEN_DAYS_HTA_RECENT = new Set([1, 4, 6, 9, 11, 14, 16, 19, 21, 24, 26, 29]);
 
 type RoomContext = {
   id: string;
@@ -76,6 +93,15 @@ function localInstant(today: string, daysAgo: number, localTime: string, timezon
 
 function minutesAfter(iso: string, minutes: number): string {
   return new Date(Date.parse(iso) + minutes * 60_000).toISOString();
+}
+
+function doseWasTaken(key: "dm" | "hta", day: number): boolean {
+  if (day <= 30) {
+    return key === "dm" ? TAKEN_DAYS_DM_RECENT.has(day) : TAKEN_DAYS_HTA_RECENT.has(day);
+  }
+  // En los dos meses previos la adherencia era cercana a 70%; el descenso
+  // reciente aporta una historia más plausible que 90 días idénticos.
+  return ![0, 3, 7].includes(day % 10);
 }
 
 async function loadContext(): Promise<{ unitId: string; unitName: string; timezone: string; room: RoomContext }> {
@@ -383,7 +409,7 @@ async function refreshMeasurements(
   plans: { fasting: string; postprandial: string; pressure: string },
 ) {
   const rows = FASTING_VALUES.flatMap((glucose, index) => {
-    const daysAgo = 28 - index * 2;
+    const daysAgo = 89 - index * 2;
     return [
       {
         id: fixtureUuid(`measurement:fasting:${index + 1}`),
@@ -423,7 +449,7 @@ async function refreshMeasurements(
     patient_id: patientId,
     monitoring_plan_id: plans.postprandial,
     kind: "glucose",
-    measured_at: localInstant(today, 6 - index * 2, "21:00", timezone),
+    measured_at: localInstant(today, 85 - index * 7, "21:00", timezone),
     glucose_mg_dl: glucose,
     systolic_mm_hg: undefined,
     diastolic_mm_hg: undefined,
@@ -444,13 +470,15 @@ async function refreshAdherence(
   doctorId: string,
   timezone: string,
   today: string,
-  medication: { key: "dm" | "hta"; name: string; doseText: string; prescriptionId: string; scheduleId: string; takenDays: Set<number> },
+  medication: { key: "dm" | "hta"; name: string; doseText: string; prescriptionId: string; scheduleId: string },
 ) {
-  for (let day = 1; day <= 20; day += 1) {
+  const interactions = [];
+  const responses = [];
+  for (let day = 1; day <= 90; day += 1) {
     const scheduledAt = localInstant(today, day, "08:00", timezone);
     const responseAt = minutesAfter(scheduledAt, 30);
     const interactionId = fixtureUuid(`interaction:${medication.key}:${day}`);
-    const { error: interactionError } = await admin.from("bot_interactions").upsert({
+    interactions.push({
       id: interactionId,
       unit_id: unitId,
       patient_id: patientId,
@@ -470,23 +498,25 @@ async function refreshAdherence(
         scheduleId: medication.scheduleId,
         fixture: FIXTURE_KEY,
       },
-    }, { onConflict: "id" });
-    if (interactionError) throw interactionError;
-
-    const { error: responseError } = await admin.from("medication_responses").upsert({
+    });
+    responses.push({
       id: fixtureUuid(`response:${medication.key}:${day}`),
       unit_id: unitId,
       patient_id: patientId,
       interaction_id: interactionId,
-      taken: medication.takenDays.has(day),
+      taken: doseWasTaken(medication.key, day),
       reported_at: responseAt,
       source: "manual",
       notes: "Respuesta ficticia determinista para RF30.",
       correction_reason: "Refresco de la ventana temporal del fixture RF30.",
       attributed_doctor_id: doctorId,
-    }, { onConflict: "id" });
-    if (responseError) throw responseError;
+    });
   }
+
+  const { error: interactionError } = await admin.from("bot_interactions").upsert(interactions, { onConflict: "id" });
+  if (interactionError) throw interactionError;
+  const { error: responseError } = await admin.from("medication_responses").upsert(responses, { onConflict: "id" });
+  if (responseError) throw responseError;
 }
 
 async function main() {
@@ -517,10 +547,10 @@ async function main() {
   };
   await refreshMeasurements(context.unitId, patientId, context.room.doctorId, context.timezone, today, plans);
   await refreshAdherence(context.unitId, patientId, context.room.doctorId, context.timezone, today, {
-    key: "dm", name: dmName, doseText: dmDose, prescriptionId: dmPrescription.id, scheduleId: dmPrescription.scheduleId, takenDays: TAKEN_DAYS_DM,
+    key: "dm", name: dmName, doseText: dmDose, prescriptionId: dmPrescription.id, scheduleId: dmPrescription.scheduleId,
   });
   await refreshAdherence(context.unitId, patientId, context.room.doctorId, context.timezone, today, {
-    key: "hta", name: htaName, doseText: htaDose, prescriptionId: htaPrescription.id, scheduleId: htaPrescription.scheduleId, takenDays: TAKEN_DAYS_HTA,
+    key: "hta", name: htaName, doseText: htaDose, prescriptionId: htaPrescription.id, scheduleId: htaPrescription.scheduleId,
   });
 
   console.log("\nFixture RF29/RF30 listo:");
@@ -531,8 +561,9 @@ async function main() {
     paciente: PATIENT_NAME,
     patientId,
   });
-  console.log("Vector esperado: edad≈58, DM=1, HTA=1, comorbilidad=1, glucosa media=167.5, tendencia glucosa=2.5/día,");
-  console.log("PAS media=147.5, tendencia PAS=1.5/día, adherencia DM=0.35, adherencia HTA=0.40, complicaciones=0.");
+  console.log("Historial: 90 días; 45 glucosas en ayuno, 45 presiones, 13 glucosas postprandiales y 180 recordatorios.");
+  console.log("Vector reciente esperado: edad≈58, DM=1, HTA=1, comorbilidad=1, glucosa media=175, tendencia glucosa=2.5/día,");
+  console.log("PAS media=149, tendencia PAS=1.5/día, adherencia DM≈0.35, adherencia HTA≈0.41, complicaciones=0.");
   console.log("Suficiencia esperada: ayuno=true, postprandial=true, presión=true; brechas del vector=0.");
   console.log("Selecciona el consultorio indicado y abre la ficha del paciente para ver RF30.");
 }

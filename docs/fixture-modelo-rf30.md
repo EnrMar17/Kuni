@@ -22,14 +22,14 @@ El script usa `NEXT_PUBLIC_SUPABASE_URL` y `SUPABASE_SECRET_KEY` desde `.env.loc
 ## Cobertura
 
 - Edad, diabetes tipo 2, hipertensión y comorbilidad.
-- Catorce glucosas en ayuno y catorce presiones arteriales deterministas con deterioro gradual.
-- Tres glucosas postprandiales para completar las tres señales de suficiencia del panel.
+- Noventa días de historia: 45 glucosas en ayuno y 45 presiones arteriales, una observación cada dos días.
+- Trece glucosas postprandiales distribuidas durante los 90 días para completar las tres señales de suficiencia.
 - Prescripciones activas y medicamentos clasificados como `antidiabetic` y `antihypertensive`.
-- Veinte respuestas por tratamiento: adherencia confirmada de 35% y 40%, respectivamente.
+- Noventa respuestas por tratamiento. La adherencia ronda 70% en los dos primeros meses y cae aproximadamente a 35%/41% en los últimos 30 días.
 - Revisión explícita de complicaciones con `E119`: revisado, sin hallazgos.
 - Consentimiento ficticio para que el expediente sea coherente con el circuito de mensajería demo.
 
-Los valores no usan `random()`. Por ello, una ejecución repetida produce el mismo vector clínico aunque las fechas se desplacen para seguir siendo recientes.
+Los valores no usan `random()`. Por ello, una ejecución repetida produce el mismo vector clínico aunque las fechas se desplacen para seguir siendo recientes. El historial completo se muestra en la gráfica de 90 días, pero las medias, pendientes y adherencia enviadas a RF30 se calculan exclusivamente sobre la ventana reciente de 30 días.
 
 ## Mostrar la predicción
 

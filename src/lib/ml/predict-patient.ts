@@ -9,7 +9,7 @@
  * mostrar nada", nunca como error ni como 0%.
  */
 import "server-only";
-import { requestMlPrediction, requestMlTrajectory, type MlPrediction, type MlTrajectory } from "../../../domain-core/src/lib/ml/client";
+import { requestMlPrediction, requestMlTrajectory, type MlFeatureVector, type MlPrediction, type MlTrajectory } from "../../../domain-core/src/lib/ml/client";
 import { buildMlFeatureVector, type MlFeatureBuild } from "../../../domain-core/src/lib/ml/features";
 import type { DashboardPatient } from "../domain/dashboard";
 import { serverEnv } from "../env/server";
@@ -22,6 +22,8 @@ export interface PatientPrediction {
   asOf: string;
   /** Brechas reales del expediente en este corte. Vacío = sin brechas declaradas. */
   gaps: MlFeatureBuild["gaps"];
+  /** Las 17 entradas efectivamente enviadas, para trazabilidad en la ficha. */
+  vector: MlFeatureVector;
 }
 
 /** Una llamada por paciente seleccionado — nunca en lote para todo el censo. */
@@ -47,5 +49,5 @@ export async function getPatientPrediction(patient: DashboardPatient, now: Date)
   const publishable = prediction.status !== "unavailable" && !prediction.modelVersion
     ? { status: "unavailable" as const }
     : prediction;
-  return { prediction: publishable, trajectory, gaps, asOf: now.toISOString() };
+  return { prediction: publishable, trajectory, gaps, vector, asOf: now.toISOString() };
 }
