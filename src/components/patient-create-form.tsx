@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { KuniDateInput } from "@/components/kuni-date-input";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -316,7 +317,7 @@ export function PatientCreateForm({ initial, medications = [] }: { initial?: Pat
           </label>
           <label>
             Fecha de nacimiento
-            <input
+            <KuniDateInput
               type="date"
               {...register("birthDate", {
                 required: "Selecciona la fecha de nacimiento.",
@@ -431,7 +432,7 @@ export function PatientCreateForm({ initial, medications = [] }: { initial?: Pat
                 {watchedDiagnoses?.includes(code) ? (
                   <label className="mt-1.5 block pl-1 text-xs font-semibold text-slate-600">
                     Fecha de diagnóstico <span className="field-hint">Opcional</span>
-                    <input
+                    <KuniDateInput
                       className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-1 text-sm font-normal"
                       max={new Date().toISOString().slice(0, 10)}
                       type="date"
@@ -613,7 +614,7 @@ export function PatientCreateForm({ initial, medications = [] }: { initial?: Pat
                 </label>
                 <label>
                   <span className="patient-field-label">Fecha final <span className="field-hint">Opcional</span></span>
-                  <input type="date" {...register("prescriptionEndsAt")} />
+                  <KuniDateInput type="date" {...register("prescriptionEndsAt")} />
                 </label>
                 <label className="sm:col-span-2 lg:col-span-3">
                   Indicaciones

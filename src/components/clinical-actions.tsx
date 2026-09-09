@@ -1,4 +1,5 @@
 "use client";
+import { KuniDateInput } from "@/components/kuni-date-input";
 
 import { useEffect, useId, useRef, useState, useTransition } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -650,7 +651,7 @@ export function ComplicationPanel({
           <div className="mt-4 flex flex-wrap items-end gap-3">
             <label className="text-sm font-bold text-slate-700" htmlFor={`${panelId}-date`}>
               {code === "E119" ? "Fecha de revisión" : "Fecha de diagnóstico"} (opcional)
-              <input
+              <KuniDateInput
                 className="mt-1 block rounded-lg border border-slate-300 bg-white px-3 py-2"
                 disabled={isPending}
                 id={`${panelId}-date`}
