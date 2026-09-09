@@ -110,12 +110,12 @@ export function AppointmentForm({ data }: { data: DashboardData }) {
         setPreview(draft);
       })}
     >
-      <div className="border-b border-indigo-100 bg-gradient-to-br from-indigo-100 via-indigo-50 to-white p-6">
+      <div className="border-b border-sky-100 bg-gradient-to-br from-sky-100 via-sky-50 to-white p-6">
         <div className="mb-3 flex items-center gap-3">
           <span aria-hidden="true" className="section-number">
             01
           </span>
-          <span className="text-xs font-bold uppercase tracking-widest text-indigo-600">
+          <span className="text-xs font-bold uppercase tracking-widest text-[#1c7fb0]">
             Agenda clínica
           </span>
         </div>
@@ -223,9 +223,9 @@ export function AppointmentForm({ data }: { data: DashboardData }) {
         {preview ? (
           <section
             role="status"
-            className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 clinical-page-content"
+            className="rounded-2xl border border-sky-200 bg-sky-50 p-4 clinical-page-content"
           >
-            <h3 className="text-sm font-extrabold text-indigo-900">
+            <h3 className="text-sm font-extrabold text-[#0a4470]">
               Resumen de la cita · Sin guardar
             </h3>
             <p className="mt-2 text-sm text-slate-700">

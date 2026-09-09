@@ -90,8 +90,8 @@ export function StatisticsView({
 
   return (
     <div className="statistics-view">
-      <header className="rounded-3xl border border-indigo-100 bg-gradient-to-br from-indigo-100 via-slate-50 to-sky-100 p-6 md:p-8">
-        <p className="text-xs font-bold uppercase tracking-widest text-indigo-700">
+      <header className="rounded-3xl border border-sky-100 bg-gradient-to-br from-sky-100 via-slate-50 to-sky-200 p-6 md:p-8">
+        <p className="text-xs font-bold uppercase tracking-widest text-[#1c7fb0]">
           Análisis del consultorio
         </p>
         <h1 className="mt-2 text-3xl font-extrabold tracking-tight text-slate-900">
@@ -126,7 +126,7 @@ export function StatisticsView({
         ).map(([title, value, detail], i) => (
           <article
             key={title}
-            className="clinical-panel border-t-4 !border-t-indigo-200 p-5 motion-safe:animate-[kuni-rise_360ms_ease-out_both]"
+            className="clinical-panel border-t-4 !border-t-sky-200 p-5 motion-safe:animate-[kuni-rise_360ms_ease-out_both]"
             style={{ animationDelay: i * 45 + "ms" }}
           >
             <h2 className="text-xs font-bold text-slate-600">{title}</h2>
@@ -206,7 +206,7 @@ export function StatisticsView({
                 <table className="w-full min-w-[280px] text-left text-sm">
                   <caption className="sr-only">Métricas del reporte generado</caption>
                   <thead>
-                    <tr className="border-b border-indigo-100 text-xs text-slate-600">
+                    <tr className="border-b border-sky-100 text-xs text-slate-600">
                       <th className="py-3" scope="col">
                         Métrica
                       </th>
@@ -239,7 +239,7 @@ export function StatisticsView({
             <div className="grid min-h-80 place-content-center text-center">
               <span
                 aria-hidden="true"
-                className="mx-auto mb-5 grid size-16 place-items-center rounded-2xl border border-indigo-100 bg-indigo-50 text-3xl text-indigo-500"
+                className="mx-auto mb-5 grid size-16 place-items-center rounded-2xl border border-sky-100 bg-sky-50 text-3xl text-sky-500"
               >
                 ▤
               </span>

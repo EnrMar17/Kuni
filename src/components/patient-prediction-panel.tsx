@@ -54,7 +54,7 @@ export async function PatientPredictionPanel({ patient, asOf, timezone }: { pati
       <section aria-labelledby="future-risk-title" className="clinical-panel overflow-hidden p-5 lg:col-span-3 motion-safe:animate-[kuni-rise_360ms_ease-out_both]">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="max-w-2xl">
-            <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-indigo-600">RF30 · estimación adicional</p>
+            <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-[#1c7fb0]">RF30 · estimación adicional</p>
             <h2 id="future-risk-title" className="mt-1 text-lg font-extrabold tracking-tight text-slate-900">Riesgo futuro estimado</h2>
             <p className="mt-2 text-sm leading-relaxed text-slate-600">
               Este panel estará disponible cuando el servicio de predicción responda. La prioridad clínica actual sigue usando reglas verificables.
@@ -89,7 +89,7 @@ export async function PatientPredictionPanel({ patient, asOf, timezone }: { pati
     <section aria-labelledby="future-risk-title" className="clinical-panel overflow-hidden p-5 lg:col-span-3 motion-safe:animate-[kuni-rise_360ms_ease-out_both]">
       <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
         <div className="max-w-2xl">
-          <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-indigo-600">RF30 · estimación adicional</p>
+          <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-[#1c7fb0]">RF30 · estimación adicional</p>
           <h2 id="future-risk-title" className="mt-1 text-lg font-extrabold tracking-tight text-slate-900">Riesgo futuro estimado</h2>
           <p className="mt-2 text-sm leading-relaxed text-slate-600">
             Es un apoyo informativo no validado clínicamente. No modifica la prioridad ni genera alertas.

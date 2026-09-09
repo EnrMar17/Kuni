@@ -127,7 +127,7 @@ export function AlertActions({ alert }: { alert: DashboardAlert }) {
         ref={triggerRef}
         aria-controls={panelId}
         aria-expanded={expanded}
-        className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:border-indigo-300 hover:text-indigo-700"
+        className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:border-sky-300 hover:text-sky-700"
         onClick={() => {
           setExpanded((value) => !value);
           setMessage(null);
@@ -550,7 +550,7 @@ export function MeasurementCorrection({
         </span>
       ) : null}
       <button
-        className="mt-2 text-sm font-bold text-indigo-800 underline-offset-2 hover:underline disabled:no-underline"
+        className="mt-2 text-sm font-bold text-sky-800 underline-offset-2 hover:underline disabled:no-underline"
         disabled={isPending}
         onClick={save}
         type="button"
@@ -641,7 +641,7 @@ export function MedicationResponseCorrection({
         </span>
       ) : null}
       <button
-        className="mt-2 text-sm font-bold text-indigo-800 underline-offset-2 hover:underline disabled:no-underline"
+        className="mt-2 text-sm font-bold text-sky-800 underline-offset-2 hover:underline disabled:no-underline"
         disabled={isPending}
         onClick={save}
         type="button"
@@ -704,7 +704,7 @@ export function PrescriptionAdjustment({
   };
 
   return (
-    <div className="mt-3 border-t border-indigo-100 pt-3">
+    <div className="mt-3 border-t border-sky-100 pt-3">
       <label className="block text-xs font-bold text-slate-700" htmlFor={doseId}>
         Dosis
         <input
@@ -748,7 +748,7 @@ export function PrescriptionAdjustment({
         </span>
       ) : null}
       <button
-        className="mt-2 text-sm font-bold text-indigo-800 underline-offset-2 hover:underline disabled:no-underline"
+        className="mt-2 text-sm font-bold text-sky-800 underline-offset-2 hover:underline disabled:no-underline"
         disabled={isPending}
         onClick={save}
         type="button"
@@ -840,7 +840,7 @@ export function MedicationClassification({
         Clasificar {prescription.medicationName}
       </label>
       <select
-        className="mt-1 w-full rounded-xl border border-sky-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
+        className="mt-1 w-full rounded-xl border border-sky-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-100"
         disabled={isPending}
         id={`therapeutic-class-${prescription.id}`}
         onChange={(event) => {

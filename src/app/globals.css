@@ -12,9 +12,13 @@
   --surface: #ffffff;
   --muted: #65736f;
   --border: #dce5e2;
-  --brand: #176b5b;
-  --brand-dark: #0f4e43;
-  --brand-soft: #e5f3ef;
+  /* Paleta de marca Kuni, extraída del isotipo (ver AGENTS.md/handoff). */
+  --kuni-sky: #51c2ff;
+  --kuni-navy: #0a4470;
+  --kuni-navy-dark: #001d39;
+  --kuni-sky-tint: #eaf6ff;
+  --kuni-navy-tint: #e7edf3;
+  --kuni-sky-label: #1c7fb0;
 }
 
 @theme inline {
@@ -53,7 +57,7 @@ a {
 
 /* Visible keyboard focus for controls outside specialized clinical shells. */
 :where(a, button, input, select, textarea, summary):focus-visible {
-  outline: 3px solid #6366f1;
+  outline: 3px solid var(--kuni-sky);
   outline-offset: 2px;
 }
 
@@ -76,7 +80,7 @@ a {
 .skip-link:focus,
 .skip-link:focus-visible {
   transform: translateY(0);
-  outline: 3px solid #a5b4fc;
+  outline: 3px solid var(--kuni-sky);
   outline-offset: 3px;
 }
 
@@ -110,14 +114,47 @@ a {
   box-shadow: 0 25px 50px -12px rgb(15 23 42 / 15%), 0 10px 20px -5px rgb(15 23 42 / 4%);
 }
 
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .dashboard-shadow-soft {
+    transition: transform 220ms cubic-bezier(.2,.75,.25,1), box-shadow 220ms cubic-bezier(.2,.75,.25,1);
+  }
+  .dashboard-shadow-soft:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 16px 36px -10px rgb(10 68 112 / 14%), 0 6px 14px -6px rgb(10 68 112 / 8%);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  #metricas > *, #pacientes, #recetas, #citas {
+    animation: kuni-rise 420ms cubic-bezier(.2,.75,.25,1) both;
+  }
+  #metricas > *:nth-child(1) { animation-delay: 40ms; }
+  #metricas > *:nth-child(2) { animation-delay: 90ms; }
+  #metricas > *:nth-child(3) { animation-delay: 140ms; }
+  #metricas > *:nth-child(4) { animation-delay: 190ms; }
+  #pacientes { animation-delay: 160ms; }
+  #recetas { animation-delay: 210ms; }
+  #citas { animation-delay: 260ms; }
+  #ficha { animation: kuni-rise 460ms cubic-bezier(.2,.75,.25,1) 120ms both; }
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .clinical-page-content {
     animation: kuni-rise 420ms cubic-bezier(.2,.75,.25,1) both;
   }
 
-  .clinical-topbar {
+  .clinical-header {
     animation: kuni-drop 460ms cubic-bezier(.2,.75,.25,1) both;
   }
+
+  .clinical-header .clinical-nav-link {
+    animation: kuni-rise 380ms cubic-bezier(.2,.75,.25,1) both;
+  }
+  .clinical-header nav > :nth-child(1) { animation-delay: 60ms; }
+  .clinical-header nav > :nth-child(2) { animation-delay: 100ms; }
+  .clinical-header nav > :nth-child(3) { animation-delay: 140ms; }
+  .clinical-header nav > :nth-child(4) { animation-delay: 180ms; }
+  .clinical-header nav > :nth-child(5) { animation-delay: 220ms; }
 
   .login-card {
     animation: kuni-rise 350ms ease-out both;
@@ -198,9 +235,9 @@ a {
 .clinical-page-content form > section {
   position: relative;
   overflow: hidden;
-  border-color: rgb(224 231 255 / .9);
-  background: linear-gradient(135deg, rgb(255 255 255) 0%, rgb(250 251 255) 65%, rgb(238 242 255) 100%);
-  box-shadow: 0 18px 35px -28px rgb(49 46 129 / .45), inset 0 1px 0 rgb(255 255 255 / .95);
+  border-color: rgb(199 230 251 / .9);
+  background: linear-gradient(135deg, rgb(255 255 255) 0%, rgb(250 253 255) 65%, rgb(234 246 255) 100%);
+  box-shadow: 0 18px 35px -28px rgb(10 68 112 / .45), inset 0 1px 0 rgb(255 255 255 / .95);
 }
 
 .clinical-page-content form > section::after {
@@ -210,7 +247,7 @@ a {
   width: 11rem;
   height: 11rem;
   border-radius: 9999px;
-  background: rgb(199 210 254 / .22);
+  background: rgb(81 194 255 / .18);
   content: "";
   pointer-events: none;
 }
@@ -224,7 +261,7 @@ a {
 .clinical-page-content input:focus,
 .clinical-page-content select:focus,
 .clinical-page-content textarea:focus {
-  box-shadow: 0 0 0 4px rgb(199 210 254 / .5), inset 0 1px 2px rgb(15 23 42 / .03);
+  box-shadow: 0 0 0 4px rgb(81 194 255 / .35), inset 0 1px 2px rgb(15 23 42 / .03);
 }
 
 @keyframes kuni-rise {
@@ -361,15 +398,25 @@ a {
   color: #52627a;
   font-size: .875rem;
   font-weight: 500;
-  transition: background 180ms, color 180ms, box-shadow 180ms;
+  transition: background 200ms cubic-bezier(.2,.75,.25,1), color 200ms cubic-bezier(.2,.75,.25,1),
+    box-shadow 200ms cubic-bezier(.2,.75,.25,1), transform 200ms cubic-bezier(.2,.75,.25,1);
 }
-.clinical-nav-link:hover { background: #f1f5ff; color: #001d39; }
+.clinical-nav-link svg {
+  color: #9aabc0;
+  transition: color 200ms ease, transform 260ms cubic-bezier(.34,1.56,.64,1);
+}
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .clinical-nav-link:hover { transform: translateY(-1px); }
+}
+.clinical-nav-link:hover { background: var(--kuni-sky-tint); color: var(--kuni-navy-dark); }
+.clinical-nav-link:hover svg { color: var(--kuni-navy); transform: scale(1.08); }
 .clinical-nav-active, .clinical-nav-active:hover {
-  background: #001d39;
+  background: var(--kuni-navy-dark);
   color: white;
   font-weight: 700;
-  box-shadow: 0 3px 6px rgb(0 29 57 / .18);
+  box-shadow: 0 3px 10px rgb(0 29 57 / .22);
 }
+.clinical-nav-active svg, .clinical-nav-active:hover svg { color: white; transform: scale(1.05); }
 @media (min-width: 1280px) {
   .clinical-header { flex-wrap: nowrap; }
   .clinical-header > nav { order: initial; width: auto; margin-inline: auto; }
@@ -379,16 +426,16 @@ a {
   .clinical-nav-link { font-size: .875rem; padding-inline: 1rem; }
 }
 .clinical-page-content > header {
-  border: 1px solid #dce4fa;
+  border: 1px solid #cfe6f9;
   border-radius: 24px;
   padding: 1.5rem;
-  background: linear-gradient(110deg, #eef2ff, #f7f9ff 60%, #eaf3ff);
-  box-shadow: inset 0 1px white, 0 12px 24px -23px #6366a8;
+  background: linear-gradient(110deg, #eaf6ff, #f7fbff 60%, #eaf3ff);
+  box-shadow: inset 0 1px white, 0 12px 24px -23px #1c7fb0;
 }
 .clinical-page-content > section,
 .clinical-page-content > div > section,
 .clinical-page-content > div > form {
-  box-shadow: 0 16px 32px -26px #687a9f, inset 0 1px white;
+  box-shadow: 0 16px 32px -26px #5c7fa0, inset 0 1px white;
   border-color: #dfe5f2;
 }
 .clinical-page-content :is(button, a)[class*="rounded-xl"],
@@ -418,7 +465,7 @@ a {
 .clinical-page-content button:disabled { cursor: not-allowed; opacity: .5; box-shadow: none; }
 .clinical-page-content :is(button, a):focus-visible,
 .clinical-header :is(button, a):focus-visible {
-  outline: 3px solid #818cf8;
+  outline: 3px solid var(--kuni-sky);
   outline-offset: 3px;
 }
 @media (hover: hover) and (prefers-reduced-motion: no-preference) {
@@ -426,9 +473,9 @@ a {
   .clinical-page-content button:not(:disabled):hover { transform: translateY(-1px); box-shadow: 0 6px 12px -7px #52627a; }
 }
 .clinical-button:active, .clinical-page-content button:not(:disabled):active { transform: translateY(1px); }
-.form-section { padding: 1.5rem; border: 1px solid #e0e7ff; border-radius: 24px; }
+.form-section { padding: 1.5rem; border: 1px solid #d7ecfb; border-radius: 24px; }
 .form-section-heading { display: flex; align-items: center; gap: .9rem; margin-bottom: 1.5rem; position: relative; z-index: 1; }
-.section-number { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 14px; background: #e0e7ff; color: #4f46e5; font-size: .8rem; font-weight: 800; box-shadow: inset 0 1px white; }
+.section-number { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 14px; background: #eaf6ff; color: #0a4470; font-size: .8rem; font-weight: 800; box-shadow: inset 0 1px white; }
 .form-section:nth-of-type(2) .section-number { background: #e0f2fe; color: #0369a1; }
 .form-section:nth-of-type(3) .section-number { background: #d1fae5; color: #047857; }
 .form-section-heading h2 { font-weight: 800; color: #172b45; }
@@ -437,13 +484,13 @@ a {
 @media (min-width: 640px) { .form-fields { grid-template-columns: repeat(2,minmax(0,1fr)); } }
 .form-fields label { display: grid; align-content: start; gap: .5rem; color: #334155; font-size: .85rem; font-weight: 650; }
 .form-fields :is(input, select, textarea) { width: 100%; min-width: 0; border: 1px solid #d6dfef; border-radius: 12px; padding: .8rem .9rem; background: rgb(255 255 255 / .95); font: inherit; font-weight: 400; transition: border-color 160ms, box-shadow 160ms; }
-.form-fields :is(input, select, textarea):focus { outline: none; border-color: #818cf8; }
+.form-fields :is(input, select, textarea):focus { outline: none; border-color: var(--kuni-sky); }
 .form-fields [aria-invalid="true"] { border-color: #e07182; background: #fffafb; }
 .field-hint { color: #64748b; font-size: .75rem; font-weight: 400; }
 .field-error { display: block; margin-top: .25rem; color: #b42342; font-size: .75rem; font-weight: 500; }
 .diagnosis-option { display: flex; align-items: center; gap: .7rem; border: 1px solid #dfe5f2; border-radius: 13px; background: white; padding: .9rem; font-size: .8rem; color: #475569; transition: background 180ms, border-color 180ms; }
-.diagnosis-option:has(:checked) { background: #eef2ff; border-color: #a5b4fc; color: #3730a3; }
-.diagnosis-option input { width: 17px; height: 17px; accent-color: #6366f1; flex-shrink: 0; }
+.diagnosis-option:has(:checked) { background: #eaf6ff; border-color: #7fd0ff; color: #0a4470; }
+.diagnosis-option input { width: 17px; height: 17px; accent-color: var(--kuni-navy); flex-shrink: 0; }
 .form-actions { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem; padding: 1.2rem; border: 1px solid #dfe5f2; border-radius: 20px; background: #fff; box-shadow: 0 12px 28px -24px #334155; }
 .draft-notice { border: 1px solid #e3dfcb; border-radius: 14px; padding: .9rem 1rem; background: #fffdf5; color: #746134; font-size: .8125rem; }
 .login-card { box-shadow: 0 20px 50px -28px rgb(15 23 42 / .3); }
@@ -462,14 +509,14 @@ a {
 }
 
 .table-scroll:focus-visible {
-  outline: 3px solid #818cf8;
+  outline: 3px solid var(--kuni-sky);
   outline-offset: 2px;
 }
 
 .clinical-inline-panel {
   border-radius: 1rem;
-  border: 1px solid #c7d2fe;
-  background: #eef2ff;
+  border: 1px solid #a8dcfb;
+  background: #eaf6ff;
   padding: 1rem;
 }
 

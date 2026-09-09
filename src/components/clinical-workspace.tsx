@@ -105,7 +105,7 @@ function PatientsView({ data }: { data: DashboardData }) {
           <label className="min-w-0 flex-1" htmlFor="censo-buscar">
             <span className="sr-only">Buscar pacientes</span>
             <input
-              className="w-full min-w-0 rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100"
+              className="w-full min-w-0 rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
               id="censo-buscar"
               onChange={(event) => updateQuery(event.target.value)}
               placeholder="Buscar nombre, CURP, expediente o diagnóstico"
@@ -187,13 +187,13 @@ function PatientsView({ data }: { data: DashboardData }) {
             <tbody className="divide-y divide-slate-100">
               {visible.map((patient, index) => (
                 <tr
-                  className="transition hover:bg-indigo-50/40 motion-safe:animate-[kuni-rise_360ms_ease-out_both]"
+                  className="transition hover:bg-sky-50/40 motion-safe:animate-[kuni-rise_360ms_ease-out_both]"
                   key={patient.id}
                   style={{ animationDelay: `${index * 35}ms` }}
                 >
                   <td className="px-4 py-4 sm:px-5">
                     <div className="flex items-center gap-3">
-                      <span className="grid size-9 shrink-0 place-items-center rounded-full bg-indigo-100 text-xs font-extrabold text-indigo-800">
+                      <span className="grid size-9 shrink-0 place-items-center rounded-full bg-sky-100 text-xs font-extrabold text-sky-800">
                         {initials(patient.fullName)}
                       </span>
                       <div className="min-w-0">
@@ -244,7 +244,7 @@ function PatientsView({ data }: { data: DashboardData }) {
                   </td>
                   <td className="px-4 py-4 text-right sm:px-5">
                     <Link
-                      className="text-xs font-bold text-indigo-700 hover:text-indigo-900"
+                      className="text-xs font-bold text-sky-700 hover:text-sky-900"
                       href={`/pacientes/${patient.id}`}
                     >
                       Ver ficha <span aria-hidden="true">→</span>
@@ -429,7 +429,7 @@ export function ClinicalWorkspace({
       <AlertsView data={data} />
     );
   return (
-    <main id="contenido-principal" className="min-h-screen bg-[radial-gradient(circle_at_12%_2%,#e0e7ff_0,transparent_31%),radial-gradient(circle_at_94%_18%,#dbeafe_0,transparent_28%),#e8ebf2] p-3 text-slate-800 md:p-6 lg:p-8">
+    <main id="contenido-principal" className="min-h-screen bg-[radial-gradient(circle_at_12%_2%,#eaf6ff_0,transparent_31%),radial-gradient(circle_at_94%_18%,#e7edf3_0,transparent_28%),#e8ebf2] p-3 text-slate-800 md:p-6 lg:p-8">
       <div className="mx-auto w-full max-w-[1480px] rounded-[36px] border border-white/80 bg-[#f7f8fc]/90 p-4 shadow-2xl shadow-slate-900/10 md:p-8">
         <ClinicalHeader context={context} data={data} />
         <div className="clinical-page-content" key={mode}>
@@ -454,7 +454,7 @@ export function PatientProfile({
   canWrite?: boolean;
 }) {
   return (
-    <main id="contenido-principal" className="min-h-screen bg-[radial-gradient(circle_at_12%_2%,#e0e7ff_0,transparent_31%),radial-gradient(circle_at_94%_18%,#dbeafe_0,transparent_28%),#e8ebf2] p-3 text-slate-800 md:p-6 lg:p-8">
+    <main id="contenido-principal" className="min-h-screen bg-[radial-gradient(circle_at_12%_2%,#eaf6ff_0,transparent_31%),radial-gradient(circle_at_94%_18%,#e7edf3_0,transparent_28%),#e8ebf2] p-3 text-slate-800 md:p-6 lg:p-8">
       <div className="mx-auto w-full max-w-[1480px] rounded-[36px] border border-white/80 bg-[#f7f8fc]/90 p-4 shadow-2xl shadow-slate-900/10 md:p-8">
         <ClinicalHeader context={context} data={data} />
         <div className="clinical-page-content">
@@ -519,7 +519,7 @@ export function PatientProfile({
               </ul>
             </section>
             {predictionPanel}
-            <aside className="clinical-panel bg-gradient-to-b from-white to-indigo-50/45 p-5">
+            <aside className="clinical-panel bg-gradient-to-b from-white to-sky-50/45 p-5">
               <h2 className="text-base font-extrabold text-slate-900">
                 Contacto y consentimiento
               </h2>
@@ -546,7 +546,7 @@ export function PatientProfile({
               <div className="mt-4 grid gap-3 md:grid-cols-2">
                 {patient.prescriptions.map((prescription) => (
                   <article
-                    className="rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50/70 to-white p-4 transition motion-safe:hover:-translate-y-0.5 hover:shadow-md"
+                    className="rounded-2xl border border-sky-100 bg-gradient-to-br from-sky-50/70 to-white p-4 transition motion-safe:hover:-translate-y-0.5 hover:shadow-md"
                     key={prescription.id}
                   >
                     <strong className="text-sm text-slate-900">

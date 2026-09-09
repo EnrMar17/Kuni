@@ -508,7 +508,7 @@ export function PatientCreateForm({ initial, medications = [] }: { initial?: Pat
                     </button>
                   </div>
                 ))}
-                <button className="text-xs font-bold text-indigo-800 underline-offset-2 hover:underline"
+                <button className="text-xs font-bold text-sky-800 underline-offset-2 hover:underline"
                   onClick={() => appendSchedule({ weekday: "1", localTime: "08:00" })} type="button">
                   + Agregar horario
                 </button>

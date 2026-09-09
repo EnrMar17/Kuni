@@ -371,7 +371,7 @@ export function ClinicalDashboard({
                 <span className="text-xs font-bold text-slate-500">
                   Glucosa en ayuno
                 </span>
-                <span className="grid size-8 place-items-center rounded-full bg-indigo-50 text-indigo-600">
+                <span className="grid size-8 place-items-center rounded-full bg-sky-50 text-sky-600">
                   <Icon name="heart" />
                 </span>
               </div>
@@ -454,7 +454,7 @@ export function ClinicalDashboard({
               </div>
             </article>
             <Link
-              className="group flex min-h-[140px] flex-col items-center justify-center gap-2 rounded-3xl border-2 border-dashed border-slate-300 p-5 text-center transition hover:border-indigo-400 hover:bg-indigo-50/30 motion-safe:hover:-translate-y-0.5"
+              className="group flex min-h-[140px] flex-col items-center justify-center gap-2 rounded-3xl border-2 border-dashed border-slate-300 p-5 text-center transition hover:border-sky-400 hover:bg-sky-50/30 motion-safe:hover:-translate-y-0.5"
               href="/pacientes/nuevo"
             >
               <span className="grid size-10 place-items-center rounded-full bg-[#001d39] text-white shadow-sm transition motion-safe:group-hover:scale-110">
@@ -497,7 +497,7 @@ export function ClinicalDashboard({
                     return (
                       <button
                         aria-pressed={active}
-                        className={`flex w-full items-center justify-between rounded-2xl border p-3 text-left transition ${active ? "border-indigo-200 bg-indigo-50/50" : "border-slate-100 bg-slate-50/60 hover:bg-slate-100/80"}`}
+                        className={`flex w-full items-center justify-between rounded-2xl border p-3 text-left transition ${active ? "border-sky-200 bg-sky-50/50" : "border-slate-100 bg-slate-50/60 hover:bg-slate-100/80"}`}
                         key={patient.id}
                         onClick={() => setSelectedId(patient.id)}
                         type="button"
@@ -545,7 +545,7 @@ export function ClinicalDashboard({
 
             <section
               id="recetas"
-              className="dashboard-shadow-soft rounded-3xl border border-slate-100 bg-white p-5 md:col-span-7"
+              className="dashboard-shadow-soft flex h-full flex-col rounded-3xl border border-slate-100 bg-white p-5 md:col-span-7"
             >
               <div className="mb-1 flex items-center justify-between">
                 <h2 className="text-base font-bold text-slate-900">
@@ -560,13 +560,25 @@ export function ClinicalDashboard({
                 Tratamiento del paciente seleccionado · confirmaciones de 30
                 días
               </p>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                {medicines.length === 0 ? (
-                  <p className="text-xs text-slate-500">
-                    Sin recetas vigentes registradas.
+              {medicines.length === 0 ? (
+                <div className="flex flex-1 flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 py-10 text-center">
+                  <span
+                    aria-hidden="true"
+                    className="grid size-12 place-items-center rounded-full bg-sky-50 text-2xl text-sky-500"
+                  >
+                    <Icon name="heart" className="size-6" />
+                  </span>
+                  <p className="text-sm font-bold text-slate-700">
+                    Sin recetas vigentes
                   </p>
-                ) : null}
-                {medicines.map((medicine) => (
+                  <p className="max-w-[220px] text-xs text-slate-400">
+                    Cuando se registre una receta activa, sus esquemas y
+                    adherencia aparecerán aquí.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  {medicines.map((medicine) => (
                   <article
                     className="flex flex-col items-center rounded-2xl border border-slate-100 bg-slate-50/70 p-3 text-center transition hover:bg-slate-100/70"
                     key={medicine.code}
@@ -598,8 +610,9 @@ export function ClinicalDashboard({
                       {medicine.status}
                     </span>
                   </article>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </section>
           </div>
 
@@ -609,7 +622,7 @@ export function ClinicalDashboard({
           >
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2.5">
-                <span className="grid size-8 place-items-center rounded-full bg-indigo-50 text-indigo-600">
+                <span className="grid size-8 place-items-center rounded-full bg-sky-50 text-sky-600">
                   <Icon name="calendar" />
                 </span>
                 <div>
@@ -660,7 +673,7 @@ export function ClinicalDashboard({
                   </div>
                   <div className="flex items-center justify-between border-t border-slate-200/60 pt-2 text-[10px]">
                     <strong className="font-mono-data flex items-center gap-1 text-[11px] text-slate-700">
-                      <Icon name="clock" className="size-3.5 text-indigo-600" />
+                      <Icon name="clock" className="size-3.5 text-sky-600" />
                       {appointment.time}
                     </strong>
                     <span className="rounded-md border border-slate-200/60 bg-white px-2 py-0.5 font-semibold text-slate-500">
@@ -690,7 +703,7 @@ export function ClinicalDashboard({
                   <h2 className="text-2xl font-black leading-tight text-slate-900">
                     {selected.name}
                   </h2>
-                  <span className="mt-2 inline-flex rounded-full bg-indigo-500 px-3 py-1 text-[11px] font-bold text-white shadow-sm">
+                  <span className="mt-2 inline-flex rounded-full bg-[#0a4470] px-3 py-1 text-[11px] font-bold text-white shadow-sm">
                     {selected.badge}
                   </span>
                 </div>
@@ -705,7 +718,7 @@ export function ClinicalDashboard({
                   <Icon name="chat" className="size-5" />
                 </button>
               </div>
-              <div className="relative my-5 flex flex-col items-center overflow-hidden rounded-3xl border border-indigo-50 bg-gradient-to-b from-indigo-50/60 to-purple-50/40 p-4">
+              <div className="relative my-5 flex flex-col items-center overflow-hidden rounded-3xl border border-sky-50 bg-gradient-to-b from-sky-50/60 to-sky-100/40 p-4">
                 <svg
                   aria-hidden="true"
                   className="absolute inset-0 h-full w-full opacity-40"
@@ -757,7 +770,7 @@ export function ClinicalDashboard({
                   )}
                 </p>
                 <button
-                  className="mt-1 text-xs font-bold text-indigo-600 hover:text-indigo-800"
+                  className="mt-1 text-xs font-bold text-sky-700 hover:text-[#0a4470]"
                   onClick={() => {
                     setDays(90);
                     scrollToSection("historial");
@@ -795,7 +808,7 @@ export function ClinicalDashboard({
                 </div>
                 <div className="rounded-2xl border border-slate-200/70 bg-[#f8f9fc] p-3">
                   <div className="mb-1 flex justify-between text-[9px] font-semibold">
-                    <span className="text-indigo-700">● Ayuno (mg/dL)</span>
+                    <span className="text-sky-700">● Ayuno (mg/dL)</span>
                     <span className="text-rose-600">● Sist. (mmHg)</span>
                     <span className="text-emerald-600">● Diast. (mmHg)</span>
                   </div>
@@ -815,7 +828,7 @@ export function ClinicalDashboard({
                         <path
                           d={series.path}
                           fill="none"
-                          stroke={["#6366f1", "#e2525c", "#10b981"][index]}
+                          stroke={["#1c7fb0", "#e2525c", "#10b981"][index]}
                           strokeWidth="2"
                         />
                         {series.points.map((point, pointIndex) => (
@@ -824,7 +837,7 @@ export function ClinicalDashboard({
                             cx={point.x}
                             cy={point.y}
                             r="2"
-                            fill={["#6366f1", "#e2525c", "#10b981"][index]}
+                            fill={["#1c7fb0", "#e2525c", "#10b981"][index]}
                           >
                             <title>
                               {point.value} ·{" "}
@@ -963,7 +976,7 @@ export function ClinicalDashboard({
               </section>
               <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-4 text-xs font-medium text-slate-600">
                 <span className="flex items-center gap-1.5">
-                  <Icon name="calendar" className="size-4 text-indigo-500" />
+                  <Icon name="calendar" className="size-4 text-sky-500" />
                   {selected.time}
                 </span>
                 <span className="flex items-center gap-1.5">
@@ -997,7 +1010,7 @@ export function ClinicalDashboard({
                   Citar a urgencias
                 </button>
                 <button
-                  className="rounded-xl border border-indigo-200 bg-indigo-50 px-2 py-2.5 text-xs font-bold text-indigo-700 shadow-sm transition hover:bg-indigo-100"
+                  className="rounded-xl border border-sky-200 bg-sky-50 px-2 py-2.5 text-xs font-bold text-sky-700 shadow-sm transition hover:bg-sky-100"
                   onClick={() => selectedPatient && router.push(`/pacientes/${selectedPatient.id}`)}
                   title="Abre la ficha del paciente para ajustar el tratamiento"
                   type="button"
