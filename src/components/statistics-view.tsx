@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { StatisticsCharts } from "@/components/statistics-charts";
 import type { DashboardData } from "@/lib/domain/dashboard";
 import type { ClinicalTopBarContext } from "@/components/clinical-header";
 import { dateTime, percent, riskLabels } from "@/components/dashboard/presentation";
@@ -90,7 +91,7 @@ export function StatisticsView({
 
   return (
     <div className="statistics-view">
-      <header className="rounded-3xl border border-sky-100 bg-gradient-to-br from-sky-100 via-slate-50 to-sky-200 p-6 md:p-8">
+      <header className="border-b border-sky-200 bg-[#dcefff] p-6 md:p-8">
         <p className="text-xs font-bold uppercase tracking-widest text-[#1c7fb0]">
           Análisis del consultorio
         </p>
@@ -137,6 +138,7 @@ export function StatisticsView({
           </article>
         ))}
       </section>
+      <StatisticsCharts data={data} />
       <div className="grid gap-6 lg:grid-cols-[.8fr_1.2fr]">
         <section className="clinical-panel report-controls self-start p-6">
           <h2 className="text-lg font-extrabold text-slate-900">Generar reporte</h2>

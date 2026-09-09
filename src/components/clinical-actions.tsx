@@ -1,4 +1,5 @@
 "use client";
+import { KuniDateInput } from "@/components/kuni-date-input";
 
 import { useEffect, useId, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -519,7 +520,7 @@ export function ComplicationPanel({
           </label>
           <label className="text-sm font-bold text-slate-700" htmlFor={`${panelId}-date`}>
             Fecha
-            <input
+            <KuniDateInput
               className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2"
               disabled={isPending}
               id={`${panelId}-date`}

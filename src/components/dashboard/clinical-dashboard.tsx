@@ -279,7 +279,7 @@ export function ClinicalDashboard({
   };
 
   return (
-    <div className="relative w-full max-w-[1480px] overflow-hidden rounded-[36px] border border-slate-200/70 bg-[#f7f8fc] p-4 shadow-2xl md:p-8">
+    <div className="relative w-full max-w-[1480px] overflow-hidden rounded-[36px] border border-[#a5cfe8] bg-[#dcefff] p-4 shadow-2xl md:p-8">
       <ClinicalHeader
         context={{
           unitName,
@@ -717,7 +717,7 @@ export function ClinicalDashboard({
                   <Icon name="chat" className="size-5" />
                 </button>
               </div>
-              <div className="relative my-5 flex flex-col items-center overflow-hidden rounded-3xl border border-sky-50 bg-gradient-to-b from-sky-50/60 to-sky-100/40 p-4">
+              <div className="relative my-5 flex flex-col items-center overflow-hidden rounded-3xl border border-sky-100 bg-[var(--kuni-sky-tint)] p-4">
                 <svg
                   aria-hidden="true"
                   className="absolute inset-0 h-full w-full opacity-40"

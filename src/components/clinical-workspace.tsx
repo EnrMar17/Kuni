@@ -12,11 +12,12 @@ import {
 import { AppointmentForm, type AppointmentSlotPrefill } from "@/components/appointment-form";
 import { AppointmentsCalendar } from "@/components/appointments/appointments-calendar";
 import { Icon as AppointmentIcon, type AppointmentIconName } from "@/components/appointments/icons";
+import { MedicationCalendar } from "@/components/medication-calendar";
 import { StatisticsView } from "@/components/statistics-view";
 import { PatientCreateForm } from "@/components/patient-create-form";
 import type { PatientEditData } from "@/contracts/patient-registration";
 import type { MedicationOption } from "@/contracts/clinical";
-import { AlertActions, ComplicationPanel, ManualMessageTestAction, MeasurementCorrection, MedicationClassification, MedicationResponseCorrection, PrescriptionAdjustment } from "@/components/clinical-actions";
+import { AlertActions, ComplicationPanel, ManualMessageTestAction, MeasurementCorrection, MedicationClassification, PrescriptionAdjustment } from "@/components/clinical-actions";
 import type { DashboardData, DashboardPatient } from "@/lib/domain/dashboard";
 import {
   availableDiagnoses,
@@ -509,7 +510,7 @@ export function PatientProfile({
 }) {
   const isComorbid = patient.diagnosisCodes.some((code) => diabetesDiagnosisCodes.includes(code))
     && patient.diagnosisCodes.includes("hypertension");
-  const medicationInteractions = patient.interactions.filter((interaction) => interaction.kind === "medication").slice(0, 6);
+  const medicationInteractions = patient.interactions.filter((interaction) => interaction.kind === "medication");
   return (
     <main id="contenido-principal" className="min-h-screen bg-[radial-gradient(circle_at_12%_2%,#eaf6ff_0,transparent_31%),radial-gradient(circle_at_94%_18%,#e7edf3_0,transparent_28%),#e8ebf2] p-3 text-slate-800 md:p-6 lg:p-8">
       <div className="mx-auto w-full max-w-[1480px] rounded-[36px] border border-white/80 bg-[#f7f8fc]/90 p-4 shadow-2xl shadow-slate-900/10 md:p-8">
@@ -698,49 +699,12 @@ export function PatientProfile({
                   )) : null}
                 </div>
               </details>
-              <details className="details-panel clinical-panel">
-                <summary>
-                  <h2 className="text-base font-extrabold text-slate-900">
-                    Tomas de medicamento recientes
-                  </h2>
-                  <svg className="details-panel-chevron size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
-                  </svg>
-                </summary>
-                <div className="details-panel-body grid gap-3">
-                  {medicationInteractions.map((interaction) => (
-                    <article
-                      className="rounded-2xl border border-slate-100 bg-white p-4"
-                      key={interaction.id}
-                    >
-                      <strong className="text-sm text-slate-900">
-                        {interaction.medicationName ?? "Medicamento"}
-                      </strong>
-                      <p className="mt-1 text-sm text-slate-600">
-                        {interaction.doseText}
-                      </p>
-                      <p className="mt-2 text-xs text-slate-500">
-                        Programada: {dateTime(interaction.scheduledAt, data.timezone)}
-                        {" · "}
-                        {interaction.medicationTaken == null
-                          ? "Sin respuesta registrada"
-                          : interaction.medicationTaken
-                            ? "Confirmó que sí la tomó"
-                            : "Confirmó que no la tomó"}
-                      </p>
-                      {interaction.response ? (
-                        <MedicationResponseCorrection
-                          interaction={interaction as typeof interaction & { response: NonNullable<typeof interaction.response> }}
-                          patientId={patient.id}
-                        />
-                      ) : null}
-                    </article>
-                  ))}
-                  {!medicationInteractions.length ? (
-                    <p className="text-sm text-slate-500">Sin recordatorios de medicamento recientes.</p>
-                  ) : null}
-                </div>
-              </details>
+              <MedicationCalendar
+                interactions={medicationInteractions}
+                now={data.generatedAt}
+                patientId={patient.id}
+                timezone={data.timezone}
+              />
               <ComplicationPanel complications={patient.complications} patientId={patient.id} />
             </aside>
             {/* Tratamiento y medicación: fila propia, a todo lo ancho de las dos columnas de arriba. */}
