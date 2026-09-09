@@ -3,12 +3,15 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, type ReactNode } from "react";
+import { formatInTimeZone } from "date-fns-tz";
 
 import {
   ClinicalHeader,
   type ClinicalTopBarContext,
 } from "@/components/clinical-header";
-import { AppointmentForm } from "@/components/appointment-form";
+import { AppointmentForm, type AppointmentSlotPrefill } from "@/components/appointment-form";
+import { AppointmentsCalendar } from "@/components/appointments/appointments-calendar";
+import { Icon as AppointmentIcon, type AppointmentIconName } from "@/components/appointments/icons";
 import { StatisticsView } from "@/components/statistics-view";
 import { PatientCreateForm } from "@/components/patient-create-form";
 import type { PatientEditData } from "@/contracts/patient-registration";
@@ -48,13 +51,19 @@ function PageHeader({
   title,
   description,
   children,
+  flatBackground,
 }: {
   title: string;
   description: string;
   children?: React.ReactNode;
+  /** Fondo azul plano en vez del degradado que trae `.clinical-page-content > header` por defecto. */
+  flatBackground?: boolean;
 }) {
   return (
-    <header className="flex flex-col gap-4 border-b border-slate-200/70 pb-6 sm:flex-row sm:items-end sm:justify-between">
+    <header
+      className="flex flex-col gap-4 border-b border-slate-200/70 pb-6 sm:flex-row sm:items-end sm:justify-between"
+      style={flatBackground ? { background: "var(--kuni-sky-tint)" } : undefined}
+    >
       <div>
         <h1 className="mt-2 text-3xl font-extrabold tracking-tight text-slate-900">
           {title}
@@ -329,53 +338,78 @@ function NewPatientView({ initial, medications, doctorName }: { initial?: Patien
 }
 
 function AppointmentsView({ data }: { data: DashboardData }) {
+  const upcoming = data.appointments[0];
+  const todayKey = formatInTimeZone(data.generatedAt, data.timezone, "yyyy-MM-dd");
+  const today = data.appointments.filter((a) => formatInTimeZone(a.startsAt, data.timezone, "yyyy-MM-dd") === todayKey);
+  const urgent = data.appointments.filter((a) => a.urgency === "urgent");
+  const routine = data.appointments.length - urgent.length;
+  const [slotPrefill, setSlotPrefill] = useState<AppointmentSlotPrefill | null>(null);
   return (
     <>
       <PageHeader
+        description="Agenda una nueva cita y consulta el calendario del consultorio en un solo lugar."
+        flatBackground
         title="Citas"
-        description="Prepara una cita y consulta la agenda del consultorio."
-      />
-      <div className="mt-6 grid gap-6 lg:grid-cols-[.8fr_1.2fr]">
-        <AppointmentForm data={data} />
-        <section className="overflow-hidden rounded-3xl border border-slate-200/70 bg-white shadow-sm">
-          <div className="border-b border-slate-100 p-5">
-            <h2 className="font-extrabold text-slate-900">Próximas citas</h2>
-            <p className="mt-1 text-xs text-slate-500">
-              Solo citas programadas en los siguientes 90 días.
-            </p>
+      >
+        <div className="flex flex-wrap items-center gap-2.5">
+          <span className="inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-white px-4 py-2 text-xs font-bold text-slate-600 shadow-sm">
+            <span aria-hidden="true" className="size-2 rounded-full bg-emerald-500 motion-safe:animate-pulse" />
+            {data.appointments.length} programadas · 90 días
+          </span>
+          {upcoming ? (
+            <span className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-4 py-2 text-xs font-bold text-[#0a4470] shadow-sm">
+              Próxima: {upcoming.patientName.split(" ")[0]} · {dateTime(upcoming.startsAt, data.timezone).split(",")[1]?.trim() ?? dateTime(upcoming.startsAt, data.timezone)}
+            </span>
+          ) : null}
+        </div>
+      </PageHeader>
+      <div className="mt-6 grid items-stretch gap-6 lg:grid-cols-12">
+        <div className="lg:col-span-5">
+          <AppointmentForm data={data} prefill={slotPrefill} />
+        </div>
+        <div className="flex flex-col gap-4 lg:col-span-7">
+          <div className="grid grid-cols-3 gap-3">
+            <AppointmentStat icon="today" label="Citas hoy" tone="sky" value={today.length} />
+            <AppointmentStat icon="alert" label="Prioritarias · 90 días" tone="rose" value={urgent.length} />
+            <AppointmentStat icon="stethoscope" label="Rutina · 90 días" tone="emerald" value={routine} />
           </div>
-          <ul className="divide-y divide-slate-100">
-            {data.appointments.map((appointment, index) => (
-              <li
-                className="motion-safe:animate-[kuni-rise_360ms_ease-out_both] flex items-center justify-between gap-4 p-5"
-                key={appointment.id}
-                style={{ animationDelay: `${index * 40}ms` }}
-              >
-                <div>
-                  <strong className="block text-sm text-slate-900">
-                    {appointment.patientName}
-                  </strong>
-                  <span className="mt-1 block text-xs text-slate-500">
-                    {appointment.reason ?? "Sin motivo registrado"} ·{" "}
-                    {dateTime(appointment.startsAt, data.timezone)}
-                  </span>
-                </div>
-                <span
-                  className={`rounded-full border px-2.5 py-1 text-xs font-bold ${appointment.urgency === "urgent" ? "border-rose-200 bg-rose-50 text-rose-700" : "border-sky-200 bg-sky-50 text-sky-700"}`}
-                >
-                  {appointment.urgency === "urgent" ? "Prioritaria" : "Rutina"}
-                </span>
-              </li>
-            ))}
-            {!data.appointments.length ? (
-              <li className="p-8 text-center text-sm text-slate-500">
-                No hay citas programadas.
-              </li>
-            ) : null}
-          </ul>
-        </section>
+          <AppointmentsCalendar
+            data={data}
+            onPickFreeSlot={(date, time) => setSlotPrefill({ date, time, nonce: Date.now() })}
+          />
+        </div>
       </div>
     </>
+  );
+}
+
+const statTone = {
+  sky: "bg-sky-50 text-sky-600",
+  rose: "bg-rose-50 text-[#e2525c]",
+  emerald: "bg-emerald-50 text-emerald-600",
+} as const;
+
+function AppointmentStat({
+  icon,
+  label,
+  value,
+  tone,
+}: {
+  icon: AppointmentIconName;
+  label: string;
+  value: number;
+  tone: keyof typeof statTone;
+}) {
+  return (
+    <article className="dashboard-shadow-soft flex items-center gap-3 rounded-2xl border border-slate-100 bg-white p-3.5">
+      <span className={`grid size-9 shrink-0 place-items-center rounded-xl font-mono-data text-sm font-extrabold ${statTone[tone]}`}>
+        <AppointmentIcon className="size-4" name={icon} />
+      </span>
+      <div className="min-w-0 leading-tight">
+        <p className="font-mono-data text-lg font-extrabold text-slate-900">{value}</p>
+        <p className="truncate text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</p>
+      </div>
+    </article>
   );
 }
 
