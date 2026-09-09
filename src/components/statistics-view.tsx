@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import { StatisticsCharts } from "@/components/statistics-charts";
+import { StatisticsReport } from "@/components/statistics-report";
 import { Icon, type AppointmentIconName } from "@/components/appointments/icons";
+import { ProgressCircle } from "@/components/tremor/progress-circle";
 import type { DashboardData } from "@/lib/domain/dashboard";
 import type { ClinicalTopBarContext } from "@/components/clinical-header";
 import { dateTime, percent, riskLabels } from "@/components/dashboard/presentation";
@@ -69,6 +71,8 @@ export function StatisticsView({
       ["Consultorio", context.roomName],
       ["Corte UTC", data.generatedAt],
       ["Zona horaria", data.timezone],
+      ["Pacientes incluidos", data.patients.length],
+      ["Cobertura del censo", data.hasMorePatients ? "Parcial: solo pacientes cargados" : "Censo cargado completo"],
       [
         "Alcance",
         "Prioridad y alertas actuales; adherencia y glucosa: 30 días; citas futuras: 90 días.",
@@ -106,9 +110,14 @@ export function StatisticsView({
           Corte de datos: {dateTime(data.generatedAt, data.timezone)}
         </p>
       </header>
+      {/* Una sola tira dividida en vez de 4 tarjetas sueltas: nada de gap
+          entre "cards" — divide-x/-y solo suman borde a los hijos después
+          del primero en orden de documento, así que se salta directo de 1
+          a 4 columnas (sin una parada en 2) para no dejar un divisor
+          izquierdo huérfano en el primer elemento de una fila envuelta. */}
       <section
         aria-label="Resumen estadístico"
-        className="my-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
+        className="clinical-panel my-6 grid overflow-hidden divide-y divide-slate-200/70 sm:grid-cols-4 sm:divide-x sm:divide-y-0"
       >
         {(
           [
@@ -117,7 +126,7 @@ export function StatisticsView({
               value: data.metrics.activePatients,
               detail: "Censo actual",
               icon: "users",
-              accent: "!border-t-[#0a4470]",
+              color: "#0a4470",
               tint: "bg-[#eaf6ff] text-[#0a4470]",
             },
             {
@@ -125,47 +134,60 @@ export function StatisticsView({
               value: data.metrics.highRiskPatients,
               detail: "Evaluación actual",
               icon: "alert",
-              accent: "!border-t-[#001d39]",
+              color: "#001d39",
               tint: "bg-[#e7edf3] text-[#001d39]",
             },
             {
               title: "Adherencia confirmada",
               value: percent(data.metrics.adherence.confirmedAdherencePct),
+              pct: data.metrics.adherence.confirmedAdherencePct,
               detail: "Tomas de los últimos 30 días",
               icon: "check",
-              accent: "!border-t-[#1c7fb0]",
+              color: "#1c7fb0",
               tint: "bg-sky-50 text-[#1c7fb0]",
             },
             {
               title: "Cobertura de respuestas",
               value: percent(data.metrics.adherence.responseCoveragePct),
+              pct: data.metrics.adherence.responseCoveragePct,
               detail: "Tomas de los últimos 30 días",
               icon: "phone",
-              accent: "!border-t-sky-300",
+              color: "#51c2ff",
               tint: "bg-sky-50 text-sky-600",
             },
           ] as const
-        ).map(({ title, value, detail, icon, accent, tint }, i) => (
-          <article
-            key={title}
-            className={`clinical-panel border-t-4 p-5 motion-safe:animate-[kuni-rise_360ms_ease-out_both] ${accent}`}
-            style={{ animationDelay: i * 45 + "ms" }}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <h2 className="text-xs font-bold text-slate-600">{title}</h2>
-              <span aria-hidden="true" className={`grid size-9 shrink-0 place-items-center rounded-xl ${tint}`}>
-                <Icon className="size-4" name={icon as AppointmentIconName} />
-              </span>
-            </div>
-            <p className="mt-4 font-mono-data text-3xl font-extrabold text-[#001d39]">
-              {value}
-            </p>
-            <p className="mt-1 text-xs text-slate-500">{detail}</p>
-          </article>
-        ))}
+        ).map(({ title, value, detail, icon, color, tint, ...rest }, i) => {
+          const pct = "pct" in rest ? rest.pct : null;
+          return (
+            <article
+              key={title}
+              className="relative bg-white p-5 pt-6 motion-safe:animate-[kuni-rise_360ms_ease-out_both]"
+              style={{ animationDelay: i * 45 + "ms" }}
+            >
+              {/* Acento flotante: una barrita inset en vez de un border-t
+                  sólido, para no chocar con las esquinas redondeadas del
+                  contenedor cuando el elemento es el primero o el último. */}
+              <span aria-hidden="true" className="absolute inset-x-6 top-0 h-[3px] rounded-full" style={{ background: color }} />
+              <div className="flex items-start justify-between gap-3">
+                <h2 className="text-xs font-bold text-slate-600">{title}</h2>
+                {pct != null ? (
+                  <ProgressCircle color={color} size={40} strokeWidth={4} value={pct} label="" />
+                ) : (
+                  <span aria-hidden="true" className={`grid size-9 shrink-0 place-items-center rounded-xl ${tint}`}>
+                    <Icon className="size-4" name={icon as AppointmentIconName} />
+                  </span>
+                )}
+              </div>
+              <p className="mt-4 font-mono-data text-3xl font-extrabold text-[#001d39]">
+                {value}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">{detail}</p>
+            </article>
+          );
+        })}
       </section>
       <StatisticsCharts data={data} />
-      <div className="grid gap-6 lg:grid-cols-[.8fr_1.2fr]">
+      <div className="statistics-report-layout">
         <section className="clinical-panel report-controls self-start p-6">
           <h2 className="text-lg font-extrabold text-slate-900">Generar reporte</h2>
           <p className="mt-2 text-sm leading-6 text-slate-500">
@@ -206,62 +228,20 @@ export function StatisticsView({
           aria-label="Vista previa del reporte"
         >
           {report ? (
-            <div key={report} className="clinical-page-content">
-              <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <h2 className="font-extrabold text-slate-900">{reportLabels[report]}</h2>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {context.unitName} · {context.roomName}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {dateTime(data.generatedAt, data.timezone)} · {data.timezone}
-                  </p>
-                </div>
-                <div className="report-controls flex flex-wrap gap-2">
-                  <button className="clinical-button" type="button" onClick={download}>
-                    Descargar CSV
-                  </button>
-                  <button
-                    className="clinical-button"
-                    type="button"
-                    onClick={() => window.print()}
-                  >
-                    Imprimir / PDF
-                  </button>
-                </div>
+            <div key={report}>
+              <div className="kuni-report-toolbar report-controls">
+                <button className="clinical-button" type="button" onClick={download}>
+                  Descargar CSV
+                </button>
+                <button className="clinical-button clinical-button-primary" type="button" onClick={async () => {
+                  await document.fonts.ready;
+                  await Promise.all(Array.from(document.querySelectorAll<HTMLImageElement>(".kuni-report-document img")).map(image => image.decode().catch(() => undefined)));
+                  window.print();
+                }}>
+                  Imprimir / PDF
+                </button>
               </div>
-              <div className="table-scroll" tabIndex={0} role="region" aria-label="Tabla del reporte">
-                <table className="w-full min-w-[280px] text-left text-sm">
-                  <caption className="sr-only">Métricas del reporte generado</caption>
-                  <thead>
-                    <tr className="border-b border-sky-100 text-xs text-slate-600">
-                      <th className="py-3" scope="col">
-                        Métrica
-                      </th>
-                      <th className="py-3 text-right" scope="col">
-                        Valor
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map(([label, value]) => (
-                      <tr key={label} className="border-b border-slate-100">
-                        <th className="py-3 pr-3 font-medium text-slate-700" scope="row">
-                          {label}
-                        </th>
-                        <td className="py-3 text-right font-mono-data font-semibold text-slate-900">
-                          {value}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <p className="mt-4 text-xs leading-5 text-slate-500">
-                Reporte agregado del consultorio. Prioridad y alertas actuales; adherencia y glucosa:
-                últimos 30 días; citas: próximos 90 días. La adherencia confirmada excluye respuestas
-                desconocidas; la cobertura las distingue.
-              </p>
+              <StatisticsReport data={data} context={context} kind={report} title={reportLabels[report]} rows={rows} />
             </div>
           ) : (
             <div className="grid min-h-80 place-content-center text-center">
