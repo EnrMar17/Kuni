@@ -478,42 +478,140 @@ function AppointmentStat({
 }
 
 function AlertsView({ data }: { data: DashboardData }) {
+  const [query, setQuery] = useState("");
+  const [severity, setSeverity] = useState<"all" | "critical" | "other">("all");
+  const [page, setPage] = useState(0);
+  const pageSize = 9;
+  const normalizedQuery = query.trim().toLowerCase();
+  const filtered = data.alerts.filter((alert) => {
+    const matchesQuery = normalizedQuery === "" || alert.patientName.toLowerCase().includes(normalizedQuery);
+    const matchesSeverity = severity === "all" || (severity === "critical" ? alert.severity === "critical" : alert.severity !== "critical");
+    return matchesQuery && matchesSeverity;
+  });
+  const maxPage = Math.max(0, Math.ceil(filtered.length / pageSize) - 1);
+  const currentPage = Math.min(page, maxPage);
+  const visible = filtered.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
+  const severityOptions = [
+    { value: "all", label: "Todas", count: data.alerts.length },
+    { value: "critical", label: "Crítica", count: data.alerts.filter((alert) => alert.severity === "critical").length },
+    { value: "other", label: "Seguimiento", count: data.alerts.filter((alert) => alert.severity !== "critical").length },
+  ] as const;
+  const filtersActive = normalizedQuery !== "" || severity !== "all";
+  const resetFilters = () => {
+    setQuery("");
+    setSeverity("all");
+    setPage(0);
+  };
   return (
     <>
       <PageHeader
         title="Alertas y triaje"
         description="Visualiza alertas reales del consultorio y documenta su atención o una urgencia. La prioridad se recalcula en servidor; el modelo experimental no la sustituye."
       />
-      <section className="mt-6 grid gap-4">
-        {data.alerts.map((alert, index) => (
-          <article
-            className="motion-safe:animate-[kuni-rise_360ms_ease-out_both] flex flex-col gap-4 rounded-3xl border border-slate-200/70 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between"
-            key={alert.id}
-            style={{ animationDelay: `${index * 45}ms` }}
+      <section aria-label="Búsqueda y filtros de alertas" className="mt-6 overflow-hidden rounded-3xl border border-[#a9d2e7] bg-white shadow-sm">
+        <div className="p-5">
+          <label className="grid gap-2" htmlFor="alertas-buscar">
+            <span className="flex items-center gap-2 text-xs font-extrabold text-[#0a4470]">
+              <AppointmentIcon className="size-4" name="search" />
+              Búsqueda de paciente
+            </span>
+            <span className="relative">
+              <AppointmentIcon className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[#1c7fb0]" name="search" />
+              <input
+                className="min-h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 pl-11 pr-4 text-sm font-medium text-slate-900 outline-none transition placeholder:text-slate-400 hover:border-[#8fcbe8] focus:border-[#1c7fb0] focus:bg-white focus:ring-4 focus:ring-sky-100"
+                id="alertas-buscar"
+                onChange={(event) => { setQuery(event.target.value); setPage(0); }}
+                placeholder="Nombre del paciente…"
+                type="search"
+                value={query}
+              />
+            </span>
+          </label>
+        </div>
+        <div className="flex flex-col gap-3 border-t border-sky-100 bg-[#edf6fa] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div aria-label="Filtrar por severidad" className="flex flex-wrap items-center gap-2" role="group">
+            <span className="mr-1 text-[10px] font-extrabold uppercase tracking-[.14em] text-[#0a4470]/65">Severidad</span>
+            {severityOptions.map((option) => (
+              <button
+                aria-pressed={severity === option.value}
+                className={`cursor-pointer rounded-xl border px-3 py-1.5 text-xs font-bold transition ${severity === option.value ? "border-[#0a4470] bg-[#0a4470] text-white" : "border-slate-200 bg-white text-slate-600 hover:border-[#8fcbe8] hover:bg-[#e5f3fa]"}`}
+                key={option.value}
+                onClick={() => { setSeverity(option.value); setPage(0); }}
+                type="button"
+              >
+                {option.label} <span className="ml-1 opacity-65">{option.count}</span>
+              </button>
+            ))}
+          </div>
+          {filtersActive ? (
+            <button className="cursor-pointer self-start rounded-xl px-3 py-2 text-xs font-bold text-slate-500 transition hover:bg-white hover:text-[#0a4470] sm:self-auto" onClick={resetFilters} type="button">
+              Limpiar filtros
+            </button>
+          ) : null}
+        </div>
+      </section>
+      <div className="mt-5 flex items-stretch gap-3">
+        {filtered.length > pageSize ? (
+          <button
+            aria-label="Página anterior de alertas"
+            className="grid shrink-0 place-self-center place-items-center rounded-full border border-slate-200 bg-white text-[#0a4470] shadow-sm transition hover:border-[#8fcbe8] hover:bg-[#e5f3fa] disabled:cursor-not-allowed disabled:opacity-40 size-10"
+            disabled={currentPage === 0}
+            onClick={() => setPage((current) => current - 1)}
+            type="button"
           >
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="font-extrabold text-slate-900">{alert.title}</h2>
+            <AppointmentIcon className="size-5" name="chevronLeft" />
+          </button>
+        ) : null}
+        <section aria-label="Alertas del consultorio" className="grid min-w-0 flex-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {visible.map((alert, index) => (
+            <article
+              className="motion-safe:animate-[kuni-rise_360ms_ease-out_both] flex flex-col gap-3 rounded-3xl border border-slate-200/70 bg-white p-5 shadow-sm"
+              key={alert.id}
+              style={{ animationDelay: `${index * 45}ms` }}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <h2 className="min-w-0 font-extrabold text-slate-900">{alert.title}</h2>
                 <span
-                  className={`rounded-full border px-2 py-0.5 text-xs font-bold ${alert.severity === "critical" ? "border-rose-200 bg-rose-50 text-rose-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}
+                  className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-bold ${alert.severity === "critical" ? "border-[#0a4470]/40 bg-[#0a4470]/10 text-[#0a4470]" : "border-sky-200 bg-sky-50 text-sky-700"}`}
                 >
                   {alert.severity === "critical" ? "Crítica" : "Seguimiento"}
                 </span>
               </div>
-              <p className="mt-1 text-sm text-slate-600">
-                {alert.patientName} · {dateTime(alert.createdAt, data.timezone)}{" "}
-                · Estado: {alert.status}
+              <p className="text-sm text-slate-600">
+                {alert.patientName}
+                <br />
+                {dateTime(alert.createdAt, data.timezone)} · Estado: {alert.status}
               </p>
+              <div className="mt-auto pt-1">
+                <AlertActions alert={alert} />
+              </div>
+            </article>
+          ))}
+          {!visible.length ? (
+            <div className="col-span-full rounded-3xl border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-500">
+              {data.alerts.length
+                ? "No hay alertas que coincidan con la búsqueda o los filtros."
+                : "No hay alertas abiertas en este consultorio."}
             </div>
-            <AlertActions alert={alert} />
-          </article>
-        ))}
-        {!data.alerts.length ? (
-          <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-500">
-            No hay alertas abiertas en este consultorio.
-          </div>
+          ) : null}
+        </section>
+        {filtered.length > pageSize ? (
+          <button
+            aria-label="Página siguiente de alertas"
+            className="grid shrink-0 place-self-center place-items-center rounded-full border border-slate-200 bg-white text-[#0a4470] shadow-sm transition hover:border-[#8fcbe8] hover:bg-[#e5f3fa] disabled:cursor-not-allowed disabled:opacity-40 size-10"
+            disabled={currentPage === maxPage}
+            onClick={() => setPage((current) => current + 1)}
+            type="button"
+          >
+            <AppointmentIcon className="size-5" name="chevronRight" />
+          </button>
         ) : null}
-      </section>
+      </div>
+      {filtered.length > pageSize ? (
+        <p className="mt-3 text-center text-xs font-semibold text-slate-500">
+          {filtered.length} alertas · página {currentPage + 1} de {maxPage + 1}
+        </p>
+      ) : null}
     </>
   );
 }
