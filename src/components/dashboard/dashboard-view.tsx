@@ -1,6 +1,7 @@
 "use client";
 
 import { ClinicalDashboard, type Room } from "@/components/dashboard/clinical-dashboard";
+import { useOptionalClinicalSession } from "@/components/clinical-session-provider";
 import { ClinicalSkeleton } from "@/components/clinical-skeleton";
 import { useDashboardData } from "@/lib/queries/use-dashboard-data";
 
@@ -10,8 +11,25 @@ import { useDashboardData } from "@/lib/queries/use-dashboard-data";
  * `ClinicalDashboard`) para que esta ruta comparta caché con censo, citas,
  * alertas y estadísticas. No toca ninguna regla de negocio ni presentación.
  */
-export function DashboardView({ roomId, room, unitName }: { roomId: string; room: Room; unitName: string }) {
-  const { data, isPending, isError, error, refetch } = useDashboardData();
+export function DashboardView({ roomId: roomIdOverride, room: roomOverride, unitName: unitNameOverride }: { roomId?: string; room?: Room; unitName?: string } = {}) {
+  const session = useOptionalClinicalSession();
+  const room = roomOverride ?? (session?.room
+    ? { name: session.room.name, doctor: { fullName: session.room.doctorName } }
+    : null);
+  const roomId = roomIdOverride ?? session?.room?.id;
+  const unitName = unitNameOverride ?? session?.unitName ?? "Unidad de salud";
+  const { data, isPending, isError, error, refetch } = useDashboardData(roomId);
+
+  if (!room || !roomId) {
+    return (
+      <main id="contenido-principal" className="flex min-h-screen items-center justify-center bg-[#e8ebf2] p-6 text-slate-800">
+        <div className="clinical-panel max-w-md p-6 text-center">
+          <p className="mb-4 text-sm text-slate-600">Selecciona un consultorio para abrir el dashboard.</p>
+          <a className="clinical-button clinical-button-primary" href="/consultorios">Seleccionar consultorio</a>
+        </div>
+      </main>
+    );
+  }
 
   if (isPending) return <ClinicalSkeleton view="dashboard" />;
   if (isError) {

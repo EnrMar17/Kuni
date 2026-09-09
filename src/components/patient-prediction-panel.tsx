@@ -1,5 +1,7 @@
+"use client";
+
 import type { DashboardPatient } from "@/lib/domain/dashboard";
-import { getPatientPrediction } from "@/lib/ml/predict-patient";
+import type { PatientPrediction } from "@/lib/ml/predict-patient";
 import type { MlFeatureVector } from "../../domain-core/src/lib/ml/client";
 import { formatInTimeZone } from "date-fns-tz";
 import { PatientHistoryCharts } from "./patient-history-chart";
@@ -87,8 +89,14 @@ export function PatientPredictionSkeleton() {
   );
 }
 
-export async function PatientPredictionPanel({ patient, asOf, timezone }: { patient: DashboardPatient; asOf: string; timezone: string }) {
-  const { prediction, trajectory, gaps, vector } = await getPatientPrediction(patient, new Date(asOf));
+export function PatientPredictionPanel({ patient, result, timezone, onRefresh, isRefreshing }: {
+  patient: DashboardPatient;
+  result: PatientPrediction;
+  timezone: string;
+  onRefresh?: () => void;
+  isRefreshing?: boolean;
+}) {
+  const { prediction, trajectory, gaps, vector, asOf } = result;
 
   // The model is optional. Keep the panel visible, but never turn an absent
   // endpoint, timeout, or malformed response into a fabricated prediction.
@@ -149,7 +157,7 @@ export async function PatientPredictionPanel({ patient, asOf, timezone }: { pati
             Nivel {levelLabel[prediction.level].toLowerCase()}
           </span>
         </div>
-        <PredictionRefreshButton />
+        <PredictionRefreshButton onRefresh={onRefresh} refreshing={isRefreshing} />
       </div>
 
       {isCeiling ? (

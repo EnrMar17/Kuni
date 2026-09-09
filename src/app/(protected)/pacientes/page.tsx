@@ -1,7 +1,5 @@
 import { ClinicalWorkspaceView } from "@/components/clinical-workspace-view";
-import { getPageAuthContext } from "@/lib/auth/context";
 
-export default async function PatientsPage() {
-  const context = await getPageAuthContext();
-  return <ClinicalWorkspaceView context={{ unitName: context.unitName, roomName: context.consultingRoom?.name ?? "Consultorio", doctorName: context.consultingRoom?.doctorName ?? "Personal clínico" }} mode="patients" />;
+export default function PatientsPage() {
+  return <ClinicalWorkspaceView mode="patients" />;
 }

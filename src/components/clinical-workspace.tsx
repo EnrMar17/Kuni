@@ -110,54 +110,90 @@ function PatientsView({ data }: { data: DashboardData }) {
     setQuery(value);
     setPage(0);
   };
+  const riskCounts = {
+    high: data.patients.filter((patient) => patient.risk.level === "high").length,
+    medium: data.patients.filter((patient) => patient.risk.level === "medium").length,
+    stable: data.patients.filter((patient) => ["low", "unknown"].includes(patient.risk.level)).length,
+  };
+  const pendingCount = data.patients.filter(
+    (patient) => patient.alerts.length > 0 || patient.nonresponse.pending > 0,
+  ).length;
+  const filtersActive = query !== "" || priority !== "all" || diagnosis !== "all" || pendingOnly;
+  const resetFilters = () => {
+    setQuery("");
+    setPriority("all");
+    setDiagnosis("all");
+    setPendingOnly(false);
+    setPage(0);
+  };
+  const priorityOptions = [
+    { value: "all", label: "Todos", count: data.patients.length },
+    { value: "high", label: "Prioridad alta", count: riskCounts.high },
+    { value: "medium", label: "En vigilancia", count: riskCounts.medium },
+    { value: "low", label: "Estables", count: data.patients.filter((patient) => patient.risk.level === "low").length },
+    { value: "unknown", label: "Sin evaluar", count: data.patients.filter((patient) => patient.risk.level === "unknown").length },
+  ] as const;
   return (
     <>
       <PageHeader
         title="Censo clínico"
         description="Consulta el censo del consultorio autorizado. La prioridad se calcula al leer registros y no se sustituye por valores de demostración."
+        flatBackground
       >
         <Link
-          className="rounded-xl bg-[#001d39] px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-slate-900 motion-safe:hover:-translate-y-0.5"
+          className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-[#001d39] px-4 py-2.5 text-sm font-bold text-white shadow-md shadow-[#0a4470]/20 transition hover:bg-[#0a4470] hover:shadow-lg motion-safe:hover:-translate-y-0.5"
           href="/pacientes/nuevo"
         >
-          + Nuevo paciente
+          <span aria-hidden="true" className="text-lg leading-none">+</span>
+          Nuevo paciente
         </Link>
       </PageHeader>
-      <section className="mt-6 rounded-3xl border border-slate-200/70 bg-white p-4 shadow-sm">
-        <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-end">
-          <label className="min-w-0 flex-1" htmlFor="censo-buscar">
-            <span className="sr-only">Buscar pacientes</span>
-            <input
-              className="w-full min-w-0 rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-              id="censo-buscar"
-              onChange={(event) => updateQuery(event.target.value)}
-              placeholder="Buscar nombre, CURP, expediente o diagnóstico"
-              type="search"
-              value={query}
-            />
+
+      <section aria-label="Resumen del censo" className="patients-kpi-grid mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {[
+          { label: "Total en censo", value: data.patients.length, note: "pacientes registrados", icon: "users" as const, tone: "blue" },
+          { label: "Prioridad alta", value: riskCounts.high, note: "requieren revisión", icon: "alert" as const, tone: "rose" },
+          { label: "En vigilancia", value: riskCounts.medium, note: "prioridad media", icon: "clock" as const, tone: "amber" },
+          { label: "Sin pendientes", value: riskCounts.stable, note: `${pendingCount} con seguimiento`, icon: "check" as const, tone: "emerald" },
+        ].map((metric) => (
+          <article className="patients-kpi-card flex min-h-28 items-center justify-between gap-3 rounded-2xl border p-4" data-tone={metric.tone} key={metric.label}>
+            <div>
+              <p className="text-[10px] font-extrabold uppercase tracking-[.12em] opacity-70">{metric.label}</p>
+              <p className="mt-1 flex items-baseline gap-2">
+                <strong className="patients-kpi-number font-mono-data text-2xl font-black">{metric.value}</strong>
+                <span className="text-[11px] font-semibold opacity-65">{metric.note}</span>
+              </p>
+            </div>
+            <span className="patients-kpi-icon grid size-10 shrink-0 place-items-center rounded-xl border bg-white/75 shadow-sm">
+              <AppointmentIcon name={metric.icon} className="size-5" />
+            </span>
+          </article>
+        ))}
+      </section>
+
+      <section className="patients-filter-panel mt-5 overflow-hidden rounded-3xl border border-[#a9d2e7] bg-white shadow-sm" aria-label="Búsqueda y filtros del censo">
+        <div className="grid gap-4 p-5 lg:grid-cols-[minmax(280px,1fr)_minmax(220px,.42fr)] lg:items-end">
+          <label className="grid gap-2" htmlFor="censo-buscar">
+            <span className="flex items-center gap-2 text-xs font-extrabold text-[#0a4470]">
+              <AppointmentIcon name="search" className="size-4" />
+              Búsqueda de paciente
+            </span>
+            <span className="relative">
+              <AppointmentIcon name="search" className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[#1c7fb0]" />
+              <input
+                className="min-h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 pl-11 pr-4 text-sm font-medium text-slate-900 outline-none transition placeholder:text-slate-400 hover:border-[#8fcbe8] focus:border-[#1c7fb0] focus:bg-white focus:ring-4 focus:ring-sky-100"
+                id="censo-buscar"
+                onChange={(event) => updateQuery(event.target.value)}
+                placeholder="Nombre, CURP, expediente o diagnóstico…"
+                type="search"
+                value={query}
+              />
+            </span>
           </label>
-          <label className="flex min-w-0 flex-col gap-1 text-sm font-semibold text-slate-700" htmlFor="censo-prioridad">
-            Prioridad
+          <label className="grid gap-2 text-xs font-extrabold text-[#0a4470]" htmlFor="censo-diagnostico">
+            Padecimiento o diagnóstico
             <select
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
-              id="censo-prioridad"
-              onChange={(event) => {
-                setPriority(event.target.value as typeof priority);
-                setPage(0);
-              }}
-              value={priority}
-            >
-              <option value="all">Todas</option>
-              <option value="high">Alta</option>
-              <option value="medium">Media</option>
-              <option value="low">Baja</option>
-              <option value="unknown">Sin evaluar</option>
-            </select>
-          </label>
-          <label className="flex min-w-0 flex-col gap-1 text-sm font-semibold text-slate-700" htmlFor="censo-diagnostico">
-            Diagnóstico
-            <select
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+              className="min-h-12 cursor-pointer rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-800 outline-none transition hover:border-[#8fcbe8] focus:border-[#1c7fb0] focus:bg-white focus:ring-4 focus:ring-sky-100"
               id="censo-diagnostico"
               onChange={(event) => {
                 setDiagnosis(event.target.value);
@@ -165,135 +201,160 @@ function PatientsView({ data }: { data: DashboardData }) {
               }}
               value={diagnosis}
             >
-              <option value="all">Todos</option>
-              {diagnoses.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
+              <option value="all">Todos los diagnósticos</option>
+              {diagnoses.map((item) => <option key={item} value={item}>{item}</option>)}
             </select>
           </label>
-          <label className="flex min-h-[42px] items-center gap-2 text-sm font-semibold text-slate-700">
-            <input
-              checked={pendingOnly}
-              onChange={(event) => {
-                setPendingOnly(event.target.checked);
-                setPage(0);
-              }}
-              type="checkbox"
-            />
-            Solo pendientes
-          </label>
+        </div>
+        <div className="flex flex-col gap-3 border-t border-sky-100 bg-[#edf6fa] px-5 py-4 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filtrar por prioridad">
+            <span className="mr-1 text-[10px] font-extrabold uppercase tracking-[.14em] text-[#0a4470]/65">Prioridad</span>
+            {priorityOptions.map((option) => (
+              <button
+                aria-pressed={priority === option.value}
+                className="patients-filter-chip cursor-pointer rounded-xl border px-3 py-1.5 text-xs font-bold"
+                data-priority={option.value}
+                key={option.value}
+                onClick={() => { setPriority(option.value); setPage(0); }}
+                type="button"
+              >
+                {option.label} <span className="ml-1 opacity-65">{option.count}</span>
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              aria-pressed={pendingOnly}
+              className="patients-pending-toggle inline-flex cursor-pointer items-center gap-2 rounded-xl border border-[#8fcbe8] bg-white px-3 py-2 text-xs font-bold text-[#0a4470] transition"
+              onClick={() => { setPendingOnly((current) => !current); setPage(0); }}
+              type="button"
+            >
+              <span aria-hidden="true" className={`size-2 rounded-full ${pendingOnly ? "bg-rose-500 motion-safe:animate-pulse" : "bg-slate-300"}`} />
+              Solo con pendientes
+            </button>
+            {filtersActive ? (
+              <button className="cursor-pointer rounded-xl px-3 py-2 text-xs font-bold text-slate-500 transition hover:bg-white hover:text-[#0a4470]" onClick={resetFilters} type="button">
+                Limpiar filtros
+              </button>
+            ) : null}
+          </div>
         </div>
       </section>
+
       <section
         aria-live="polite"
-        className="mt-5 overflow-hidden rounded-3xl border border-slate-200/70 bg-white shadow-sm"
+        className="patients-table-shell mt-5 overflow-hidden rounded-3xl border border-[#a9d2e7] bg-white shadow-sm"
       >
+        <div className="flex flex-col gap-2 border-b border-[#b8dceb] bg-[#dceef7] px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="flex items-center gap-2 text-xs font-bold text-[#0a4470]">
+            <span aria-hidden="true" className="grid size-6 place-items-center rounded-lg bg-[#1c7fb0] text-white">i</span>
+            Selecciona cualquier fila para abrir el expediente clínico completo.
+          </p>
+          <span className="inline-flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-[.12em] text-slate-500">
+            <i className="size-2 rounded-full bg-emerald-500 motion-safe:animate-pulse" />
+            Censo actualizado
+          </span>
+        </div>
         <div className="table-scroll" tabIndex={0} role="region" aria-label="Tabla del censo clínico">
-          <table className="w-full min-w-[640px] text-left text-sm">
+          <table className="patients-table w-full min-w-[920px] border-separate border-spacing-0 text-left text-sm">
             <caption className="sr-only">
               Pacientes del consultorio. Página {page + 1} de {maxPage + 1}.
             </caption>
-            <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-600">
+            <thead className="bg-[#eef6fa] text-[10px] font-extrabold uppercase tracking-[.12em] text-[#0a4470]">
               <tr>
-                <th className="px-4 py-4 sm:px-5" scope="col">Paciente</th>
-                <th className="px-4 py-4 sm:px-5" scope="col">Diagnósticos</th>
-                <th className="px-4 py-4 sm:px-5" scope="col">Prioridad actual</th>
-                <th className="px-4 py-4 sm:px-5" scope="col">Seguimiento</th>
-                <th className="px-4 py-4 sm:px-5" scope="col">Última respuesta</th>
-                <th className="px-4 py-4 sm:px-5" scope="col">
-                  <span className="sr-only">Abrir ficha</span>
-                </th>
+                <th className="border-b border-[#c9e2ee] px-5 py-4" scope="col">Paciente y expediente</th>
+                <th className="border-b border-[#c9e2ee] px-4 py-4" scope="col">Perfil clínico</th>
+                <th className="border-b border-[#c9e2ee] px-4 py-4" scope="col">Prioridad</th>
+                <th className="border-b border-[#c9e2ee] px-4 py-4" scope="col">Último seguimiento</th>
+                <th className="border-b border-[#c9e2ee] px-4 py-4" scope="col">Alertas y próximos pasos</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody>
               {visible.map((patient, index) => (
                 <tr
-                  className="cursor-pointer transition hover:bg-sky-50/40 motion-safe:animate-[kuni-rise_360ms_ease-out_both]"
+                  className="patients-table-row cursor-pointer motion-safe:animate-[kuni-rise_360ms_ease-out_both]"
+                  data-risk={patient.risk.level}
                   key={patient.id}
-                  onClick={(event) => {
-                    if ((event.target as HTMLElement).closest("a")) return;
+                  onClick={() => {
                     router.push(`/pacientes/${patient.id}`);
                   }}
                   style={{ animationDelay: `${index * 35}ms` }}
                 >
-                  <td className="px-4 py-4 sm:px-5">
+                  <td className="border-b border-slate-100 px-5 py-4">
                     <div className="flex items-center gap-3">
-                      <span className="grid size-9 shrink-0 place-items-center rounded-full bg-sky-100 text-xs font-extrabold text-sky-800">
+                      <span className="patient-table-avatar grid size-11 shrink-0 place-items-center rounded-2xl border border-[#acd5e8] bg-[#dceef7] text-xs font-black text-[#0a4470] shadow-sm">
                         {initials(patient.fullName)}
                       </span>
                       <div className="min-w-0">
-                        <strong className="block truncate text-slate-900">
+                        <strong className="block max-w-48 truncate text-sm font-extrabold text-slate-900">
                           {patient.fullName}
                         </strong>
-                        <span className="font-mono-data text-xs text-slate-600">
+                        <span className="font-mono-data mt-1 block text-[10px] font-semibold text-slate-500">
                           {patient.clinicalRecord}
                         </span>
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-4 text-slate-700 sm:px-5">
-                    {patient.diagnoses.join(" · ") ||
-                      "Sin diagnóstico registrado"}
+                  <td className="border-b border-slate-100 px-4 py-4 text-slate-700">
+                    <div className="flex max-w-64 flex-wrap gap-1.5">
+                      {patient.diagnoses.length ? patient.diagnoses.map((item) => (
+                        <span className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-bold text-slate-600" key={item}>{item}</span>
+                      )) : <span className="text-xs text-slate-400">Sin diagnóstico registrado</span>}
+                    </div>
+                    <span className="mt-1.5 block text-[10px] font-medium text-slate-400">{patient.age} años</span>
                   </td>
-                  <td className="px-4 py-4 sm:px-5">
+                  <td className="border-b border-slate-100 px-4 py-4">
                     <span
-                      className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-bold ${riskClass[patient.risk.level]}`}
+                      className={`inline-flex items-center gap-2 rounded-xl border px-2.5 py-1.5 text-xs font-extrabold ${riskClass[patient.risk.level]}`}
                     >
+                      <i aria-hidden="true" className="size-1.5 rounded-full bg-current" />
                       {riskLabels[patient.risk.level]}
                     </span>
                   </td>
-                  <td className="px-4 py-4 text-slate-700 sm:px-5">
-                    {dateTime(patient.lastResponseAt, data.timezone)}
+                  <td className="border-b border-slate-100 px-4 py-4">
+                    <span className="block text-xs font-bold text-slate-700">{dateTime(patient.lastResponseAt, data.timezone)}</span>
+                    <span className="mt-1 block text-[10px] font-medium text-slate-400">Última respuesta registrada</span>
                   </td>
-                  <td className="px-4 py-4 sm:px-5">
+                  <td className="border-b border-slate-100 px-4 py-4">
                     <div className="flex flex-wrap gap-1.5 text-xs font-semibold">
                       {patient.alerts.length ? (
-                        <span className="rounded-full bg-[#0a4470]/10 px-2 py-1 text-[#0a4470]">
+                        <span className="rounded-lg border border-rose-200 bg-rose-50 px-2 py-1 text-rose-700">
                           {patient.alerts.length} alerta{patient.alerts.length === 1 ? "" : "s"}
                         </span>
                       ) : null}
                       {patient.nonresponse.pending ? (
-                        <span className="rounded-full bg-sky-100 px-2 py-1 text-sky-800">
+                        <span className="rounded-lg border border-[#acd5e8] bg-[#e5f3fa] px-2 py-1 text-[#0a4470]">
                           {patient.nonresponse.pending} pendiente{patient.nonresponse.pending === 1 ? "" : "s"}
                         </span>
                       ) : null}
                       {patient.appointments[0] ? (
-                        <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">
+                        <span className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-slate-700">
                           Cita {dateTime(patient.appointments[0].startsAt, data.timezone)}
                         </span>
                       ) : null}
                       {!patient.alerts.length && !patient.nonresponse.pending && !patient.appointments[0] ? (
-                        <span className="text-slate-500">Sin pendientes</span>
+                        <span className="inline-flex items-center gap-1.5 text-emerald-700"><i className="size-1.5 rounded-full bg-emerald-500" />Sin pendientes</span>
                       ) : null}
                     </div>
-                  </td>
-                  <td className="px-4 py-4 text-right sm:px-5">
-                    <Link
-                      className="text-xs font-bold text-sky-700 hover:text-sky-900"
-                      href={`/pacientes/${patient.id}`}
-                    >
-                      <span className="sr-only">Ver ficha de {patient.fullName}</span>
-                      <span aria-hidden="true">→</span>
-                    </Link>
                   </td>
                 </tr>
               ))}
               {!visible.length ? (
                 <tr>
                   <td
-                    className="px-5 py-10 text-center text-slate-500"
-                    colSpan={6}
+                    className="px-5 py-16 text-center text-slate-500"
+                    colSpan={5}
                   >
-                    No hay pacientes que coincidan con los filtros.
+                    <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-[#e5f3fa] text-[#0a4470]"><AppointmentIcon name="search" className="size-5" /></span>
+                    <strong className="mt-3 block text-sm text-slate-700">No encontramos pacientes</strong>
+                    <span className="mt-1 block text-xs">Prueba con otros términos o limpia los filtros.</span>
                   </td>
                 </tr>
               ) : null}
             </tbody>
           </table>
         </div>
-        <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-5 py-3 text-xs text-slate-600">
+        <footer className="flex flex-wrap items-center justify-between gap-3 bg-slate-50/70 px-5 py-3.5 text-xs text-slate-600">
           <span>
             {matches.length} resultados
             {data.hasMorePatients
@@ -301,24 +362,25 @@ function PatientsView({ data }: { data: DashboardData }) {
               : ""}
             {" · "}página {page + 1} de {maxPage + 1}
           </span>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
             <button
               aria-label="Página anterior del censo"
-              className="rounded-lg border border-slate-200 px-3 py-1.5 font-semibold disabled:opacity-40"
+              className="grid size-9 cursor-pointer place-items-center rounded-xl border border-slate-200 bg-white font-semibold text-[#0a4470] transition hover:border-[#8fcbe8] hover:bg-[#e5f3fa] disabled:cursor-not-allowed disabled:opacity-40"
               disabled={page === 0}
               onClick={() => setPage((current) => current - 1)}
               type="button"
             >
-              Anterior
+              <AppointmentIcon name="chevronLeft" className="size-4" />
             </button>
+            <span className="font-mono-data rounded-lg bg-[#e5f3fa] px-3 py-1.5 text-[10px] font-bold text-[#0a4470]">{page + 1} / {maxPage + 1}</span>
             <button
               aria-label="Página siguiente del censo"
-              className="rounded-lg border border-slate-200 px-3 py-1.5 font-semibold disabled:opacity-40"
+              className="grid size-9 cursor-pointer place-items-center rounded-xl border border-slate-200 bg-white font-semibold text-[#0a4470] transition hover:border-[#8fcbe8] hover:bg-[#e5f3fa] disabled:cursor-not-allowed disabled:opacity-40"
               disabled={page === maxPage}
               onClick={() => setPage((current) => current + 1)}
               type="button"
             >
-              Siguiente
+              <AppointmentIcon name="chevronRight" className="size-4" />
             </button>
           </div>
         </footer>

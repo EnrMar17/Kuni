@@ -39,7 +39,7 @@ const admin = createClient(url, secretKey, {
 const UNIT_CODE = process.env.KUNI_DEMO_UNIT_CODE ?? "IMSSB-MICH-MORELIA-JMGU";
 const FIXTURE_KEY = "rf30-complete-v1";
 const PATIENT_RECORD = "AI-RF30-COMPLETE";
-const PATIENT_NAME = "Elena Martínez Soto (Paciente ficticia RF30)";
+const PATIENT_NAME = "Elena Martínez Soto";
 const PATIENT_PHONE = "+524439990301";
 const OBSERVATION_COUNT = 45;
 const FASTING_VALUES = Array.from({ length: OBSERVATION_COUNT }, (_, index) =>

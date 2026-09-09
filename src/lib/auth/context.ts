@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { AppError } from "@/contracts/errors";
 import { redirect } from "next/navigation";
+import { cache } from "react";
 
 /** Cookie de preferencia de consultorio. Nunca es prueba de autoridad por sí
  * sola: siempre se revalida contra la unidad real del usuario abajo. */
@@ -64,7 +65,7 @@ export type AuthContext = {
  * protegido que toque datos clínicos. `unit_id` sale de aquí, nunca de un
  * campo de formulario o de la cookie de consultorio.
  */
-export async function getAuthContext(): Promise<AuthContext> {
+export const getAuthContext = cache(async function getAuthContext(): Promise<AuthContext> {
   const supabase = await createClient();
 
   const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
@@ -114,7 +115,7 @@ export async function getAuthContext(): Promise<AuthContext> {
     role: membership.role as MembershipRole,
     consultingRoom,
   };
-}
+});
 
 async function getValidatedConsultingRoom(
   supabase: Awaited<ReturnType<typeof createClient>>,

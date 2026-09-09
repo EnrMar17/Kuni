@@ -275,9 +275,9 @@ export function ClinicalDashboard({
       ),
     [data.patients, data.timezone, query, priority, order],
   );
-  const doctorFirstName = room.doctor.fullName
-    .replace(/^Dr(a)?\.\s*/, "")
-    .split(" ")[0];
+  const doctorDisplayName = /^(Dr|Dra)\.\s/i.test(room.doctor.fullName)
+    ? room.doctor.fullName
+    : `Dr. ${room.doctor.fullName}`;
   const chart = measurementChart(
     selectedPatient?.measurements ?? [],
     data.generatedAt,
@@ -341,7 +341,7 @@ export function ClinicalDashboard({
       <section className="dashboard-hero mb-6 mt-5 flex flex-col justify-between gap-5 lg:flex-row lg:items-center">
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 lg:text-4xl">
-            Hola, {doctorFirstName}
+            Bienvenido, {doctorDisplayName}
           </h1>
           <p className="mt-1 text-base font-medium text-slate-500">
             Tienes{" "}
@@ -512,7 +512,7 @@ export function ClinicalDashboard({
             <section
               id="pacientes"
               aria-label="Pacientes del consultorio"
-              className="dashboard-accent-panel dashboard-shadow-soft flex h-full flex-col rounded-3xl border p-5 md:col-span-5"
+              className="dashboard-shadow-soft flex h-full flex-col rounded-3xl border border-slate-100 bg-white p-5 md:col-span-5"
             >
               <div className="mb-5 flex items-center justify-between gap-3 border-b border-slate-100 pb-4">
                 <div className="flex min-w-0 items-center gap-3">
@@ -742,6 +742,13 @@ export function ClinicalDashboard({
           ) : (
           <div className="dashboard-shadow-floating flex h-full flex-col justify-between overflow-hidden rounded-[32px] border border-slate-200/90 bg-white p-6">
             <div>
+              <Link
+                className="group/record mb-5 flex min-h-11 cursor-pointer items-center justify-between rounded-2xl bg-[#0a4470] px-4 text-xs font-extrabold text-white shadow-md shadow-sky-900/20 transition hover:bg-[#001d39] hover:shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#51c2ff] motion-safe:hover:-translate-y-0.5"
+                href={`/pacientes/${selectedPatient.id}`}
+              >
+                Ver expediente completo
+                <Icon name="arrow" className="size-4 transition-transform duration-200 motion-safe:group-hover/record:translate-x-0.5" />
+              </Link>
               <div className="flex items-center justify-between">
                 <span className="text-sm font-semibold text-slate-500">
                   Resumen del paciente

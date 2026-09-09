@@ -8,6 +8,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import { savePatient } from "@/actions/patients";
 import { dashboardQueryKey } from "@/lib/queries/dashboard-keys";
+import { patientRegistrationQueryKey } from "@/lib/queries/patient-registration-keys";
 import { savePatientSchema, type PatientEditData } from "@/contracts/patient-registration";
 import type { InitialCare, MedicationOption } from "@/contracts/clinical";
 import "./patient-create-form.css";
@@ -262,6 +263,7 @@ export function PatientCreateForm({ initial, medications = [] }: { initial?: Pat
         return;
       }
       queryClient.invalidateQueries({ queryKey: dashboardQueryKey });
+      queryClient.invalidateQueries({ queryKey: patientRegistrationQueryKey });
       router.push(`/pacientes/${result.data.id}`);
       router.refresh();
     } catch {

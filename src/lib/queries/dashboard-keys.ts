@@ -7,3 +7,14 @@
  * tanto el hook de cliente como el Route Handler y las páginas que hidratan.
  */
 export const dashboardQueryKey = ["dashboard"] as const;
+
+/**
+ * El consultorio forma parte de la identidad del dato. Esto evita que, al
+ * cambiar la cookie de consultorio, TanStack llegue a mostrar durante unos
+ * segundos el snapshot del consultorio anterior bajo la misma clave.
+ * `dashboardQueryKey` se conserva como prefijo para invalidar todos los
+ * snapshots clínicos después de una mutación.
+ */
+export function dashboardQueryKeyForRoom(roomId: string) {
+  return [...dashboardQueryKey, roomId] as const;
+}

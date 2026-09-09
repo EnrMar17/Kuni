@@ -37,6 +37,7 @@
 }
 
 html {
+  font-size: 17px;
   overflow-x: clip;
 }
 
@@ -159,6 +160,50 @@ a {
   display: inline-block;
 }
 
+/* Censo de pacientes: superficies sólidas, lectura clínica y microinteracciones. */
+.patients-kpi-card {
+  color: #0a4470;
+  box-shadow: 0 10px 24px -20px rgb(10 68 112 / .5);
+}
+.patients-kpi-card[data-tone="blue"] { border-color: #9fcde3; background: #dceef7; }
+.patients-kpi-card[data-tone="rose"] { border-color: #fecdd3; background: #fff1f2; color: #be123c; }
+.patients-kpi-card[data-tone="amber"] { border-color: #fde68a; background: #fffbeb; color: #b45309; }
+.patients-kpi-card[data-tone="emerald"] { border-color: #a7f3d0; background: #ecfdf5; color: #047857; }
+.patients-kpi-icon { border-color: currentColor; }
+
+.patients-filter-chip {
+  border-color: #cbd5e1;
+  background: white;
+  color: #52627a;
+  transition: color 180ms ease, background-color 180ms ease, border-color 180ms ease,
+    box-shadow 180ms ease, transform 180ms ease;
+}
+.patients-filter-chip:hover {
+  border-color: #71b9dc;
+  background: #dceef7;
+  color: #0a4470;
+}
+.patients-filter-chip[aria-pressed="true"] {
+  border-color: #0a4470;
+  background: #0a4470;
+  color: white;
+  box-shadow: 0 7px 16px -10px rgb(0 29 57 / .8);
+}
+.patients-filter-chip[data-priority="high"]:hover { border-color: #fda4af; background: #fff1f2; color: #be123c; }
+.patients-filter-chip[data-priority="high"][aria-pressed="true"] { border-color: #be123c; background: #be123c; color: white; }
+.patients-pending-toggle:hover,
+.patients-pending-toggle[aria-pressed="true"] { background: #dceef7; border-color: #51a9d5; }
+
+.patients-table-row {
+  transition: background-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+.patients-table-row:hover {
+  background: #eef7fb;
+  box-shadow: inset 4px 0 #1c7fb0;
+}
+.patients-table-row:hover .patient-table-avatar { background: #1c7fb0; color: white; transform: scale(1.06); }
+.patient-table-avatar { transition: color 180ms ease, background-color 180ms ease, transform 220ms cubic-bezier(.34,1.56,.64,1); }
+
 @media (hover: hover) and (prefers-reduced-motion: no-preference) {
   .dashboard-shadow-soft {
     transition: transform 220ms cubic-bezier(.2,.75,.25,1), box-shadow 220ms cubic-bezier(.2,.75,.25,1);
@@ -172,6 +217,9 @@ a {
     box-shadow: 0 8px 18px -8px rgb(10 68 112 / .75);
   }
   .dashboard-filter-button:hover { transform: translateY(-2px); }
+  .patients-filter-chip:hover { transform: translateY(-1px); }
+  .patients-kpi-card:hover .patients-kpi-icon { transform: rotate(-5deg) scale(1.08); }
+  .patients-table-row:hover { transform: translateX(2px); }
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -259,6 +307,19 @@ a {
 
   .dashboard-priority-badge {
     animation: kuni-priority-pulse 2.8s ease-in-out infinite;
+  }
+
+  .patients-kpi-card {
+    animation: kuni-rise 420ms cubic-bezier(.2,.75,.25,1) both;
+  }
+  .patients-kpi-card:nth-child(2) { animation-delay: 60ms; }
+  .patients-kpi-card:nth-child(3) { animation-delay: 120ms; }
+  .patients-kpi-card:nth-child(4) { animation-delay: 180ms; }
+  .patients-filter-panel { animation: kuni-rise 440ms cubic-bezier(.2,.75,.25,1) 140ms both; }
+  .patients-table-shell { animation: kuni-rise 480ms cubic-bezier(.2,.75,.25,1) 220ms both; }
+  .patients-kpi-icon { transition: transform 260ms cubic-bezier(.34,1.56,.64,1); }
+  .patients-kpi-card[data-tone="rose"] .patients-kpi-number {
+    animation: kuni-data-emphasis 2.4s ease-in-out infinite;
   }
 
   .skeleton-bone {

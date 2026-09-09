@@ -2,8 +2,9 @@
 
 import { useQuery } from "@tanstack/react-query";
 
+import { useOptionalClinicalSession } from "@/components/clinical-session-provider";
 import type { DashboardData } from "@/lib/domain/dashboard";
-import { dashboardQueryKey } from "@/lib/queries/dashboard-keys";
+import { dashboardQueryKeyForRoom } from "@/lib/queries/dashboard-keys";
 
 async function fetchDashboardData(): Promise<DashboardData> {
   const response = await fetch("/api/dashboard", { headers: { Accept: "application/json" } });
@@ -17,13 +18,19 @@ async function fetchDashboardData(): Promise<DashboardData> {
 /**
  * Fuente de datos única para dashboard, censo, citas, alertas y estadísticas
  * (mismo `dashboardQueryKey`): la primera vista que se visite en la sesión
- * dispara el fetch y las demás reutilizan el caché mientras siga fresco
- * (ver `queryClientDefaultOptions`). No decide layout ni reglas clínicas —
- * eso lo siguen haciendo los componentes que ya existían.
+ * dispara el fetch y las demás reutilizan el caché. Volver a montar una vista
+ * (en especial la tabla del censo) no provoca otra consulta solo por entrar;
+ * las invalidaciones de mutaciones y el foco de ventana siguen refrescando
+ * los datos cuando corresponde. No decide layout ni reglas clínicas — eso lo
+ * siguen haciendo los componentes que ya existían.
  */
-export function useDashboardData() {
+export function useDashboardData(roomIdOverride?: string) {
+  const session = useOptionalClinicalSession();
+  const roomId = roomIdOverride ?? session?.room?.id ?? "sin-consultorio";
   return useQuery({
-    queryKey: dashboardQueryKey,
+    queryKey: dashboardQueryKeyForRoom(roomId),
     queryFn: fetchDashboardData,
+    enabled: roomId !== "sin-consultorio",
+    refetchOnMount: false,
   });
 }
