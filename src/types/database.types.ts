@@ -2133,6 +2133,17 @@ export type Database = {
         }
         Returns: Json
       }
+      schedule_appointment: {
+        Args: {
+          p_doctor_id: string
+          p_patient_id: string
+          p_reason: string
+          p_room_id: string
+          p_starts_at: string
+          p_urgency: string
+        }
+        Returns: Json
+      }
       update_patient_registration: {
         Args: {
           p_doctor_id: string

@@ -106,7 +106,7 @@ beforeAll(async () => {
     grant execute on function auth.uid() to anon,authenticated,service_role;
     set timezone = 'UTC';
   `);
-  for (const file of ['0001_kuni.sql', '0002_clinical_derivations.sql', '0003_clinical_commands.sql', '0004_patient_complications.sql', '0005_medication_therapeutic_class.sql', '0006_inbound_commands.sql', '0007_external_derivatives.sql', '0008_patient_registration.sql', '0009_patient_initial_care.sql']) {
+  for (const file of ['0001_kuni.sql', '0002_clinical_derivations.sql', '0003_clinical_commands.sql', '0004_patient_complications.sql', '0005_medication_therapeutic_class.sql', '0006_inbound_commands.sql', '0007_external_derivatives.sql', '0008_patient_registration.sql', '0009_patient_initial_care.sql', '0010_smsgate_provider.sql', '0011_schedule_appointment.sql']) {
     await db.exec(await readFile(new URL(`../../../supabase/migrations/${file}`, import.meta.url), 'utf8'));
   }
 }, 30_000);
@@ -267,6 +267,60 @@ describe('U08 patient registration phase 1', () => {
     for (const table of ['patients', 'patient_diagnoses', 'consent_events']) {
       expect(await query(`select count(*)::integer as value from ${table} where ${table === 'patients' ? 'id' : 'patient_id'}=$1`, [target])).toBe(0);
     }
+  });
+});
+
+describe('schedule_appointment — agenda con persistencia atomica', () => {
+  const futureStart = async (offsetHours = 48) =>
+    query<string>(`select (now() + interval '${offsetHours} hours') as value`);
+  const schedule = (starts: string, urgency = 'routine', reason = 'Revision de tratamiento',
+    targetPatient = patient, targetRoom = room, targetDoctor = doctor) =>
+    attempt(() => query<{ data: { appointment: { id: string; startsAt: string; updatedAt: string } }; error: null }>(
+      'select public.schedule_appointment($1,$2,$3,$4,$5,$6) as value',
+      [targetPatient, targetRoom, targetDoctor, starts, urgency, reason]));
+
+  it('persists a scheduled appointment for the patient, room and doctor of the session', async () => {
+    const starts = await futureStart();
+    const result = await schedule(starts);
+    expect(result.data.appointment.id).toBeTruthy();
+    const stored = await query<{ status: string; urgency: string; reason: string; patient_id: string; consulting_room_id: string; attributed_doctor_id: string }>(
+      'select to_jsonb(t) as value from public.appointments t where id=$1', [result.data.appointment.id]);
+    expect(stored).toMatchObject({ status: 'scheduled', urgency: 'routine', reason: 'Revision de tratamiento',
+      patient_id: patient, consulting_room_id: room, attributed_doctor_id: doctor });
+  });
+  it.each([viewer, otherActor, null])('denies an unauthorized actor %s', async user => {
+    const starts = await futureStart();
+    await login(user);
+    await expect(schedule(starts)).rejects.toMatchObject({ code: user === null ? 'PT401' : 'PT403' });
+  });
+  it('denies a foreign room, mismatched doctor or a patient outside the room', async () => {
+    const starts = await futureStart();
+    await expect(schedule(starts, 'routine', 'Motivo', patient, id(22), otherDoctor)).rejects.toMatchObject({ code: 'PT403' });
+    await expect(schedule(starts, 'routine', 'Motivo', patient, room, otherDoctor)).rejects.toMatchObject({ code: 'PT403' });
+    await expect(schedule(starts, 'routine', 'Motivo', otherPatient, room, doctor)).rejects.toMatchObject({ code: 'PT403' });
+  });
+  it('rejects a past or missing horario, invalid urgencia and empty motivo, without inserting a row', async () => {
+    const past = await query<string>("select (now() - interval '1 hour') as value");
+    await expect(schedule(past)).rejects.toMatchObject({ code: 'PT422' });
+    await expect(schedule(await futureStart(), 'asap')).rejects.toMatchObject({ code: 'PT422' });
+    await expect(schedule(await futureStart(), 'routine', '   ')).rejects.toMatchObject({ code: 'PT422' });
+    expect(await query('select count(*)::integer as value from appointments where patient_id=$1', [patient])).toBe(0);
+  });
+  it('rejects double-booking the same room and instant with a conflict', async () => {
+    const starts = await futureStart();
+    await schedule(starts);
+    await expect(schedule(starts)).rejects.toMatchObject({ code: 'PT409' });
+  });
+  it('allows a second appointment at the same instant for a different room', async () => {
+    const starts = await futureStart();
+    await schedule(starts);
+    await owner();
+    await db.query(`insert into public.doctors(id,unit_id,full_name) values($1,$2,'Medico C')`, [id(23), unit]);
+    await db.query(`insert into public.consulting_rooms(id,unit_id,name,doctor_id) values($1,$2,'Consultorio C',$3)`, [id(24), unit, id(23)]);
+    await db.query(`insert into public.patients(id,unit_id,consulting_room_id,full_name,birth_date,sex,record_number,whatsapp_e164) values
+      ($1,$2,$3,'Paciente ficticio C','1970-01-01','unknown','C','+525500000824')`, [id(25), unit, id(24)]);
+    await login();
+    await expect(schedule(starts, 'routine', 'Motivo', id(25), id(24), id(23))).resolves.toBeTruthy();
   });
 });
 

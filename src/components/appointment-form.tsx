@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
 import type { DashboardData } from "@/lib/domain/dashboard";
 import { dateTime } from "@/components/dashboard/presentation";
+import { scheduleAppointment } from "@/actions/appointments";
 
 type AppointmentDraft = {
   patientId: string;
@@ -25,7 +27,13 @@ function validStart(date: string, time: string, timezone: string) {
 }
 
 export function AppointmentForm({ data }: { data: DashboardData }) {
+  const router = useRouter();
+  const savingRef = useRef(false);
+  const saveErrorRef = useRef<HTMLParagraphElement>(null);
   const [preview, setPreview] = useState<AppointmentDraft | null>(null);
+  const [isSaving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
   const {
     register,
     handleSubmit,
@@ -52,12 +60,55 @@ export function AppointmentForm({ data }: { data: DashboardData }) {
         {errors[name]?.message}
       </span>
     ) : null;
+
+  useEffect(() => {
+    if (!saveError) return;
+    saveErrorRef.current?.focus();
+  }, [saveError]);
+
+  async function confirmSave() {
+    if (!preview || savingRef.current) return;
+    savingRef.current = true;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const startsAt = fromZonedTime(preview.date + "T" + preview.time, data.timezone).toISOString();
+      const result = await scheduleAppointment({
+        patientId: preview.patientId,
+        startsAt,
+        urgency: preview.urgency,
+        reason: preview.reason,
+      });
+      if (result.error) {
+        setSaveError(result.error.code === "CONFLICT"
+          ? "Ese consultorio ya tiene una cita agendada en ese horario. Elige otro horario."
+          : result.error.message);
+        return;
+      }
+      reset();
+      setPreview(null);
+      setSaved(true);
+      router.refresh();
+    } catch {
+      setSaveError("No se pudo confirmar el guardado. Revisa la conexión antes de reintentar.");
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
+  }
+
   return (
     <form
       className="clinical-panel overflow-hidden self-start"
       noValidate
-      onChangeCapture={() => setPreview(null)}
-      onSubmit={handleSubmit(setPreview)}
+      onChangeCapture={() => {
+        setPreview(null);
+        setSaveError(null);
+      }}
+      onSubmit={handleSubmit((draft) => {
+        setSaved(false);
+        setPreview(draft);
+      })}
     >
       <div className="border-b border-indigo-100 bg-gradient-to-br from-indigo-100 via-indigo-50 to-white p-6">
         <div className="mb-3 flex items-center gap-3">
@@ -129,7 +180,7 @@ export function AppointmentForm({ data }: { data: DashboardData }) {
             </label>
           </div>
         </div>
-        <fieldset>
+        <fieldset disabled={isSaving}>
           <legend className="mb-3 text-sm font-bold text-slate-700">
             Tipo de cita
           </legend>
@@ -169,10 +220,6 @@ export function AppointmentForm({ data }: { data: DashboardData }) {
             {error("reason")}
           </label>
         </div>
-        <p className="draft-notice">
-          Puedes preparar y revisar la cita. El guardado en la agenda aún no
-          está disponible.
-        </p>
         {preview ? (
           <section
             role="status"
@@ -195,7 +242,32 @@ export function AppointmentForm({ data }: { data: DashboardData }) {
               · {preview.urgency === "urgent" ? "Prioritaria" : "Rutina"}
             </p>
             <p className="mt-2 text-sm text-slate-600">{preview.reason}</p>
+            <div className="mt-4 flex justify-end">
+              <button
+                className="clinical-button clinical-button-primary"
+                type="button"
+                disabled={isSaving}
+                onClick={confirmSave}
+              >
+                {isSaving ? "Guardando…" : "Confirmar y guardar"}
+              </button>
+            </div>
           </section>
+        ) : null}
+        {saved ? (
+          <p role="status" className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            Cita guardada en la agenda.
+          </p>
+        ) : null}
+        {saveError ? (
+          <p
+            ref={saveErrorRef}
+            role="alert"
+            tabIndex={-1}
+            className="field-error rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 outline-none"
+          >
+            {saveError}
+          </p>
         ) : null}
         <div className="flex flex-wrap justify-end gap-3 border-t border-slate-100 pt-5">
           <button
@@ -204,6 +276,8 @@ export function AppointmentForm({ data }: { data: DashboardData }) {
             onClick={() => {
               reset();
               setPreview(null);
+              setSaveError(null);
+              setSaved(false);
             }}
           >
             Limpiar
@@ -211,7 +285,7 @@ export function AppointmentForm({ data }: { data: DashboardData }) {
           <button
             className="clinical-button clinical-button-primary"
             type="submit"
-            disabled={!data.patients.length}
+            disabled={!data.patients.length || isSaving}
           >
             Revisar cita <span aria-hidden="true">→</span>
           </button>
