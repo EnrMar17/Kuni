@@ -5,6 +5,7 @@
    apoyo para transiciones/entradas en toda la app, además de las
    animaciones propias "kuni-*" ya existentes. */
 @import "animate.css/animate.min.css";
+@import "react-day-picker/style.css";
 
 :root {
   --background: #f4f7f6;
@@ -377,6 +378,8 @@ a {
 
 /* Shared clinical navigation: the same proportions on every destination. */
 .clinical-header {
+  position: relative;
+  z-index: 100;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -384,6 +387,18 @@ a {
   padding-bottom: 1.5rem;
   margin-bottom: 1.5rem;
   border-bottom: 1px solid rgb(226 232 240 / .5);
+}
+.clinical-header > div { position: relative; z-index: 110; }
+.clinical-logout-button {
+  transition: color 180ms ease, background-color 180ms ease, border-color 180ms ease,
+    box-shadow 180ms ease, transform 180ms ease;
+}
+.clinical-logout-button:hover {
+  border-color: #be123c;
+  background: #e11d48;
+  color: white;
+  box-shadow: 0 8px 18px -8px rgb(190 24 93 / .65);
+  transform: translateY(-1px);
 }
 .clinical-header > nav { order: 3; width: 100%; }
 .clinical-header > nav { min-width: 0; }
@@ -631,6 +646,141 @@ a {
      (ver el comentario ahí) — siguen volando aunque todo lo demás en
      esta regla las hubiera congelado. */
 }
+
+/* ---------------------------------------------------------------------- */
+/* Vista de citas — identidad propia sobre la base "clinical-*" ya usada  */
+/* en el resto del expediente clínico.                                    */
+/* ---------------------------------------------------------------------- */
+
+@keyframes kuni-modal-pop {
+  from { opacity: 0; transform: translateY(10px) scale(.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes kuni-pulse-ring {
+  0% { box-shadow: 0 0 0 0 rgb(81 194 255 / .45); }
+  70% { box-shadow: 0 0 0 8px rgb(81 194 255 / 0); }
+  100% { box-shadow: 0 0 0 0 rgb(81 194 255 / 0); }
+}
+
+/* Calendario (react-day-picker) recoloreado a la paleta Kuni. */
+/*
+ * A propósito NO se fuerza width:100% en la tabla: las celdas tienen ancho
+ * fijo (--rdp-day-width), así que un contenedor angosto la recortaría
+ * (overflow) y uno ancho la estiraría de forma rara. En vez de eso el
+ * calendario mide su tamaño natural (según las variables de abajo) y se
+ * centra con margin-inline:auto — nunca se corta, nunca se ve desproporcionado.
+ */
+.kuni-calendar.rdp-root {
+  --rdp-accent-color: var(--kuni-navy-dark);
+  --rdp-accent-background-color: var(--kuni-sky-tint);
+  --rdp-today-color: #1c7fb0;
+  --rdp-day-width: 46px;
+  --rdp-day-height: 46px;
+  --rdp-day_button-width: 42px;
+  --rdp-day_button-height: 42px;
+  --rdp-day_button-border-radius: 12px;
+  --rdp-selected-border: 2px solid var(--kuni-navy-dark);
+  --rdp-nav_button-width: 2rem;
+  --rdp-nav_button-height: 2rem;
+  width: fit-content;
+  max-width: 100%;
+  margin-inline: auto;
+  font-family: var(--font-sans);
+}
+.kuni-calendar .rdp-months { width: fit-content; max-width: 100%; justify-content: center; }
+.kuni-calendar .rdp-month { width: fit-content; }
+.kuni-calendar .rdp-month_grid { width: auto; }
+/* Variante compacta: el calendario embebido en el formulario de "Nueva
+ * cita" no necesita el mismo tamaño que el calendario grande de la agenda. */
+.kuni-calendar.kuni-calendar--compact {
+  --rdp-day-width: 32px;
+  --rdp-day-height: 32px;
+  --rdp-day_button-width: 29px;
+  --rdp-day_button-height: 29px;
+  --rdp-nav_button-width: 1.6rem;
+  --rdp-nav_button-height: 1.6rem;
+}
+.kuni-calendar--compact .rdp-month_caption { font-size: .82rem; }
+.kuni-calendar--compact .rdp-day_button { font-size: .72rem; }
+.kuni-calendar--compact .rdp-weekday { font-size: .6rem; }
+.kuni-calendar .rdp-month_caption { justify-content: center; font-size: .95rem; font-weight: 800; color: #172b45; text-transform: capitalize; }
+.kuni-calendar .rdp-weekday { font-size: .68rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; }
+.kuni-calendar .rdp-button_previous,
+.kuni-calendar .rdp-button_next {
+  border-radius: 9999px;
+  background: #f1f5f9;
+  color: #334155;
+  transition: background 160ms, transform 160ms;
+}
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .kuni-calendar .rdp-button_previous:hover,
+  .kuni-calendar .rdp-button_next:hover { background: var(--kuni-sky-tint); color: var(--kuni-navy-dark); transform: scale(1.06); }
+}
+.kuni-calendar .rdp-day_button {
+  font-size: .8rem;
+  font-weight: 600;
+  color: #334155;
+  transition: background 160ms, color 160ms, transform 160ms, box-shadow 160ms;
+}
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .kuni-calendar .rdp-day:not(.rdp-disabled):not(.rdp-outside) .rdp-day_button:hover {
+    background: var(--kuni-sky-tint);
+    color: var(--kuni-navy-dark);
+    transform: scale(1.08);
+  }
+}
+.kuni-calendar .rdp-today .rdp-day_button { font-weight: 800; box-shadow: inset 0 0 0 1.5px #7fd0ff; }
+.kuni-calendar .rdp-selected .rdp-day_button {
+  background: var(--kuni-navy-dark);
+  color: #fff;
+  font-weight: 800;
+  box-shadow: 0 5px 12px -5px #001d39;
+}
+.kuni-calendar .rdp-disabled .rdp-day_button { color: #cbd5e1; }
+.kuni-calendar-day { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; width: 100%; height: 100%; }
+.kuni-calendar-day-dot { display: flex; gap: 2px; min-height: 4px; }
+.kuni-calendar-day-dot span { width: 4px; height: 4px; border-radius: 9999px; background: #1c7fb0; }
+.kuni-calendar-day-dot span[data-urgent="true"] { background: #e2525c; }
+.rdp-selected .kuni-calendar-day-dot span { background: #7fd0ff; }
+
+/* Selector de hora: cuadrícula de chips con animación de aparición. */
+.time-slot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(56px, 1fr)); gap: .4rem; max-height: 258px; overflow-y: auto; padding: .2rem; }
+.time-slot-chip {
+  border: 1px solid #dfe5f2;
+  border-radius: 12px;
+  background: #fff;
+  padding: .55rem .4rem;
+  font-size: .78rem;
+  font-weight: 700;
+  color: #475569;
+  text-align: center;
+  transition: transform 160ms, box-shadow 160ms, background 160ms, color 160ms, border-color 160ms;
+}
+.time-slot-chip[aria-selected="true"] {
+  background: var(--kuni-navy-dark);
+  border-color: #133656;
+  color: #fff;
+  box-shadow: 0 5px 12px -6px #001d39;
+}
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .time-slot-chip:not([aria-selected="true"]):hover { border-color: #7fd0ff; background: var(--kuni-sky-tint); transform: translateY(-1px); }
+}
+
+/* Tarjetas de agenda (lista de citas del día seleccionado). */
+.agenda-card {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid #e7ecf5;
+  border-radius: 18px;
+  background: linear-gradient(160deg, #fff, #f8fafc 85%);
+  padding: 1rem;
+  transition: transform 200ms cubic-bezier(.2,.75,.25,1), box-shadow 200ms cubic-bezier(.2,.75,.25,1), border-color 200ms;
+}
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .agenda-card:hover { transform: translateY(-2px); box-shadow: 0 14px 26px -18px rgb(10 68 112 / .35); border-color: #cfe6f9; }
+}
+.agenda-card[data-urgency="urgent"] { border-color: #fbc7ce; background: linear-gradient(160deg, #fff, #fff5f6 85%); }
 
 @media (max-width: 640px) {
   .form-actions {
