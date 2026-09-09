@@ -333,7 +333,7 @@ describe("adjustPrescription", () => {
 });
 
 describe("addPatientComplication", () => {
-  const input: ComplicationInput = { patientId, code: "E113", diagnosedOn: "2026-09-01", notes: null };
+  const input: ComplicationInput = { patientId, code: "E113", diagnosedOn: "2026-09-01" };
 
   it("inserta la complicación con el doctor del consultorio como atribuido", async () => {
     const supabase = makeSupabase({ complicationsResult: { data: { id: complicationId }, error: null } });
@@ -348,6 +348,36 @@ describe("addPatientComplication", () => {
   it("rechaza un código de complicación desconocido", async () => {
     const result = await addPatientComplication({ ...input, code: "E999" } as unknown as ComplicationInput);
     expect(result.error?.code).toBe("VALIDATION");
+  });
+
+  it("rechaza una fecha futura según la zona horaria de la unidad", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-08T18:00:00.000Z"));
+    const supabase = makeSupabase();
+    createClient.mockResolvedValue(supabase);
+
+    const result = await addPatientComplication({
+      ...input,
+      diagnosedOn: "2026-09-09",
+    });
+
+    expect(result.error).toEqual({
+      code: "VALIDATION",
+      message: "La fecha de diagnóstico o revisión no puede estar en el futuro.",
+    });
+    expect(supabase.from).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
+  it("traduce un código duplicado de base de datos a conflicto clínico", async () => {
+    const supabase = makeSupabase({
+      complicationsResult: { data: null, error: { code: "23505" } },
+    });
+    createClient.mockResolvedValue(supabase);
+
+    const result = await addPatientComplication(input);
+
+    expect(result.error?.code).toBe("CONFLICT");
   });
 });
 

@@ -80,20 +80,25 @@ export function SplashScreen() {
       </div>
 
       <div className="relative z-10 flex flex-col items-center gap-8">
-        <p className="animate__animated animate__fadeInDown text-xs font-extrabold uppercase tracking-[0.22em] text-[#0a4470]">
+        <p className="splash-brand-secondary animate__animated animate__fadeInDown text-sm font-extrabold uppercase tracking-[0.22em] text-[#0a4470] drop-shadow-[0_2px_4px_rgba(255,255,255,0.95)] sm:text-base">
           Bienvenido a
         </p>
-        <Image
-          alt="Kuni"
-          className="splash-mark h-auto w-48 sm:w-56"
-          height={530}
-          priority
-          src="/brand/kuni-mark.png"
-          width={640}
-        />
+        <div className="flex flex-col items-center gap-3">
+          <Image
+            alt="Símbolo de Kuni"
+            className="splash-mark h-auto w-48 sm:w-56"
+            height={530}
+            priority
+            src="/brand/kuni-mark.png"
+            width={640}
+          />
+          <h1 className="splash-brand-primary splash-mark text-5xl font-bold tracking-[0.04em] text-[#0a4470] drop-shadow-[0_3px_7px_rgba(255,255,255,0.95)] sm:text-6xl">
+            Kuni
+          </h1>
+        </div>
         <Link
           aria-label="Continuar"
-          className="splash-cta group flex h-16 w-16 items-center justify-center rounded-full bg-[#51c2ff] text-[#0a4470] shadow-lg shadow-[#0a4470]/30 transition hover:scale-105 hover:shadow-xl hover:shadow-[#0a4470]/40 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#0a4470] active:scale-95"
+          className="splash-cta group flex h-16 w-16 items-center justify-center rounded-full bg-[#51c2ff] text-white shadow-lg shadow-[#0a4470]/30 transition hover:scale-105 hover:shadow-xl hover:shadow-[#0a4470]/40 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white active:scale-95"
           href="/login"
         >
           <svg

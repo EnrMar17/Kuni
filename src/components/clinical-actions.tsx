@@ -16,6 +16,13 @@ import {
 } from "@/actions/clinical";
 import { sendManualMessageTestAction } from "@/actions/messaging";
 import { MANUAL_SMS_TEST_BODY, MANUAL_WHATSAPP_TEST_BODY } from "@/contracts/messaging";
+import {
+  DIABETES_COMPLICATIONS,
+  DIABETES_COMPLICATION_BY_CODE,
+  isDiabetesComplicationCode,
+  isDocumentedDiabetesComplication,
+  type DiabetesComplicationCode,
+} from "@/lib/clinical/diabetes-complications";
 import type {
   DashboardAlert,
   DashboardComplication,
@@ -27,7 +34,7 @@ import type {
 function ActionMessage({ message }: { message: string | null }) {
   if (!message) return null;
   const isSuccess =
-    /^(La alerta se actualizó|Se registró la urgencia clínica|Complicación registrada|Complicación retirada|Medición corregida|Toma de medicamento corregida|Ajuste de receta registrado|Prueba de (SMS|WhatsApp) solicitada|Esta prueba ya estaba solicitada)\.?/i.test(
+    /^(La alerta se actualizó|Se registró la urgencia clínica|Estado de complicaciones registrado|Registro de complicación retirado|Medición corregida|Toma de medicamento corregida|Ajuste de receta registrado|Prueba de (SMS|WhatsApp) solicitada|Esta prueba ya estaba solicitada)\.?/i.test(
       message.trim(),
     );
   return (
@@ -322,25 +329,31 @@ export function AlertActions({ alert }: { alert: DashboardAlert }) {
   );
 }
 
-const complicationCodes = [
-  "E110",
-  "E111",
-  "E112",
-  "E113",
-  "E114",
-  "E115",
-  "E116",
-  "E117",
-  "E118",
-  "E119",
-] as const;
+function todayForDateInput() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const value = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+  return `${value.year}-${value.month}-${value.day}`;
+}
+
+function formatComplicationDate(value: string) {
+  return new Intl.DateTimeFormat("es-MX", {
+    dateStyle: "medium",
+    timeZone: "UTC",
+  }).format(new Date(`${value}T12:00:00Z`));
+}
 
 export function ComplicationPanel({
   patientId,
   complications,
+  canWrite,
 }: {
   patientId: string;
   complications: DashboardComplication[];
+  canWrite: boolean;
 }) {
   const router = useRouter();
   const reasonId = useId();
@@ -348,9 +361,8 @@ export function ComplicationPanel({
   const panelId = useId();
   const reasonRef = useRef<HTMLTextAreaElement>(null);
   const [isPending, startTransition] = useTransition();
-  const [code, setCode] = useState<(typeof complicationCodes)[number]>("E119");
+  const [code, setCode] = useState<DiabetesComplicationCode>("E119");
   const [diagnosedOn, setDiagnosedOn] = useState("");
-  const [notes, setNotes] = useState("");
   const [removing, setRemoving] = useState<DashboardComplication | null>(null);
   const [reason, setReason] = useState("");
   const [message, setMessage] = useState<string | null>(null);
@@ -365,18 +377,45 @@ export function ComplicationPanel({
     if (removing) reasonRef.current?.focus();
   }, [removing]);
 
+  const activeCodes = new Set(complications.map(({ code }) => code));
+  const hasNoComplications = activeCodes.has("E119");
+  const hasClinicalComplications = complications.some(
+    ({ code: activeCode }) =>
+      isDiabetesComplicationCode(activeCode) &&
+      isDocumentedDiabetesComplication(activeCode),
+  );
+  const hasHighModelSignal = complications.some(
+    ({ code: activeCode }) =>
+      isDiabetesComplicationCode(activeCode) &&
+      DIABETES_COMPLICATION_BY_CODE[activeCode].modelSeverity === "high",
+  );
+  const orderedCatalog = [
+    DIABETES_COMPLICATION_BY_CODE.E119,
+    ...DIABETES_COMPLICATIONS.filter(({ code: itemCode }) => itemCode !== "E119"),
+  ];
+  const selectionConflict =
+    activeCodes.has(code)
+      ? "Este código ya está vigente."
+      : code === "E119" && hasClinicalComplications
+        ? "Retira primero las complicaciones vigentes para registrar una revisión sin hallazgos."
+        : code !== "E119" && hasNoComplications
+          ? "Retira primero el estado “sin complicaciones documentadas”."
+          : null;
+
   const add = () =>
     startTransition(async () => {
+      if (selectionConflict) {
+        setMessage(selectionConflict);
+        return;
+      }
       const result = await addPatientComplication({
         patientId,
         code,
         diagnosedOn: diagnosedOn || null,
-        notes: notes || null,
       });
       if (result.error) return setMessage(result.error.message);
-      setNotes("");
       setDiagnosedOn("");
-      setMessage("Complicación registrada.");
+      setMessage("Estado de complicaciones registrado.");
       router.refresh();
     });
 
@@ -397,7 +436,7 @@ export function ComplicationPanel({
       setRemoving(null);
       setReason("");
       setShowReasonHint(false);
-      setMessage("Complicación retirada.");
+      setMessage("Registro de complicación retirado.");
       router.refresh();
     });
   };
@@ -406,7 +445,7 @@ export function ComplicationPanel({
     <details className="details-panel clinical-panel">
       <summary>
         <h2 className="text-base font-extrabold text-slate-900">
-          Complicaciones de diabetes
+          Estado de complicaciones diabéticas
         </h2>
         <svg className="details-panel-chevron size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
@@ -414,39 +453,94 @@ export function ComplicationPanel({
       </summary>
       <div className="details-panel-body">
       <p className="text-sm text-slate-500">
-        RF28. E119 significa que se revisó y no hay complicaciones; no puede coexistir
-        con otro código vigente.
+        Registra el hallazgo clínico con su nombre; el código CIE-10 se conserva para
+        el expediente y para las variables del modelo predictivo.
       </p>
+      {canWrite ? (
+        <p className="mt-1 text-xs text-slate-500">
+          Para corregir un código, retira el registro con un motivo y después registra
+          el hallazgo correcto. Así se conserva la trazabilidad clínica.
+        </p>
+      ) : null}
+
+      <div
+        className={`mt-4 rounded-xl border p-4 ${
+          hasNoComplications
+            ? "border-emerald-200 bg-emerald-50"
+            : hasClinicalComplications
+              ? "border-amber-200 bg-amber-50"
+              : "border-slate-200 bg-slate-50"
+        }`}
+      >
+        <p className="text-sm font-extrabold text-slate-900">
+          {hasNoComplications
+            ? "Revisado: sin complicaciones documentadas"
+            : hasClinicalComplications
+              ? `${complications.length} ${complications.length === 1 ? "complicación vigente" : "complicaciones vigentes"}`
+              : "Pendiente de revisión"}
+        </p>
+        <p className="mt-1 text-xs leading-5 text-slate-600">
+          {hasNoComplications
+            ? "E119 confirma que el médico revisó este apartado; no equivale a un expediente sin revisar."
+            : hasClinicalComplications
+              ? hasHighModelSignal
+                ? "El modelo recibe el conteo, la presencia de complicaciones y una señal de complicación grave."
+                : "El modelo recibe el conteo y la presencia de estas complicaciones."
+              : "Todavía no hay una revisión ni una complicación registrada; el modelo lo trata como dato faltante."}
+        </p>
+      </div>
+
       <ul className="mt-4 space-y-2">
-        {complications.map((item) => (
-          <li
-            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 p-3"
-            key={item.id}
-          >
-            <span className="text-sm font-semibold text-slate-800">
-              {item.code}
-              {item.diagnosedOn ? ` · ${item.diagnosedOn}` : ""}
-              {item.notes ? ` · ${item.notes}` : ""}
-            </span>
-            <button
-              className="text-sm font-bold text-rose-800 underline-offset-2 hover:underline"
-              disabled={isPending}
-              onClick={() => {
-                setRemoving(item);
-                setMessage(null);
-                setShowReasonHint(false);
-              }}
-              type="button"
+        {complications.map((item) => {
+          const definition = isDiabetesComplicationCode(item.code)
+            ? DIABETES_COMPLICATION_BY_CODE[item.code]
+            : null;
+          return (
+            <li
+              className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4"
+              key={item.id}
             >
-              Retirar
-            </button>
-          </li>
-        ))}
-        {!complications.length ? (
-          <li className="text-sm text-slate-500">
-            Sin registro de revisión de complicaciones.
-          </li>
-        ) : null}
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-extrabold text-slate-900">
+                    {definition?.label ?? "Código clínico sin descripción"}
+                  </span>
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 font-mono text-xs font-bold text-slate-600">
+                    {item.code}
+                  </span>
+                  {definition?.modelSeverity === "high" ? (
+                    <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-bold text-rose-800">
+                      Señal grave para el modelo
+                    </span>
+                  ) : null}
+                </div>
+                <p className="mt-1 text-sm leading-5 text-slate-600">
+                  {definition?.description ??
+                    "El código no pertenece al catálogo vigente de la aplicación."}
+                </p>
+                {item.diagnosedOn ? (
+                  <p className="mt-2 text-xs font-semibold text-slate-500">
+                    {item.code === "E119" ? "Revisión" : "Diagnóstico"}: {formatComplicationDate(item.diagnosedOn)}
+                  </p>
+                ) : null}
+              </div>
+              {canWrite ? (
+                <button
+                  className="text-sm font-bold text-rose-800 underline-offset-2 hover:underline"
+                  disabled={isPending}
+                  onClick={() => {
+                    setRemoving(item);
+                    setMessage(null);
+                    setShowReasonHint(false);
+                  }}
+                  type="button"
+                >
+                  Retirar registro
+                </button>
+              ) : null}
+            </li>
+          );
+        })}
       </ul>
       {removing ? (
         <div
@@ -454,10 +548,10 @@ export function ComplicationPanel({
           data-tone="warn"
           id={panelId}
           role="region"
-          aria-label={`Retirar complicación ${removing.code}`}
+          aria-label={`Retirar registro ${removing.code}`}
         >
           <label className="block text-sm font-bold text-slate-700" htmlFor={reasonId}>
-            Motivo para retirar {removing.code}
+            Motivo para retirar el registro {removing.code}
             <textarea
               ref={reasonRef}
               aria-describedby={showReasonHint ? reasonErrorId : undefined}
@@ -500,54 +594,92 @@ export function ComplicationPanel({
             </button>
           </div>
         </div>
-      ) : (
-        <div className="mt-4 grid gap-3 sm:grid-cols-3">
-          <label className="text-sm font-bold text-slate-700" htmlFor={`${panelId}-code`}>
-            Código
-            <select
-              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2"
-              disabled={isPending}
-              id={`${panelId}-code`}
-              onChange={(event) => setCode(event.target.value as typeof code)}
-              value={code}
+      ) : canWrite ? (
+        <div className="mt-5">
+          <fieldset>
+            <legend className="text-sm font-extrabold text-slate-800">
+              Resultado de la revisión
+            </legend>
+            <p className="mt-1 text-xs text-slate-500">
+              Selecciona el hallazgo. Cada opción incluye la explicación del código que se guardará.
+            </p>
+            <div className="mt-3 grid gap-2 md:grid-cols-2">
+              {orderedCatalog.map((item) => {
+                const disabled =
+                  isPending ||
+                  activeCodes.has(item.code) ||
+                  (item.code === "E119" && hasClinicalComplications) ||
+                  (item.code !== "E119" && hasNoComplications);
+                return (
+                  <label
+                    className={`rounded-xl border p-3 transition ${
+                      code === item.code
+                        ? "border-blue-500 bg-blue-50 ring-1 ring-blue-500"
+                        : "border-slate-200 bg-white"
+                    } ${disabled ? "cursor-not-allowed opacity-55" : "cursor-pointer hover:border-blue-300"}`}
+                    key={item.code}
+                  >
+                    <span className="flex items-start gap-3">
+                      <input
+                        checked={code === item.code}
+                        className="mt-1"
+                        disabled={disabled}
+                        name={`${panelId}-code`}
+                        onChange={() => {
+                          setCode(item.code);
+                          setMessage(null);
+                        }}
+                        type="radio"
+                        value={item.code}
+                      />
+                      <span>
+                        <span className="block text-sm font-extrabold text-slate-900">
+                          {item.label} <span className="font-mono text-xs text-slate-500">{item.code}</span>
+                        </span>
+                        <span className="mt-1 block text-xs leading-5 text-slate-600">
+                          {item.description}
+                        </span>
+                      </span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          </fieldset>
+
+          <div className="mt-4 flex flex-wrap items-end gap-3">
+            <label className="text-sm font-bold text-slate-700" htmlFor={`${panelId}-date`}>
+              {code === "E119" ? "Fecha de revisión" : "Fecha de diagnóstico"} (opcional)
+              <KuniDateInput
+                className="mt-1 block rounded-lg border border-slate-300 bg-white px-3 py-2"
+                disabled={isPending}
+                id={`${panelId}-date`}
+                max={todayForDateInput()}
+                onChange={(event) => setDiagnosedOn(event.target.value)}
+                type="date"
+                value={diagnosedOn}
+              />
+            </label>
+            <button
+              className="clinical-button clinical-button-primary"
+              disabled={isPending || Boolean(selectionConflict)}
+              onClick={add}
+              type="button"
             >
-              {complicationCodes.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm font-bold text-slate-700" htmlFor={`${panelId}-date`}>
-            Fecha
-            <KuniDateInput
-              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2"
-              disabled={isPending}
-              id={`${panelId}-date`}
-              onChange={(event) => setDiagnosedOn(event.target.value)}
-              type="date"
-              value={diagnosedOn}
-            />
-          </label>
-          <label className="text-sm font-bold text-slate-700" htmlFor={`${panelId}-notes`}>
-            Notas
-            <input
-              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2"
-              disabled={isPending}
-              id={`${panelId}-notes`}
-              onChange={(event) => setNotes(event.target.value)}
-              value={notes}
-            />
-          </label>
-          <button
-            className="clinical-button clinical-button-primary justify-self-start"
-            disabled={isPending}
-            onClick={add}
-            type="button"
-          >
-            {isPending ? "Guardando…" : "Registrar"}
-          </button>
+              {isPending ? "Guardando…" : "Guardar estado"}
+            </button>
+          </div>
+          {selectionConflict ? (
+            <p className="mt-2 text-xs font-semibold text-amber-800">
+              {selectionConflict}
+            </p>
+          ) : null}
         </div>
+      ) : (
+        <p className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+          Tu perfil tiene acceso de consulta. Sólo el personal con permiso clínico puede
+          registrar o retirar complicaciones.
+        </p>
       )}
       <ActionMessage message={message} />
       </div>
