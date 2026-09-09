@@ -136,9 +136,9 @@ Aplicar en orden `0011_sms8_provider.sql`, `0012_schedule_appointment.sql` y `00
 ### Dos vías dentro de Kuni
 
 1. **Funcionalidad programada.** Supabase Cron llama `POST /api/jobs/tick`; el job materializa los recordatorios que vencen, vuelve a validar paciente/consentimiento y los manda al adaptador configurado. Con SMS8, la solicitud aparece automáticamente en el iPhone a la hora prevista, pero iOS aún requiere la confirmación final descrita arriba.
-2. **Botón de prueba.** En la ficha del paciente, `Enviar SMS de prueba` permite comprobar el circuito sin esperar el recordatorio de 24 horas. Antes de enviar muestra destino y texto fijo. Solo aparece a perfiles con escritura y solo se habilita con consentimiento vigente.
+2. **Botones de prueba.** En la ficha del paciente, los controles permiten comprobar cada circuito sin esperar el recordatorio. Con `MESSAGE_PROVIDER=sms8` se muestra `Enviar SMS de prueba`; si además existen credenciales Twilio, aparece `Enviar WhatsApp de prueba` sin cambiar el proveedor del cron. Antes de enviar muestran destino y texto fijo. Solo aparecen a perfiles con escritura y solo se habilitan con consentimiento vigente.
 
-El botón no acepta texto arbitrario. Genera una interacción `manual_test`, sin respuesta esperada y sin receta/plan/cita asociados; por eso no afecta adherencia, mediciones, alertas por no-respuesta ni el materializador automático. La RPC `request_manual_sms_test` vuelve a autorizar unidad y consultorio, comprueba que el paciente/unidad sigan activos, verifica consentimiento, hace idempotente cada solicitud y limita a una prueba por paciente cada 30 segundos. El actor queda incluido en `payload_snapshot.requestedBy` para trazabilidad.
+El botón no acepta texto arbitrario. Genera una interacción `manual_test`, sin respuesta esperada y sin receta/plan/cita asociados; por eso no afecta adherencia, mediciones, alertas por no-respuesta ni el materializador automático. Desde `0014`, la RPC `request_manual_message_test` vuelve a autorizar unidad y consultorio, comprueba que el paciente/unidad sigan activos, verifica consentimiento, hace idempotente cada solicitud y limita a una prueba por paciente cada 30 segundos. Para WhatsApp también exige una ventana entrante vigente. El actor queda incluido en `payload_snapshot.requestedBy` para trazabilidad.
 
 Estados de la prueba:
 

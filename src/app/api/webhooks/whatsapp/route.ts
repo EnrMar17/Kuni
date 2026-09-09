@@ -2,7 +2,7 @@ import "server-only";
 import { NextResponse } from "next/server";
 import { serverEnv } from "@/lib/env/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getWhatsAppProvider } from "@/lib/whatsapp/provider";
+import { getTwilioWhatsAppProvider } from "@/lib/whatsapp/provider";
 import { processInboundEvent } from "@/lib/whatsapp/process-inbound";
 
 export const runtime = "nodejs";
@@ -18,7 +18,7 @@ function acknowledge(help?: string) {
 /** Signature -> durable receipt -> atomic clinical effect. Retries use the original receipt. */
 export async function POST(request: Request) {
   const params = Object.fromEntries(new URLSearchParams(await request.text()));
-  const provider = await getWhatsAppProvider();
+  const provider = await getTwilioWhatsAppProvider();
   if (!serverEnv.APP_PUBLIC_URL) return new NextResponse(null, { status: 500 });
   if (!provider.verifyWebhookSignature({ signatureHeader: request.headers.get("x-twilio-signature"),
     url: `${serverEnv.APP_PUBLIC_URL}${WEBHOOK_PATH}`, params })) {

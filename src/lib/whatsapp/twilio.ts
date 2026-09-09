@@ -39,7 +39,7 @@ class TwilioWhatsAppProvider implements WhatsAppProvider {
 
   async sendTemplateMessage(input: SendTemplateMessageInput): Promise<WhatsAppSendResult> {
     return this.send({
-      to: toWhatsAppAddress(input.toE164),
+      to: toWhatsAppAddress(normalizeTwilioWhatsAppRecipient(input.toE164)),
       from: toWhatsAppAddress(this.fromE164),
       contentSid: input.contentSid,
       contentVariables: JSON.stringify(input.contentVariables),
@@ -48,7 +48,7 @@ class TwilioWhatsAppProvider implements WhatsAppProvider {
 
   async sendFreeformMessage(input: SendFreeformMessageInput): Promise<WhatsAppSendResult> {
     return this.send({
-      to: toWhatsAppAddress(input.toE164),
+      to: toWhatsAppAddress(normalizeTwilioWhatsAppRecipient(input.toE164)),
       from: toWhatsAppAddress(this.fromE164),
       body: input.body,
     });
@@ -83,6 +83,17 @@ function toWhatsAppAddress(e164: string): string {
 }
 
 /**
+ * Twilio/WhatsApp sigue identificando algunos números móviles de México
+ * con el token histórico `1` después de +52. Kuni conserva el E.164
+ * canónico (+52 + 10 dígitos) para que SMS no cambie; la adaptación se hace
+ * exclusivamente en el borde de salida de WhatsApp.
+ */
+function normalizeTwilioWhatsAppRecipient(e164: string): string {
+  const match = /^\+52(\d{10})$/.exec(e164);
+  return match ? `+521${match[1]}` : e164;
+}
+
+/**
  * Traduce la excepción del SDK de Twilio (`RestException` con `status`/`code`
  * numéricos de Twilio) a `WhatsAppProviderError`, para que el resto del
  * sistema (futuro `jobs/send.ts`) decida `failure_code`/reintento sin
@@ -109,7 +120,7 @@ function toProviderError(error: unknown): WhatsAppProviderError {
     // Plantilla no aprobada/rechazada, o fuera de la ventana de sesión sin plantilla.
     code = "template_rejected";
     retriable = false;
-  } else if (twilioCode === 21211 || twilioCode === 21614 || twilioCode === 63003) {
+  } else if (twilioCode === 21211 || twilioCode === 21614 || twilioCode === 63003 || twilioCode === 63015) {
     // Número inválido / no puede recibir WhatsApp / no unido al Sandbox.
     code = "invalid_recipient";
     retriable = false;

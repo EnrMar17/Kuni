@@ -23,6 +23,7 @@ Este ciclo se desarrolla **antes** que estadísticas o funcionalidades extra (RF
 - **Supabase**: Auth (email/contraseña por unidad), Postgres con **RLS** por unidad, **Cron** (invoca cada minuto un endpoint propio de jobs).
 - **Mensajería**: Twilio/WhatsApp permanece disponible; como alternativas de salida, SMS Gateway for Android permite SMS automático y SMS8 en iPhone permite una demo con confirmación manual. Adaptador `mock` disponible para desarrollo sin canal real.
 - **Prueba SMS en la app**: la ficha del paciente ofrece un botón controlado que adelanta una prueba con texto fijo; los recordatorios programados continúan por el cron. En iPhone, SMS8 encola automáticamente, pero iOS puede requerir confirmar el envío.
+- **Prueba de WhatsApp**: con credenciales Twilio, el mismo lugar muestra un botón de demo independiente del proveedor automático y solo envía dentro de una ventana entrante vigente del Sandbox; guía en [`docs/whatsapp-sandbox-demo.md`](docs/whatsapp-sandbox-demo.md).
 - Sin backend adicional (Express/Redis/ORM/agente de IA): Next.js concentra páginas, Server Actions, webhooks y worker; Supabase aporta Auth/Postgres/Cron.
 
 **Flujo técnico:**

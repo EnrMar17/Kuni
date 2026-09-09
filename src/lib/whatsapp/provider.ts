@@ -176,3 +176,12 @@ export async function getWhatsAppProvider(): Promise<WhatsAppProvider> {
     }
   }
 }
+
+/**
+ * Acceso explícito al Sandbox para el botón de demostración. No cambia el
+ * proveedor efectivo del cron ni la caché global de transporte.
+ */
+export async function getTwilioWhatsAppProvider(): Promise<WhatsAppProvider> {
+  const { createTwilioWhatsAppProvider } = await import("./twilio");
+  return createTwilioWhatsAppProvider();
+}

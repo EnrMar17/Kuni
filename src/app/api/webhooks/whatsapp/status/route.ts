@@ -2,7 +2,7 @@ import "server-only";
 import { NextResponse } from "next/server";
 import { serverEnv } from "@/lib/env/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getWhatsAppProvider } from "@/lib/whatsapp/provider";
+import { getTwilioWhatsAppProvider } from "@/lib/whatsapp/provider";
 import type { TwilioMessageStatus } from "@/lib/whatsapp/status";
 import { applyStatusPatchWithRetry } from "@/lib/jobs/apply-status";
 import { KNOWN_TWILIO_STATUSES } from "@/lib/jobs/reconcile-status";
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
   const rawBody = await request.text();
   const params = Object.fromEntries(new URLSearchParams(rawBody));
 
-  const provider = await getWhatsAppProvider();
+    const provider = await getTwilioWhatsAppProvider();
   if (!serverEnv.APP_PUBLIC_URL) {
     console.error("[whatsapp/status] APP_PUBLIC_URL no configurado; no se puede validar la firma.");
     return new NextResponse(null, { status: 500 });

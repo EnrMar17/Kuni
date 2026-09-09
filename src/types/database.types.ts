@@ -2119,6 +2119,17 @@ export type Database = {
         }
         Returns: Json
       }
+      request_manual_message_test: {
+        Args: {
+          p_channel: string
+          p_patient_id: string
+          p_provider: string
+          p_request_id: string
+          p_room_id: string
+          p_unit_id: string
+        }
+        Returns: Json
+      }
       refresh_patient_derivatives: {
         Args: { p_patient_id: string; p_unit_id: string }
         Returns: boolean
