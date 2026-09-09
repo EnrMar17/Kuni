@@ -30,11 +30,11 @@ export default async function ConsultingRoomsPage({ searchParams }: PageProps) {
   return (
     <main
       id="contenido-principal"
-      className="consultorios-shell relative flex min-h-screen items-center justify-center overflow-hidden p-3 text-slate-800 md:p-6 lg:p-8"
+      className="consultorios-shell relative grid min-h-dvh place-items-center overflow-hidden p-3 text-slate-800 md:p-6 lg:p-8"
     >
       <div aria-hidden="true" className="splash-glow splash-glow-a" />
       <div aria-hidden="true" className="splash-glow splash-glow-b" />
-      <div className="dashboard-shadow-floating relative z-10 w-full max-w-[1180px] overflow-hidden rounded-[36px] border border-white/70 bg-white/95 p-5 shadow-2xl shadow-[#0a4470]/12 backdrop-blur-sm sm:p-8 lg:p-10">
+      <div className="dashboard-shadow-floating relative z-10 mx-auto w-full max-w-[1180px] overflow-hidden rounded-[36px] border border-white/70 bg-white/95 p-5 shadow-2xl shadow-[#0a4470]/12 backdrop-blur-sm sm:p-8 lg:p-10">
         <header className="flex items-center justify-between border-b border-[#0a4470]/10 pb-6">
           <span className="inline-flex items-center gap-2.5 font-extrabold tracking-tight text-[#001d39]">
             <Image alt="Kuni" className="h-auto w-8" height={530} src="/brand/kuni-mark.png" width={640} />
@@ -47,7 +47,7 @@ export default async function ConsultingRoomsPage({ searchParams }: PageProps) {
           </form>
         </header>
 
-        <section className="mx-auto max-w-5xl py-10 sm:py-14">
+        <section className="mx-auto w-full max-w-5xl py-10 sm:py-14">
           <div className="text-center">
             <span className="inline-flex rounded-full border border-[#51c2ff]/30 bg-[#eaf6ff] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-[#0a4470]">
               {context.unitCode ?? "Unidad de salud"}
@@ -103,22 +103,8 @@ export default async function ConsultingRoomsPage({ searchParams }: PageProps) {
                   <form action={selectConsultingRoom} className="relative mt-5">
                     <input name="roomId" type="hidden" value={room.id} />
                     <input name="redirectTo" type="hidden" value={destination} />
-                    <button className="group/btn flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-[#001d39] px-4 text-sm font-bold text-white shadow-lg shadow-[#0a4470]/20 transition hover:-translate-y-0.5 hover:bg-[#012c52] hover:shadow-xl hover:shadow-[#0a4470]/30 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#51c2ff]">
+                    <button className="flex min-h-12 w-full cursor-pointer items-center justify-center rounded-2xl bg-[#001d39] px-4 text-sm font-bold text-white shadow-lg shadow-[#0a4470]/20 transition hover:-translate-y-0.5 hover:bg-[#012c52] hover:shadow-xl hover:shadow-[#0a4470]/30 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#51c2ff]" type="submit">
                       Entrar al consultorio
-                      <svg
-                        aria-hidden="true"
-                        className="h-4 w-4 text-[#51c2ff] transition-transform duration-300 group-hover/btn:translate-x-1"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          d="M4.5 12h13.5M12.5 6l6 6-6 6"
-                          stroke="currentColor"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth="2.6"
-                        />
-                      </svg>
                     </button>
                   </form>
                 </article>

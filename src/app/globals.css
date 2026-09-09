@@ -126,6 +126,39 @@ a {
   box-shadow: 0 25px 50px -12px rgb(15 23 42 / 15%), 0 10px 20px -5px rgb(15 23 42 / 4%);
 }
 
+/* El azul vive en componentes concretos; el lienzo general permanece neutro. */
+.dashboard-accent-card {
+  border-color: #acd3e6;
+  background: #e1f0f7;
+}
+
+.dashboard-accent-panel {
+  border-color: #b8dceb;
+  background: #edf6fa;
+}
+
+.dashboard-section-icon {
+  transition: transform 260ms cubic-bezier(.34,1.56,.64,1), box-shadow 220ms ease;
+}
+
+.dashboard-filter-button {
+  transition: color 180ms ease, background-color 180ms ease, border-color 180ms ease,
+    box-shadow 180ms ease, transform 180ms ease;
+}
+
+.dashboard-filter-button:hover {
+  border-color: #51a9d5;
+  background: #e1f0f7;
+  color: #0a4470;
+  box-shadow: 0 8px 18px -11px rgb(10 68 112 / .55);
+}
+
+.dashboard-key-value,
+.patient-vital-chip,
+.dashboard-priority-badge {
+  display: inline-block;
+}
+
 @media (hover: hover) and (prefers-reduced-motion: no-preference) {
   .dashboard-shadow-soft {
     transition: transform 220ms cubic-bezier(.2,.75,.25,1), box-shadow 220ms cubic-bezier(.2,.75,.25,1);
@@ -134,6 +167,11 @@ a {
     transform: translateY(-3px);
     box-shadow: 0 16px 36px -10px rgb(10 68 112 / 14%), 0 6px 14px -6px rgb(10 68 112 / 8%);
   }
+  .dashboard-shadow-soft:hover .dashboard-section-icon {
+    transform: rotate(-6deg) scale(1.1);
+    box-shadow: 0 8px 18px -8px rgb(10 68 112 / .75);
+  }
+  .dashboard-filter-button:hover { transform: translateY(-2px); }
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -169,7 +207,58 @@ a {
   .clinical-header nav > :nth-child(5) { animation-delay: 220ms; }
 
   .login-card {
-    animation: kuni-rise 350ms ease-out both;
+    animation: kuni-login-card 520ms cubic-bezier(.2,.8,.25,1) both;
+  }
+
+  .login-logo {
+    animation: kuni-logo-arrival 620ms cubic-bezier(.2,.8,.25,1) 120ms both;
+  }
+
+  .login-form > * {
+    animation: kuni-rise 380ms cubic-bezier(.2,.75,.25,1) both;
+  }
+  .login-form > :nth-child(2) { animation-delay: 120ms; }
+  .login-form > :nth-child(3) { animation-delay: 180ms; }
+  .login-form > :nth-child(4) { animation-delay: 240ms; }
+  .login-form > :nth-child(5) { animation-delay: 300ms; }
+
+  .dashboard-hero {
+    animation: kuni-dashboard-hero 500ms cubic-bezier(.2,.8,.25,1) both;
+  }
+
+  .notifications-popover {
+    transform-origin: top right;
+    animation: kuni-popover 180ms cubic-bezier(.2,.8,.25,1) both;
+  }
+
+  .patient-avatar {
+    animation: kuni-patient-breathe 3.4s ease-in-out infinite;
+  }
+
+  .patient-vitals-trace {
+    animation: kuni-vitals-trace 7s linear infinite;
+  }
+
+  .dashboard-key-value {
+    animation: kuni-data-emphasis 3.2s ease-in-out infinite;
+  }
+
+  .dashboard-key-value-alert {
+    animation-duration: 2.2s;
+  }
+
+  .dashboard-progress-fill {
+    transform-origin: left center;
+    animation: kuni-progress-reveal 760ms cubic-bezier(.2,.8,.25,1) 320ms both;
+  }
+
+  .patient-vital-chip {
+    animation: kuni-chip-float 3s ease-in-out infinite;
+  }
+  .patient-vital-chip:nth-child(2) { animation-delay: 450ms; }
+
+  .dashboard-priority-badge {
+    animation: kuni-priority-pulse 2.8s ease-in-out infinite;
   }
 
   .skeleton-bone {
@@ -279,6 +368,55 @@ a {
 @keyframes kuni-rise {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes kuni-dashboard-hero {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes kuni-login-card {
+  from { opacity: 0; transform: translateY(18px) scale(.975); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes kuni-logo-arrival {
+  from { opacity: 0; transform: translateY(-10px) rotate(-5deg) scale(.85); }
+  to { opacity: 1; transform: translateY(0) rotate(0) scale(1); }
+}
+
+@keyframes kuni-popover {
+  from { opacity: 0; transform: translateY(-6px) scale(.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes kuni-patient-breathe {
+  0%, 100% { transform: translateY(0); box-shadow: 0 8px 18px -9px rgb(10 68 112 / .35); }
+  50% { transform: translateY(-3px); box-shadow: 0 13px 22px -10px rgb(10 68 112 / .5); }
+}
+
+@keyframes kuni-vitals-trace {
+  to { stroke-dashoffset: -100; }
+}
+
+@keyframes kuni-data-emphasis {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-1px) scale(1.045); }
+}
+
+@keyframes kuni-progress-reveal {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+@keyframes kuni-chip-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+
+@keyframes kuni-priority-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgb(28 127 176 / 0); }
+  50% { box-shadow: 0 0 0 4px rgb(28 127 176 / .12); }
 }
 
 /* Bienvenida (splash): flotación suave del logo y pulso del CTA — ambas se
@@ -443,6 +581,10 @@ a {
   box-shadow: 0 3px 10px rgb(0 29 57 / .22);
 }
 .clinical-nav-active svg, .clinical-nav-active:hover svg { color: white; transform: scale(1.05); }
+
+.login-submit:not(:disabled):hover {
+  cursor: pointer;
+}
 @media (min-width: 1280px) {
   .clinical-header { flex-wrap: nowrap; }
   .clinical-header > nav { order: initial; width: auto; margin-inline: auto; }

@@ -7,7 +7,10 @@ const mocks = vi.hoisted(() => ({
   redirect: vi.fn((path: string): never => { throw new Error(`REDIRECT:${path}`); }),
 }));
 vi.mock("next/headers", () => ({ cookies: async () => ({ delete: mocks.deleteCookie }) }));
-vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
+vi.mock("next/navigation", () => ({
+  redirect: mocks.redirect,
+  RedirectType: { replace: "replace" },
+}));
 vi.mock("@/lib/supabase/server", () => ({ createClient: mocks.createClient }));
 vi.mock("@/lib/auth/context", () => ({
   getAuthContext: mocks.getAuthContext,
@@ -97,10 +100,11 @@ describe("acciones de autenticación y selección", () => {
   });
 
   it("cierra la sesión local de Supabase y elimina las preferencias", async () => {
-    await expect(logout()).rejects.toThrow("REDIRECT:/login");
+    await expect(logout()).rejects.toThrow("REDIRECT:/");
     expect(mocks.signOut).toHaveBeenCalledWith({ scope: "local" });
     expect(mocks.clearConsultingRoomCookie).toHaveBeenCalledOnce();
     expect(mocks.deleteCookie).toHaveBeenCalledWith("kuni_selected_room");
+    expect(mocks.redirect).toHaveBeenCalledWith("/", "replace");
   });
 
   it("informa el fallo de signOut sin afirmar que cerró la sesión", async () => {

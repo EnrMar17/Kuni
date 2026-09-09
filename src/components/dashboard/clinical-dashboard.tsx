@@ -146,7 +146,7 @@ function SectionArrow({
   );
 }
 
-type Room = { name: string; doctor: { fullName: string } };
+export type Room = { name: string; doctor: { fullName: string } };
 
 function scrollToSection(id: string) {
   document
@@ -196,6 +196,59 @@ function presentPatient(patient: DashboardPatient | null, timezone: string) {
   };
 }
 
+function PatientSummarySkeleton() {
+  return (
+    <div
+      aria-label="Selecciona un paciente para ver su resumen"
+      className="dashboard-shadow-floating min-h-[620px] overflow-hidden rounded-[32px] border border-slate-200/90 bg-white p-6"
+    >
+      <div aria-hidden="true">
+        <div className="flex items-center justify-between">
+          <div className="skeleton-bone h-4 w-36" />
+          <div className="skeleton-bone size-7 !rounded-full" />
+        </div>
+
+        <div className="mt-5 space-y-3">
+          <div className="skeleton-bone h-7 w-3/4" />
+          <div className="skeleton-bone h-6 w-2/5 !rounded-full" />
+        </div>
+
+        <div className="my-5 flex min-h-48 flex-col items-center justify-center rounded-3xl border border-sky-100 bg-[#e8f4fb] p-4">
+          <div className="skeleton-bone size-20 !rounded-full" />
+          <div className="mt-4 grid w-full grid-cols-2 gap-2">
+            <div className="skeleton-bone h-7 !rounded-full" />
+            <div className="skeleton-bone h-7 !rounded-full" />
+          </div>
+          <div className="skeleton-bone mt-3 h-6 w-24 !rounded-full" />
+        </div>
+
+        <div className="space-y-3">
+          <div className="skeleton-bone h-3 w-2/5" />
+          <div className="skeleton-bone h-3 w-full" />
+          <div className="skeleton-bone h-3 w-full" />
+          <div className="skeleton-bone h-3 w-4/5" />
+        </div>
+
+        <div className="mt-6 border-t border-slate-100 pt-4">
+          <div className="flex items-center justify-between">
+            <div className="skeleton-bone h-3 w-32" />
+            <div className="skeleton-bone h-6 w-28 !rounded-full" />
+          </div>
+          <div className="skeleton-bone mt-3 h-24 w-full !rounded-2xl" />
+        </div>
+
+        <div className="mt-5 border-t border-slate-100 pt-4">
+          <div className="skeleton-bone h-3 w-40" />
+          <div className="mt-3 grid gap-2">
+            <div className="skeleton-bone h-10 w-full !rounded-xl" />
+            <div className="skeleton-bone h-10 w-full !rounded-xl" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ClinicalDashboard({
   room,
   unitName,
@@ -205,9 +258,7 @@ export function ClinicalDashboard({
   unitName: string;
   data: DashboardData;
 }) {
-  const [selectedId, setSelectedId] = useState<string | null>(
-    data.patients[0]?.id ?? null,
-  );
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [priority, setPriority] = useState<
     "all" | "high" | "medium" | "unknown" | "low"
@@ -215,9 +266,7 @@ export function ClinicalDashboard({
   const [order, setOrder] = useState<"risk" | "name">("risk");
   const [days, setDays] = useState(30);
   const selectedPatient =
-    data.patients.find((patient) => patient.id === selectedId) ??
-    data.patients[0] ??
-    null;
+    data.patients.find((patient) => patient.id === selectedId) ?? null;
   const selected = presentPatient(selectedPatient, data.timezone);
   const filteredPatients = useMemo(
     () =>
@@ -279,7 +328,7 @@ export function ClinicalDashboard({
   };
 
   return (
-    <div className="relative w-full max-w-[1480px] overflow-hidden rounded-[36px] border border-slate-200/70 bg-[#f7f8fc] p-4 shadow-2xl md:p-8">
+    <div className="clinical-dashboard relative w-full max-w-[1480px] overflow-hidden rounded-[36px] border border-slate-200/70 bg-[#f7f8fc] p-4 shadow-2xl md:p-8">
       <ClinicalHeader
         context={{
           unitName,
@@ -289,7 +338,7 @@ export function ClinicalDashboard({
         data={data}
       />
 
-      <section className="mb-6 mt-5 flex flex-col justify-between gap-5 lg:flex-row lg:items-center">
+      <section className="dashboard-hero mb-6 mt-5 flex flex-col justify-between gap-5 lg:flex-row lg:items-center">
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 lg:text-4xl">
             Hola, {doctorFirstName}
@@ -320,7 +369,7 @@ export function ClinicalDashboard({
           </label>
           <button
             aria-label={`Filtrar por prioridad: ${priority === "all" ? "todas" : riskLabels[priority]}. Pulsar para cambiar.`}
-            className="flex items-center gap-1.5 rounded-full border border-slate-200/80 bg-white px-5 py-2.5 text-xs font-semibold text-slate-700 shadow-sm md:text-sm"
+            className="dashboard-filter-button flex cursor-pointer items-center gap-1.5 rounded-full border border-slate-200/80 bg-white px-5 py-2.5 text-xs font-semibold text-slate-700 shadow-sm md:text-sm"
             onClick={() => {
               const levels = [
                 "all",
@@ -340,7 +389,7 @@ export function ClinicalDashboard({
           </button>
           <button
             aria-label={`Orden actual: ${order === "risk" ? "prioridad" : "nombre"}. Pulsar para cambiar.`}
-            className="rounded-full border border-slate-200/80 bg-white px-5 py-2.5 text-xs font-semibold text-slate-700 shadow-sm md:text-sm"
+            className="dashboard-filter-button cursor-pointer rounded-full border border-slate-200/80 bg-white px-5 py-2.5 text-xs font-semibold text-slate-700 shadow-sm md:text-sm"
             onClick={() => setOrder(order === "risk" ? "name" : "risk")}
             type="button"
           >
@@ -356,12 +405,12 @@ export function ClinicalDashboard({
             aria-label="Métricas clínicas"
             className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4"
           >
-            <article className="dashboard-shadow-soft flex min-h-[140px] flex-col justify-between rounded-3xl border border-slate-100 bg-white p-5">
+            <article className="dashboard-accent-card dashboard-shadow-soft flex min-h-[140px] flex-col justify-between rounded-3xl border p-5">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-500">
                   Glucosa en ayuno
                 </span>
-                <span className="grid size-8 place-items-center rounded-full bg-sky-50 text-sky-600">
+                <span className="dashboard-section-icon grid size-8 place-items-center rounded-full bg-[#1c7fb0] text-white shadow-sm shadow-sky-900/20">
                   <Icon name="heart" />
                 </span>
               </div>
@@ -373,7 +422,7 @@ export function ClinicalDashboard({
               ></svg>
               <div>
                 <p>
-                  <span className="font-mono-data text-2xl font-extrabold text-slate-900">
+                  <span className="dashboard-key-value font-mono-data text-2xl font-extrabold text-slate-900">
                     {data.metrics.meanFastingGlucoseMgDl?.toLocaleString(
                       "es-MX",
                       { maximumFractionDigits: 1 },
@@ -403,7 +452,7 @@ export function ClinicalDashboard({
               <div className="my-2.5 flex h-10 items-end justify-between gap-1.5 px-1"></div>
               <div>
                 <p>
-                  <span className="font-mono-data text-2xl font-extrabold text-[#e2525c]">
+                  <span className="dashboard-key-value dashboard-key-value-alert font-mono-data text-2xl font-extrabold text-[#e2525c]">
                     {data.metrics.criticalAlerts}
                   </span>{" "}
                   <span className="text-[11px] font-bold text-slate-400">
@@ -415,25 +464,25 @@ export function ClinicalDashboard({
                 </p>
               </div>
             </article>
-            <article className="dashboard-shadow-soft flex min-h-[140px] flex-col justify-between rounded-3xl border border-slate-100 bg-white p-5">
+            <article className="dashboard-accent-card dashboard-shadow-soft flex min-h-[140px] flex-col justify-between rounded-3xl border p-5">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-500">
                   Adherencia confirmada
                 </span>
-                <span className="grid size-8 place-items-center rounded-full bg-sky-50 text-sky-500">
+                <span className="dashboard-section-icon grid size-8 place-items-center rounded-full bg-[#287ca8] text-white shadow-sm shadow-sky-900/20">
                   <Icon name="chat" />
                 </span>
               </div>
               <div className="my-3 h-5 overflow-hidden rounded-full bg-slate-100 p-0.5">
                 <div
-                  className="h-full rounded-full bg-sky-400"
+                  className="dashboard-progress-fill h-full rounded-full bg-sky-500"
                   style={{
                     width: `${data.metrics.adherence.confirmedAdherencePct ?? 0}%`,
                   }}
                 />
               </div>
               <div>
-                <p className="font-mono-data text-2xl font-extrabold text-slate-900">
+                <p className="dashboard-key-value font-mono-data text-2xl font-extrabold text-slate-900">
                   {percent(data.metrics.adherence.confirmedAdherencePct)}
                 </p>
                 <p className="font-mono-data mt-0.5 text-[10px] font-semibold text-slate-500">
@@ -463,36 +512,38 @@ export function ClinicalDashboard({
             <section
               id="pacientes"
               aria-label="Pacientes del consultorio"
-              className="dashboard-shadow-soft flex h-full flex-col rounded-3xl border border-slate-100 bg-white p-5 md:col-span-5"
+              className="dashboard-accent-panel dashboard-shadow-soft flex h-full flex-col rounded-3xl border p-5 md:col-span-5"
             >
-              <div className="mb-1 flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <span className="grid size-8 shrink-0 place-items-center rounded-full bg-sky-50 text-sky-600">
+              <div className="mb-5 flex items-center justify-between gap-3 border-b border-slate-100 pb-4">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="dashboard-section-icon grid size-10 shrink-0 place-items-center rounded-2xl bg-[#1c7fb0] text-white shadow-sm ring-1 ring-sky-700/20">
                     <Icon name="users" className="size-4" />
                   </span>
-                  <h2 className="text-base font-bold text-slate-900">
-                    Pacientes del consultorio
-                  </h2>
+                  <div className="min-w-0">
+                    <h2 className="text-base font-bold text-slate-900">
+                      Pacientes del consultorio
+                    </h2>
+                    <p className="mt-1 text-xs font-medium text-slate-400">
+                      {data.metrics.activePatients} pacientes
+                      {data.hasMorePatients
+                        ? " · Lista parcial; hay más pacientes"
+                        : ""}
+                    </p>
+                  </div>
                 </div>
                 <SectionArrow
                   label="Ver pacientes cargados"
                   onClick={selectCensus}
                 />
               </div>
-              <p className="mb-4 text-xs font-medium text-slate-400">
-                {data.metrics.activePatients} pacientes
-                {data.hasMorePatients
-                  ? " · Lista parcial; hay más pacientes"
-                  : ""}
-              </p>
-              <div className="table-scroll flex max-h-[320px] flex-col gap-2 overflow-y-auto pr-1">
+              <div className="table-scroll flex max-h-[340px] flex-col gap-3 overflow-y-auto pr-2">
                 {filteredPatients.length ? (
                   filteredPatients.map((patient) => {
                     const active = patient.id === selected.id;
                     return (
                       <button
                         aria-pressed={active}
-                        className={`group/patient relative flex w-full items-center justify-between overflow-hidden rounded-2xl border p-3 text-left transition duration-200 motion-safe:hover:-translate-y-0.5 ${active ? "border-sky-200 bg-sky-50/60 shadow-sm" : "border-slate-100 bg-slate-50/60 hover:border-sky-100 hover:bg-sky-50/40"}`}
+                        className={`group/patient relative flex min-h-[88px] w-full cursor-pointer items-center justify-between gap-3 overflow-hidden rounded-2xl border p-3.5 text-left shadow-sm transition duration-200 motion-safe:hover:-translate-y-0.5 ${active ? "border-[#51a9d5] bg-[#e6f3fa] shadow-sky-100/70" : "border-slate-100 bg-slate-50/70 hover:border-sky-100 hover:bg-white hover:shadow-md"}`}
                         key={patient.id}
                         onClick={() => setSelectedId(patient.id)}
                         type="button"
@@ -501,13 +552,13 @@ export function ClinicalDashboard({
                           aria-hidden="true"
                           className={`absolute inset-y-0 left-0 w-1 rounded-r-full transition-opacity duration-200 ${active ? "bg-[#0a4470] opacity-100" : "opacity-0"}`}
                         />
-                        <span className="flex min-w-0 items-center gap-3 pl-1.5">
+                        <span className="flex min-w-0 items-center gap-3.5 pl-1.5">
                           <span
-                            className={`grid size-10 shrink-0 place-items-center rounded-full text-xs font-bold ring-2 ring-white transition-transform duration-200 motion-safe:group-hover/patient:scale-105 ${toneStyles[patient.tone]}`}
+                            className={`grid size-11 shrink-0 place-items-center rounded-2xl text-xs font-bold shadow-sm ring-2 ring-white transition-transform duration-200 motion-safe:group-hover/patient:scale-105 ${toneStyles[patient.tone]}`}
                           >
                             {patient.initials}
                           </span>
-                          <span className="min-w-0 leading-tight">
+                          <span className="min-w-0 leading-snug">
                             <span className="flex flex-wrap items-center gap-2">
                               <strong className="truncate text-xs text-slate-900">
                                 {patient.shortName}
@@ -520,15 +571,15 @@ export function ClinicalDashboard({
                                 </span>
                               ) : null}
                             </span>
-                            <span className="font-mono-data mt-0.5 block text-[11px] font-semibold text-rose-600">
+                            <span className="font-mono-data mt-1.5 block text-[11px] font-semibold text-rose-600">
                               {patient.reading}
                             </span>
-                            <span className="block text-[10px] text-slate-400">
+                            <span className="mt-0.5 block text-[10px] text-slate-400">
                               {patient.location}
                             </span>
                           </span>
                         </span>
-                        <span className="grid size-7 shrink-0 place-items-center rounded-full border border-slate-200/50 bg-white text-slate-400 transition-transform duration-200 motion-safe:group-hover/patient:translate-x-0.5 motion-safe:group-hover/patient:text-[#0a4470]">
+                        <span className="grid size-8 shrink-0 place-items-center rounded-xl border border-slate-200/70 bg-white text-slate-400 shadow-sm transition-transform duration-200 motion-safe:group-hover/patient:translate-x-0.5 motion-safe:group-hover/patient:text-[#0a4470]">
                           <Icon name="arrow" className="size-3" />
                         </span>
                       </button>
@@ -617,11 +668,11 @@ export function ClinicalDashboard({
 
           <section
             id="citas"
-            className="dashboard-shadow-soft flex flex-col gap-4 rounded-3xl border border-slate-100 bg-white p-5"
+            className="dashboard-accent-panel dashboard-shadow-soft flex flex-col gap-4 rounded-3xl border p-5"
           >
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2.5">
-                <span className="grid size-8 place-items-center rounded-full bg-sky-50 text-sky-600">
+                <span className="dashboard-section-icon grid size-8 place-items-center rounded-full bg-[#1c7fb0] text-white shadow-sm shadow-sky-900/20">
                   <Icon name="calendar" />
                 </span>
                 <div>
@@ -686,6 +737,9 @@ export function ClinicalDashboard({
         </div>
 
         <aside id="ficha" aria-live="polite" className="lg:col-span-4">
+          {!selectedPatient ? (
+            <PatientSummarySkeleton />
+          ) : (
           <div className="dashboard-shadow-floating flex h-full flex-col justify-between overflow-hidden rounded-[32px] border border-slate-200/90 bg-white p-6">
             <div>
               <div className="flex items-center justify-between">
@@ -717,28 +771,33 @@ export function ClinicalDashboard({
                   <Icon name="chat" className="size-5" />
                 </button>
               </div>
-              <div className="relative my-5 flex flex-col items-center overflow-hidden rounded-3xl border border-sky-50 bg-gradient-to-b from-sky-50/60 to-sky-100/40 p-4">
+              <div className="patient-vitals-panel relative my-5 flex flex-col items-center overflow-hidden rounded-3xl border border-[#8fcbe8] bg-[#e5f3fa] p-4">
                 <svg
                   aria-hidden="true"
-                  className="absolute inset-0 h-full w-full opacity-40"
+                  className="absolute inset-0 h-full w-full"
                   preserveAspectRatio="none"
                   viewBox="0 0 300 120"
-                ></svg>
-                <span className="relative z-10 grid size-20 place-items-center rounded-full border-4 border-rose-100 bg-white font-mono text-2xl font-extrabold text-slate-700 shadow-md">
+                >
+                  <circle cx="18" cy="18" fill="#51a9d5" opacity=".2" r="38" />
+                  <circle cx="286" cy="106" fill="#0a4470" opacity=".12" r="52" />
+                  <path className="patient-vitals-trace" d="M0 91 C58 70 95 107 151 82 S245 54 300 69" fill="none" opacity=".28" pathLength="100" stroke="#1c7fb0" strokeDasharray="5 7" strokeWidth="2" />
+                  <path d="M258 18h12M264 12v12M33 98h10M38 93v10" opacity=".35" stroke="#0a4470" strokeLinecap="round" strokeWidth="2" />
+                </svg>
+                <span className="patient-avatar relative z-10 grid size-20 place-items-center rounded-full border-4 border-[#51a9d5] bg-white font-mono text-2xl font-extrabold text-[#0a4470] shadow-md">
                   {selected.initials}
                 </span>
                 <div className="relative z-10 mt-2.5 flex flex-wrap justify-center gap-2">
-                  <span className="rounded-full border border-slate-100 bg-white/90 px-3 py-1 text-xs font-bold text-slate-800 shadow-sm">
+                  <span className="patient-vital-chip rounded-full border border-[#9fd1ea] bg-white px-3 py-1 text-xs font-bold text-slate-800 shadow-sm">
                     <i className="mr-1.5 inline-block size-2 rounded-full bg-rose-500 motion-safe:animate-pulse" />
                     {selected.glucose}
                   </span>
-                  <span className="rounded-full border border-slate-100 bg-white/90 px-3 py-1 text-xs font-bold text-slate-800 shadow-sm">
+                  <span className="patient-vital-chip rounded-full border border-[#9fd1ea] bg-white px-3 py-1 text-xs font-bold text-slate-800 shadow-sm">
                     <i className="mr-1.5 inline-block size-2 rounded-full bg-amber-500" />
                     {selected.bloodPressure}
                   </span>
                 </div>
                 <span
-                  className={`relative z-10 mt-2 rounded-full border px-3 py-1 text-[11px] font-bold ${toneStyles[selected.tone]}`}
+                  className={`dashboard-priority-badge relative z-10 mt-2 rounded-full border px-3 py-1 text-[11px] font-bold ${toneStyles[selected.tone]}`}
                 >
                   {selected.risk}
                 </span>
@@ -769,7 +828,7 @@ export function ClinicalDashboard({
                   )}
                 </p>
                 <button
-                  className="mt-1 text-xs font-bold text-sky-700 hover:text-[#0a4470]"
+                  className="mt-1 cursor-pointer text-xs font-bold text-sky-700 hover:text-[#0a4470]"
                   onClick={() => {
                     setDays(90);
                     scrollToSection("historial");
@@ -796,8 +855,8 @@ export function ClinicalDashboard({
                         onClick={() => setDays(period)}
                         className={
                           days === period
-                            ? "rounded-full bg-white px-2 py-0.5 text-[#001d39] shadow-sm"
-                            : "px-2 py-0.5"
+                            ? "cursor-pointer rounded-full bg-white px-2 py-0.5 text-[#001d39] shadow-sm"
+                            : "cursor-pointer rounded-full px-2 py-0.5 transition hover:bg-sky-100 hover:text-[#0a4470]"
                         }
                       >
                         {period}d
@@ -934,6 +993,7 @@ export function ClinicalDashboard({
               </p>
             </div>
           </div>
+          )}
         </aside>
       </div>
     </div>

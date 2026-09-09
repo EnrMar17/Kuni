@@ -18,6 +18,8 @@ describe("dashboard con datos del servidor", () => {
     expect(html).toContain("Selecciona un paciente");
     expect(html).toContain("Sin recetas vigentes");
     expect(html).toContain("Sin datos");
+    expect(html).toContain("Notificaciones");
+    expect(html).not.toContain("Historial de interacciones");
     expect(html).toContain('href="/pacientes/nuevo"');
     expect(html).not.toContain("87%");
     expect(html).not.toContain("40% abandono");
@@ -32,16 +34,16 @@ describe("dashboard con datos del servidor", () => {
     expect(html).not.toContain("Confirmada vía bot");
   });
 
-  it("expone el contexto y procedencia de una glucosa posprandial sin convertirla en ayuno", () => {
+  it("mantiene la ficha en skeleton hasta que se seleccione un paciente", () => {
     const current = patient("1", "Paciente actual");
     current.latestGlucose = { id: "m", monitoringPlanId: null, kind: "glucose", context: "after_meal", observedAt: testNow, receivedAt: testNow,
       glucoseMgDl: 155, systolicMmHg: null, diastolicMmHg: null, source: "manual", correctionReason: null,
       thresholds: { glucose: null, systolic: null, diastolic: null } };
     current.measurements = [current.latestGlucose];
     const html = render(dashboard([current]));
-    expect(html).toContain("Posprandial");
-    expect(html).toContain("Captura manual");
-    expect(html).toContain("test ·");
-    expect(html).toContain("Sin mediciones para este periodo");
+    expect(html).toContain('aria-pressed="false"');
+    expect(html).toContain("Selecciona un paciente para ver su resumen");
+    expect(html).toContain("skeleton-bone");
+    expect(html).not.toContain("Resumen del paciente");
   });
 });

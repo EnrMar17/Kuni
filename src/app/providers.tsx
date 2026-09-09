@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { queryClientDefaultOptions } from "@/lib/queries/query-client-options";
 
 /**
  * QueryClient por sesión de navegador, no por request de servidor: se crea
@@ -11,23 +12,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
  * "instantáneas" en navegaciones repetidas (datos ya en caché, sin roundtrip).
  */
 function makeQueryClient() {
-  return new QueryClient({
-    defaultOptions: {
-      queries: {
-        // Datos clínicos cambian por acción del bot/otros médicos; 30s de
-        // margen evita refetch en cada click sin volverse obsoleto para la
-        // demo. Cada vista puede sobreescribir esto si necesita algo más
-        // fresco (p. ej. alertas) o más largo (p. ej. catálogos).
-        staleTime: 30_000,
-        gcTime: 5 * 60_000,
-        retry: 1,
-        refetchOnWindowFocus: true,
-      },
-      mutations: {
-        retry: 0,
-      },
-    },
-  });
+  return new QueryClient({ defaultOptions: queryClientDefaultOptions });
 }
 
 let browserQueryClient: QueryClient | undefined;

@@ -1,7 +1,7 @@
 "use server";
 
 import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
+import { redirect, RedirectType } from "next/navigation";
 import { z } from "zod";
 
 import { AppError } from "@/contracts/errors";
@@ -105,5 +105,8 @@ export async function logout() {
   }
   await clearConsultingRoomCookie();
   await clearLegacySessionCookies();
-  redirect(failed ? "/login?error=salida-fallida" : "/login");
+  redirect(
+    failed ? "/login?error=salida-fallida" : "/",
+    RedirectType.replace,
+  );
 }

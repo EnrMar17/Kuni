@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
 import type { DashboardData } from "@/lib/domain/dashboard";
+import { dashboardQueryKey } from "@/lib/queries/dashboard-keys";
 import { dateTime } from "@/components/dashboard/presentation";
 import { scheduleAppointment } from "@/actions/appointments";
 import { Icon } from "@/components/appointments/icons";
@@ -35,7 +36,7 @@ function validStart(date: Date | undefined, time: string, timezone: string) {
 }
 
 export function AppointmentForm({ data, prefill }: { data: DashboardData; prefill?: AppointmentSlotPrefill | null }) {
-  const router = useRouter();
+  const queryClient = useQueryClient();
   const savingRef = useRef(false);
   const formRef = useRef<HTMLFormElement>(null);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>();
@@ -133,7 +134,7 @@ export function AppointmentForm({ data, prefill }: { data: DashboardData; prefil
       setDateTimeTouched(false);
       setPreview(null);
       setSaved(true);
-      router.refresh();
+      queryClient.invalidateQueries({ queryKey: dashboardQueryKey });
     } catch {
       setSaveError("No se pudo confirmar el guardado. Revisa la conexión antes de reintentar.");
     } finally {

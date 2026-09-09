@@ -1,8 +1,7 @@
-import { ClinicalWorkspace } from "@/components/clinical-workspace";
+import { ClinicalWorkspaceView } from "@/components/clinical-workspace-view";
 import { getPageAuthContext } from "@/lib/auth/context";
-import { getDashboardData } from "@/lib/queries/dashboard";
 
 export default async function StatisticsPage() {
-  const [context, data] = await Promise.all([getPageAuthContext(), getDashboardData()]);
-  return <ClinicalWorkspace context={{ unitName: context.unitName, roomName: context.consultingRoom?.name ?? "Consultorio", doctorName: context.consultingRoom?.doctorName ?? "Personal clínico" }} data={data} mode="statistics" />;
+  const context = await getPageAuthContext();
+  return <ClinicalWorkspaceView context={{ unitName: context.unitName, roomName: context.consultingRoom?.name ?? "Consultorio", doctorName: context.consultingRoom?.doctorName ?? "Personal clínico" }} mode="statistics" />;
 }

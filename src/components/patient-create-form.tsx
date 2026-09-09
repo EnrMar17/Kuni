@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import { savePatient } from "@/actions/patients";
+import { dashboardQueryKey } from "@/lib/queries/dashboard-keys";
 import { savePatientSchema, type PatientEditData } from "@/contracts/patient-registration";
 import type { InitialCare, MedicationOption } from "@/contracts/clinical";
 import "./patient-create-form.css";
@@ -113,6 +115,7 @@ function validateBirthDate(value: string) {
 
 export function PatientCreateForm({ initial, medications = [] }: { initial?: PatientEditData; medications?: MedicationOption[]; doctorName: string }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const patientId = useRef(initial?.patientId);
   const saving = useRef(false);
   const saveErrorRef = useRef<HTMLParagraphElement>(null);
@@ -257,6 +260,7 @@ export function PatientCreateForm({ initial, medications = [] }: { initial?: Pat
           : result.error.message);
         return;
       }
+      queryClient.invalidateQueries({ queryKey: dashboardQueryKey });
       router.push(`/pacientes/${result.data.id}`);
       router.refresh();
     } catch {

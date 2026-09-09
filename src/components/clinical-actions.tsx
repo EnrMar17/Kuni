@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 
+import { dashboardQueryKey } from "@/lib/queries/dashboard-keys";
 import {
   addPatientComplication,
   deactivatePatientComplication,
@@ -165,7 +166,7 @@ export function ManualMessageTestAction({
 }
 
 export function AlertActions({ alert }: { alert: DashboardAlert }) {
-  const router = useRouter();
+  const queryClient = useQueryClient();
   const panelId = useId();
   const reasonId = useId();
   const reasonErrorId = useId();
@@ -210,7 +211,7 @@ export function AlertActions({ alert }: { alert: DashboardAlert }) {
       setReason("");
       setShowReasonHint(false);
       setMessage("La alerta se actualizó.");
-      router.refresh();
+      queryClient.invalidateQueries({ queryKey: dashboardQueryKey });
     });
   };
 
@@ -229,7 +230,7 @@ export function AlertActions({ alert }: { alert: DashboardAlert }) {
       setReason("");
       setShowReasonHint(false);
       setMessage("Se registró la urgencia clínica.");
-      router.refresh();
+      queryClient.invalidateQueries({ queryKey: dashboardQueryKey });
     });
   };
 
@@ -354,7 +355,7 @@ export function ComplicationPanel({
   complications: DashboardComplication[];
   canWrite: boolean;
 }) {
-  const router = useRouter();
+  const queryClient = useQueryClient();
   const reasonId = useId();
   const reasonErrorId = useId();
   const panelId = useId();
@@ -415,7 +416,7 @@ export function ComplicationPanel({
       if (result.error) return setMessage(result.error.message);
       setDiagnosedOn("");
       setMessage("Estado de complicaciones registrado.");
-      router.refresh();
+      queryClient.invalidateQueries({ queryKey: dashboardQueryKey });
     });
 
   const remove = () => {
@@ -436,7 +437,7 @@ export function ComplicationPanel({
       setReason("");
       setShowReasonHint(false);
       setMessage("Registro de complicación retirado.");
-      router.refresh();
+      queryClient.invalidateQueries({ queryKey: dashboardQueryKey });
     });
   };
 
@@ -693,7 +694,7 @@ export function MeasurementCorrection({
   patientId: string;
   measurement: DashboardMeasurement;
 }) {
-  const router = useRouter();
+  const queryClient = useQueryClient();
   const valueId = useId();
   const reasonId = useId();
   const reasonErrorId = useId();
@@ -753,7 +754,7 @@ export function MeasurementCorrection({
       if (result.error) return setMessage(result.error.message);
       setShowReasonHint(false);
       setMessage("Medición corregida.");
-      router.refresh();
+      queryClient.invalidateQueries({ queryKey: dashboardQueryKey });
     });
   };
 
@@ -826,7 +827,7 @@ export function MedicationResponseCorrection({
   patientId: string;
   interaction: DashboardInteraction & { response: NonNullable<DashboardInteraction["response"]> };
 }) {
-  const router = useRouter();
+  const queryClient = useQueryClient();
   const reasonId = useId();
   const reasonErrorId = useId();
   const [isPending, startTransition] = useTransition();
@@ -853,7 +854,7 @@ export function MedicationResponseCorrection({
       if (result.error) return setMessage(result.error.message);
       setShowReasonHint(false);
       setMessage("Toma de medicamento corregida.");
-      router.refresh();
+      queryClient.invalidateQueries({ queryKey: dashboardQueryKey });
     });
   };
 
@@ -911,7 +912,7 @@ export function PrescriptionAdjustment({
   patientId: string;
   prescription: DashboardPrescription;
 }) {
-  const router = useRouter();
+  const queryClient = useQueryClient();
   const doseId = useId();
   const instructionsId = useId();
   const reasonId = useId();
@@ -950,7 +951,7 @@ export function PrescriptionAdjustment({
       if (result.error) return setMessage(result.error.message);
       setShowReasonHint(false);
       setMessage("Ajuste de receta registrado.");
-      router.refresh();
+      queryClient.invalidateQueries({ queryKey: dashboardQueryKey });
     });
   };
 
@@ -1050,7 +1051,7 @@ export function MedicationClassification({
   patientId: string;
   prescription: DashboardPrescription;
 }) {
-  const router = useRouter();
+  const queryClient = useQueryClient();
   const [isPending, startTransition] = useTransition();
   const suggestion = prescription.therapeuticClass ? "" : suggestTherapeuticClass(prescription.medicationName);
   const [therapeuticClass, setTherapeuticClass] = useState<TherapeuticClass | "">(
@@ -1069,7 +1070,7 @@ export function MedicationClassification({
       });
       if (result.error) return setMessage(result.error.message);
       setMessage("Clasificación guardada y registrada en la auditoría.");
-      router.refresh();
+      queryClient.invalidateQueries({ queryKey: dashboardQueryKey });
     });
   };
 

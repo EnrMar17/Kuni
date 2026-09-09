@@ -11,27 +11,11 @@ function SubmitButton() {
   return (
     <button
       aria-busy={pending}
-      className="group mt-1 flex min-h-13 items-center justify-center gap-2 rounded-2xl bg-[#001d39] px-5 text-sm font-bold text-white shadow-lg shadow-[#0a4470]/25 transition hover:-translate-y-0.5 hover:bg-[#012c52] hover:shadow-xl hover:shadow-[#0a4470]/35 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#51c2ff] disabled:cursor-wait disabled:translate-y-0 disabled:opacity-60"
+      className="login-submit mt-1 flex min-h-13 cursor-pointer items-center justify-center rounded-2xl bg-[#001d39] px-5 text-sm font-bold text-white shadow-lg shadow-[#0a4470]/25 transition hover:-translate-y-0.5 hover:bg-[#012c52] hover:shadow-xl hover:shadow-[#0a4470]/35 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#51c2ff] disabled:cursor-wait disabled:translate-y-0 disabled:opacity-60"
       disabled={pending}
       type="submit"
     >
       {pending ? "Verificando…" : "Iniciar sesión"}
-      {!pending ? (
-        <svg
-          aria-hidden="true"
-          className="h-4 w-4 text-[#51c2ff] transition-transform duration-300 group-hover:translate-x-1"
-          fill="none"
-          viewBox="0 0 24 24"
-        >
-          <path
-            d="M4.5 12h13.5M12.5 6l6 6-6 6"
-            stroke="currentColor"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="2.6"
-          />
-        </svg>
-      ) : null}
     </button>
   );
 }
@@ -47,7 +31,7 @@ export function LoginForm({ redirectTo = "/dashboard", initialError = null }: {
   const fieldDescribedBy = hasError ? errorId : undefined;
 
   return (
-    <form action={action} className="mt-8 grid gap-5" noValidate>
+    <form action={action} className="login-form mt-8 grid gap-5" noValidate>
       <input name="redirectTo" type="hidden" value={redirectTo} />
       <label className="grid gap-2 text-xs font-bold text-[#0a4470]" htmlFor="login-email">
         Correo de la unidad
