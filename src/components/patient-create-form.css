@@ -3,14 +3,15 @@
   grid-template-columns: minmax(0, 1fr);
   min-width: 0;
   gap: 0;
-  background: #fff;
+  background: var(--surface);
+  border-top: 1px solid #c9e4f5;
 }
 
 .patient-form .form-section {
   min-width: 0;
-  padding: 24px;
+  padding: 20px;
   border: 0;
-  border-bottom: 1px solid #e2e7ec;
+  border-bottom: 1px solid var(--kuni-navy-tint);
   border-radius: 0;
   background: transparent;
   box-shadow: none;
@@ -20,26 +21,30 @@
   align-items: flex-start;
   flex-wrap: nowrap;
   gap: 10px;
-  margin-bottom: 20px;
+  margin: -20px -20px 20px;
+  padding: 16px 20px;
+  background: color-mix(in srgb, var(--kuni-sky-tint) 45%, white);
+  border-bottom: 1px solid #e3edf4;
 }
 
 .patient-form .form-section-heading > div { min-width: 0; }
-.patient-form .form-section-heading h2 { font-size: 14px; line-height: 1.5; }
-.patient-form .form-section-heading p { font-size: 12px; line-height: 1.6; }
-.patient-form .section-number { width: 28px; height: 28px; border-radius: 6px; }
-.patient-form .patient-assessment .section-number { background: #e7f3ed; color: #22654c; }
-.patient-form .patient-treatment .section-number { background: #fff3d9; color: #855d16; }
-.patient-form .patient-consent .section-number { background: #edf0f4; color: #4a586b; }
-
-.patient-form .patient-identity .form-section-heading { flex-wrap: wrap; }
-.patient-form .patient-doctor {
-  flex-basis: 100%;
-  padding-left: 38px;
-  overflow-wrap: anywhere;
+.patient-form .form-section-heading h2 { font-size: 14px; line-height: 1.5; color: var(--kuni-navy-dark); }
+.patient-form .form-section-heading p { font-size: 12px; line-height: 1.6; color: #52677b; }
+.patient-form .form-section .form-section-heading .section-number {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--kuni-navy);
+  color: white;
+  box-shadow: 0 1px 3px rgb(10 68 112 / 10%);
 }
+.patient-form .patient-assessment .form-section-heading .section-number,
+.patient-form .patient-care .form-section-heading .section-number { background: var(--kuni-sky); color: var(--kuni-navy-dark); }
+
+.patient-form .patient-identity .form-section-heading > div { flex: 1; min-width: 0; }
 
 .patient-form .care-group-heading {
-  color: #657282;
+  color: var(--kuni-navy);
   font-size: 11px;
   line-height: 1.5;
   letter-spacing: 0;
@@ -48,8 +53,13 @@
 
 .patient-form .form-fields {
   grid-template-columns: minmax(0, 1fr);
-  gap: 14px 16px;
+  gap: 14px;
 }
+.patient-form .form-fields + .care-group-heading {
+  border-top: 1px solid #e6edf3;
+  padding-top: 16px;
+}
+.patient-form .patient-field-label { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 
 .patient-form .form-fields > *,
 .patient-form .patient-diagnosis-grid > * { min-width: 0; }
@@ -58,15 +68,26 @@
 .patient-form .form-fields label { font-size: 12px; line-height: 1.5; gap: 6px; }
 .patient-form .form-fields :is(input:not([type="checkbox"]), select, textarea) {
   min-height: 40px;
-  padding: 9px 10px;
-  border-radius: 6px;
+  padding: 8px 11px;
+  border-radius: 8px;
   font-size: 13px;
   line-height: 1.5;
+  border-color: #cddce7;
+  color: var(--kuni-navy-dark);
+  box-shadow: 0 1px 2px rgb(0 29 57 / 4%);
 }
+.patient-form :is(input:not([type="checkbox"]), select, textarea):focus-visible {
+  outline: 2px solid var(--kuni-sky);
+  outline-offset: 2px;
+  border-color: var(--kuni-navy);
+  box-shadow: 0 0 0 4px rgb(81 194 255 / 12%);
+}
+.patient-form .form-fields [aria-invalid="true"] { border-color: #c74862; background: #fff8fa; }
 .patient-form .form-fields textarea { resize: vertical; }
+
 .patient-form .field-hint { font-size: 11px; line-height: 1.4; }
 .patient-form .field-error { font-size: 12px; line-height: 1.5; }
-.patient-form input[readonly] { background: #f4f6f8; color: #627083; }
+.patient-form input[readonly] { background: var(--kuni-navy-tint); color: #52677b; }
 
 .patient-form .patient-diagnosis-grid {
   display: grid;
@@ -77,13 +98,23 @@
 .patient-form .diagnosis-option {
   min-height: 42px;
   height: auto;
-  border-radius: 6px;
+  border-radius: 8px;
   font-size: 12px;
   line-height: 1.5;
   padding: 10px;
   cursor: pointer;
+  border-color: #dbe5ed;
+  font-weight: 600;
 }
 .patient-form .diagnosis-option input { width: 16px; height: 16px; }
+.patient-form .diagnosis-option:has(:checked) {
+  background: var(--kuni-sky-tint);
+  border-color: var(--kuni-navy);
+  color: var(--kuni-navy-dark);
+  box-shadow: none;
+}
+.patient-form .diagnosis-option:has(:focus-visible),
+.patient-form .care-module-toggle:has(:focus-visible) { outline: 2px solid var(--kuni-sky); outline-offset: 3px; }
 .patient-form .patient-diagnosis-grid input[type="date"] { min-width: 0; min-height: 40px; }
 
 .patient-form .patient-care-layout {
@@ -96,22 +127,28 @@
 .patient-form .patient-care-layout > div > .care-group-heading { margin-top: 0; }
 .patient-form .care-module {
   border: 0;
-  border-bottom: 1px solid #e2e7ec;
+  border-bottom: 0;
   border-radius: 0;
   overflow: visible;
   background: transparent;
 }
 .patient-form .care-module + .care-module { margin-top: 12px; }
 .patient-form .care-module-toggle {
-  min-height: 48px;
-  padding: 12px;
-  background: #f4f6f8;
+  min-height: 54px;
+  padding: 14px;
+  background: #f8fbfd;
+  border: 1px solid #d5e3ed;
+  border-radius: 8px;
+  color: var(--kuni-navy);
   font-size: 13px;
   line-height: 1.5;
 }
-.patient-form .care-module-toggle:has(:checked) { background: #eaf4f0; color: #22654c; }
-.patient-form .care-module-toggle:has(:disabled) { color: #707b89; cursor: not-allowed; }
+.patient-form .care-module-toggle:has(:checked) { background: var(--kuni-sky-tint); border-color: var(--kuni-navy); color: var(--kuni-navy-dark); }
+.patient-form .care-module-toggle:has(:checked) input { accent-color: var(--kuni-navy); }
+.patient-form .care-module-toggle:has(:disabled) { background: var(--kuni-navy-tint); border-color: #bac6d2; color: #5d6b7a; cursor: not-allowed; }
 .patient-form .care-module-body { padding: 18px 0; border: 0; }
+.patient-form .patient-consent > .diagnosis-option { padding: 14px; background: #f5faff; }
+.patient-form .patient-consent > .diagnosis-option:has(:checked) { background: var(--kuni-sky-tint); }
 .patient-form .field-grid-tight { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 12px; }
 .patient-form .patient-schedule-row {
   display: grid;
@@ -121,6 +158,8 @@
   margin-bottom: 10px;
 }
 .patient-form .patient-schedule-row button { min-height: 40px; }
+.patient-form .patient-schedule-remove { padding: 8px; box-shadow: none; color: #a6334b; border-color: #e9cbd3; }
+.patient-form .patient-schedule-add { color: var(--kuni-navy); border-color: #b9d8eb; background: var(--kuni-sky-tint); }
 .patient-form .patient-monitoring .diagnosis-option { padding: 8px; }
 .patient-form .patient-monitoring .form-fields .diagnosis-option { display: flex; gap: 6px; }
 .patient-form .patient-monitoring .diagnosis-option input { width: 16px; height: 16px; padding: 0; }
@@ -130,13 +169,31 @@
 .patient-form .form-actions {
   grid-column: 1 / -1;
   border: 0;
-  border-top: 1px solid #e2e7ec;
+  border-top: 1px solid #c5deef;
   border-radius: 0;
   padding: 18px 24px;
   box-shadow: none;
   gap: 12px;
+  background: #f7fbfe;
 }
-.patient-form .form-actions .clinical-button { border-radius: 6px; min-height: 44px; }
+.patient-form .form-actions > span { color: var(--kuni-navy); font-weight: 600; }
+.patient-form .clinical-button { border-radius: 8px; }
+.patient-form .form-actions .clinical-button { min-height: 44px; border-color: #bbd1e1; color: var(--kuni-navy); }
+.patient-form .form-actions .clinical-button-primary {
+  color: white;
+  background: var(--kuni-navy-dark);
+  border-color: var(--kuni-navy-dark);
+  box-shadow: 0 3px 8px rgb(0 29 57 / 18%);
+}
+.patient-form .clinical-button:focus-visible { outline: 3px solid var(--kuni-sky); outline-offset: 3px; }
+.patient-form .clinical-button:disabled { opacity: .5; cursor: not-allowed; box-shadow: none; }
+
+@media (hover: hover) {
+  .patient-form .diagnosis-option:hover { border-color: var(--kuni-sky); }
+  .patient-form .care-module-toggle:not(:has(:checked, :disabled)):hover { background: #d8eeff; }
+  .patient-form .form-actions .clinical-button-primary:not(:disabled):hover { background: var(--kuni-navy); }
+  .patient-form .patient-schedule-add:hover { background: #d8eeff; }
+}
 
 @media (min-width: 560px) {
   .patient-form .form-fields,
@@ -173,6 +230,7 @@
 
 @media (max-width: 559px) {
   .patient-form .form-section { padding: 20px 14px; }
+  .patient-form .form-section-heading { margin: -20px -14px 20px; padding: 16px 14px; }
   .patient-form .form-actions { padding: 16px 14px; }
   .patient-form .form-actions > div { flex-direction: row; gap: 8px; }
   .patient-form .form-actions .clinical-button { padding-inline: 10px; }

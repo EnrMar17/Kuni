@@ -524,6 +524,19 @@ a {
 .care-module-toggle { display: flex; align-items: center; gap: .55rem; padding: .6rem .8rem; font-size: .78rem; font-weight: 650; color: #334155; cursor: pointer; }
 .care-module-toggle input { width: 15px; height: 15px; accent-color: var(--kuni-navy); flex-shrink: 0; }
 .care-module-body { padding: .8rem .85rem .85rem; border-top: 1px solid #eef2f8; }
+/* Tarjeta plegable (details/summary nativo): colapsada por defecto, como un
+   bloque de código "cerrado" en un editor — clic o Enter en el encabezado
+   la despliega. Usa el disclosure nativo del navegador, así que funciona
+   con teclado/lector de pantalla sin JS adicional. */
+.details-panel > summary {
+  display: flex; cursor: pointer; list-style: none; align-items: center;
+  justify-content: space-between; gap: .75rem; padding: 1.25rem;
+}
+.details-panel > summary::-webkit-details-marker { display: none; }
+.details-panel > summary::marker { content: ""; }
+.details-panel-chevron { flex-shrink: 0; color: #94a3b8; transition: transform 200ms ease; }
+.details-panel[open] .details-panel-chevron { transform: rotate(180deg); }
+.details-panel-body { padding: 0 1.25rem 1.25rem; border-top: 1px solid #eef2f8; padding-top: 1rem; }
 .form-actions { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem; padding: .9rem 1.1rem; border: 1px solid #dfe5f2; border-radius: 14px; background: #fff; box-shadow: 0 12px 28px -24px #334155; }
 .draft-notice { border: 1px solid #e3dfcb; border-radius: 14px; padding: .9rem 1rem; background: #fffdf5; color: #746134; font-size: .8125rem; }
 .login-card { box-shadow: 0 20px 50px -28px rgb(15 23 42 / .3); }

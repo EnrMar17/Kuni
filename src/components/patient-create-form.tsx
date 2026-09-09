@@ -111,7 +111,7 @@ function validateBirthDate(value: string) {
   );
 }
 
-export function PatientCreateForm({ initial, medications = [], doctorName }: { initial?: PatientEditData; medications?: MedicationOption[]; doctorName: string }) {
+export function PatientCreateForm({ initial, medications = [] }: { initial?: PatientEditData; medications?: MedicationOption[]; doctorName: string }) {
   const router = useRouter();
   const patientId = useRef(initial?.patientId);
   const saving = useRef(false);
@@ -293,10 +293,6 @@ export function PatientCreateForm({ initial, medications = [], doctorName }: { i
             <h2 id="patient-identity-heading">Identificación y contacto</h2>
             <p>Los datos que vinculan a la persona con su expediente.</p>
           </div>
-          <div className="patient-doctor">
-            <span className="field-hint block">Médico tratante</span>
-            <p className="text-xs font-semibold text-slate-700">{doctorName}</p>
-          </div>
         </div>
         <p className="care-group-heading">Datos personales</p>
         <div className="form-fields patient-personal-fields">
@@ -350,7 +346,7 @@ export function PatientCreateForm({ initial, medications = [], doctorName }: { i
             {error("clinicalRecord")}
           </label>
           <label>
-            CURP <span className="field-hint">Opcional</span>
+            <span className="patient-field-label">CURP <span className="field-hint">Opcional</span></span>
             <input
               maxLength={18}
               {...register("curp", {
@@ -612,7 +608,7 @@ export function PatientCreateForm({ initial, medications = [], doctorName }: { i
                   {error("prescriptionDoseText")}
                 </label>
                 <label>
-                  Fecha final <span className="field-hint">Opcional</span>
+                  <span className="patient-field-label">Fecha final <span className="field-hint">Opcional</span></span>
                   <input type="date" {...register("prescriptionEndsAt")} />
                 </label>
                 <label className="sm:col-span-2 lg:col-span-3">
@@ -627,13 +623,13 @@ export function PatientCreateForm({ initial, medications = [], doctorName }: { i
                         {weekdayLabels.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                       </select>
                       <input type="time" {...register(`prescriptionSchedules.${index}.localTime` as const)} />
-                      <button className="text-xs font-bold text-rose-700 underline-offset-2 hover:underline disabled:opacity-40"
+                      <button className="clinical-button patient-schedule-remove"
                         disabled={scheduleFields.length <= 1} onClick={() => removeSchedule(index)} type="button">
                         Quitar
                       </button>
                     </div>
                   ))}
-                  <button className="text-xs font-bold text-sky-800 underline-offset-2 hover:underline"
+                  <button className="clinical-button patient-schedule-add"
                     onClick={() => appendSchedule({ weekday: "1", localTime: "08:00" })} type="button">
                     + Agregar horario
                   </button>

@@ -1,0 +1,77 @@
+/* Shared single-select styling. Native listboxes and multiselects stay unchanged. */
+select:not([multiple], [size]) {
+  min-width: 0;
+  max-width: 100%;
+  min-height: 40px;
+  padding: 8px 11px;
+  border: 1px solid #cddce7;
+  border-radius: 8px;
+  background-color: white;
+  color: var(--kuni-navy-dark);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+select:not([multiple], [size]):focus-visible {
+  outline: 2px solid var(--kuni-sky);
+  outline-offset: 2px;
+}
+select:not([multiple], [size])[aria-invalid="true"] { border-color: #c74862; background-color: #fff8fa; }
+select:not([multiple], [size]):disabled { cursor: not-allowed; background-color: var(--kuni-navy-tint); color: #52677b; }
+
+/* Progressive enhancement preserves native form events, keyboard controls and OS fallback. */
+@supports (appearance: base-select) {
+  select:not([multiple], [size]),
+  select:not([multiple], [size])::picker(select) { appearance: base-select; }
+
+  select:not([multiple], [size]) {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    transition: border-color 160ms, box-shadow 160ms;
+  }
+  select:not([multiple], [size]):open { border-color: var(--kuni-navy); box-shadow: 0 0 0 3px rgb(81 194 255 / 15%); }
+  select:not([multiple], [size])::picker-icon {
+    margin-inline-start: auto;
+    flex-shrink: 0;
+    color: var(--kuni-navy);
+    transition: rotate 160ms;
+  }
+  select:not([multiple], [size]):open::picker-icon { rotate: 180deg; }
+  select:not([multiple], [size])::picker(select) {
+    margin-block: 6px;
+    padding: 5px;
+    border: 1px solid #b9d5e7;
+    border-radius: 8px;
+    background: white;
+    color: var(--kuni-navy-dark);
+    box-shadow: 0 8px 24px rgb(0 29 57 / 16%);
+    max-block-size: min(320px, 60dvh);
+    max-inline-size: calc(100vw - 24px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    font: inherit;
+  }
+  select:not([multiple], [size]) option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 40px;
+    padding: 9px 12px;
+    border: 0;
+    border-radius: 5px;
+    background: white;
+    color: var(--kuni-navy-dark);
+    font-size: 13px;
+    line-height: 1.5;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  select:not([multiple], [size]) option + option { margin-top: 2px; }
+  select:not([multiple], [size]) option:checked { background: var(--kuni-sky-tint); color: var(--kuni-navy); font-weight: 700; }
+  select:not([multiple], [size]) option:is(:hover, :focus-visible) { background: var(--kuni-navy); color: white; outline: none; }
+  select:not([multiple], [size]) option:disabled { background: #f4f6f8; color: #677789; cursor: not-allowed; }
+  select:not([multiple], [size]) option::checkmark { order: 1; margin-inline-start: auto; color: currentColor; }
+  select:not([multiple], [size]):disabled { cursor: not-allowed; }
+}

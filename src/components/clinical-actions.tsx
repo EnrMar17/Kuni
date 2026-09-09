@@ -402,11 +402,17 @@ export function ComplicationPanel({
   };
 
   return (
-    <section className="clinical-panel p-5">
-      <h2 className="text-base font-extrabold text-slate-900">
-        Complicaciones de diabetes
-      </h2>
-      <p className="mt-1 text-sm text-slate-500">
+    <details className="details-panel clinical-panel">
+      <summary>
+        <h2 className="text-base font-extrabold text-slate-900">
+          Complicaciones de diabetes
+        </h2>
+        <svg className="details-panel-chevron size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+        </svg>
+      </summary>
+      <div className="details-panel-body">
+      <p className="text-sm text-slate-500">
         RF28. E119 significa que se revisó y no hay complicaciones; no puede coexistir
         con otro código vigente.
       </p>
@@ -543,7 +549,8 @@ export function ComplicationPanel({
         </div>
       )}
       <ActionMessage message={message} />
-    </section>
+      </div>
+    </details>
   );
 }
 
@@ -619,12 +626,18 @@ export function MeasurementCorrection({
   };
 
   return (
-    <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
+    <details className="group mt-2">
+      <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-xs font-bold text-sky-800 [&::-webkit-details-marker]:hidden hover:underline">
+        Corregir {measurement.kind === "glucose" ? "glucosa" : "presión"}
+        <svg className="size-3 text-sky-700 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+        </svg>
+      </summary>
+    <div className="mt-2 rounded-xl border border-slate-200 bg-white p-3">
       <label className="block text-xs font-bold text-slate-700" htmlFor={valueId}>
-        Corregir{" "}
         {measurement.kind === "glucose"
-          ? "glucosa (mg/dL)"
-          : "presión (sistólica/diastólica)"}
+          ? "Nuevo valor (mg/dL)"
+          : "Nuevo valor (sistólica/diastólica)"}
         <input
           className="mt-1 w-full min-w-0 rounded-lg border border-slate-300 px-2 py-1"
           disabled={isPending}
@@ -664,6 +677,7 @@ export function MeasurementCorrection({
       </button>
       <ActionMessage message={message} />
     </div>
+    </details>
   );
 }
 
