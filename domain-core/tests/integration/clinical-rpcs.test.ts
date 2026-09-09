@@ -106,7 +106,7 @@ beforeAll(async () => {
     grant execute on function auth.uid() to anon,authenticated,service_role;
     set timezone = 'UTC';
   `);
-  for (const file of ['0001_kuni.sql', '0002_clinical_derivations.sql', '0003_clinical_commands.sql', '0004_patient_complications.sql', '0005_medication_therapeutic_class.sql', '0006_inbound_commands.sql', '0007_external_derivatives.sql', '0008_patient_registration.sql', '0009_patient_initial_care.sql', '0010_smsgate_provider.sql', '0011_schedule_appointment.sql']) {
+  for (const file of ['0001_kuni.sql', '0002_clinical_derivations.sql', '0003_clinical_commands.sql', '0004_patient_complications.sql', '0005_medication_therapeutic_class.sql', '0006_inbound_commands.sql', '0007_external_derivatives.sql', '0008_patient_registration.sql', '0009_patient_initial_care.sql', '0010_smsgate_provider.sql', '0011_sms8_provider.sql', '0012_schedule_appointment.sql']) {
     await db.exec(await readFile(new URL(`../../../supabase/migrations/${file}`, import.meta.url), 'utf8'));
   }
 }, 30_000);

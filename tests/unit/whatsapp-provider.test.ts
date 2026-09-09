@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
   provider: "mock" as "mock" | "twilio" | "meta",
-  messageProvider: undefined as "mock" | "twilio" | "meta" | "smsgate" | undefined,
+  messageProvider: undefined as "mock" | "twilio" | "meta" | "smsgate" | "sms8" | undefined,
 }));
 vi.mock("@/lib/env/server", () => ({
   get serverEnv() {
@@ -25,6 +25,14 @@ const smsGateFactory = vi.hoisted(() => vi.fn(() => ({
   verifyWebhookSignature: vi.fn(),
 })));
 vi.mock("@/lib/whatsapp/smsgate", () => ({ createSmsGateProvider: smsGateFactory }));
+const sms8Factory = vi.hoisted(() => vi.fn(() => ({
+  dbProviderValue: "sms8" as const,
+  channel: "sms" as const,
+  sendTemplateMessage: vi.fn(),
+  sendFreeformMessage: vi.fn(),
+  verifyWebhookSignature: vi.fn(),
+})));
+vi.mock("@/lib/whatsapp/sms8", () => ({ createSms8Provider: sms8Factory }));
 
 import { WhatsAppProviderError } from "@/lib/whatsapp/provider";
 
@@ -43,6 +51,7 @@ beforeEach(() => {
   state.messageProvider = undefined;
   twilioFactory.mockClear();
   smsGateFactory.mockClear();
+  sms8Factory.mockClear();
 });
 
 describe("proveedor de WhatsApp — selección", () => {
@@ -104,6 +113,19 @@ describe("proveedor de mensajes — MESSAGE_PROVIDER=smsgate", () => {
     expect(provider.dbProviderValue).toBe("smsgate");
     expect(provider.channel).toBe("sms");
     expect(smsGateFactory).toHaveBeenCalledTimes(1);
+    expect(twilioFactory).not.toHaveBeenCalled();
+  });
+});
+
+describe("proveedor de mensajes — MESSAGE_PROVIDER=sms8", () => {
+  it("selecciona el adaptador SMS8 sin alterar proveedores existentes", async () => {
+    state.messageProvider = "sms8";
+    const { getWhatsAppProvider } = await loadProviderModule();
+    const provider = await getWhatsAppProvider();
+    expect(provider.dbProviderValue).toBe("sms8");
+    expect(provider.channel).toBe("sms");
+    expect(sms8Factory).toHaveBeenCalledTimes(1);
+    expect(smsGateFactory).not.toHaveBeenCalled();
     expect(twilioFactory).not.toHaveBeenCalled();
   });
 });

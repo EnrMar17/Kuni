@@ -39,6 +39,10 @@ beforeEach(() => {
     "SMS_GATEWAY_SIM_NUMBER",
     "SMS_GATEWAY_TTL_SECONDS",
     "SMS_GATEWAY_TIMEOUT_MS",
+    "SMS8_BASE_URL",
+    "SMS8_API_KEY",
+    "SMS8_DEVICE",
+    "SMS8_TIMEOUT_MS",
     "CRON_SECRET",
   ]) {
     delete process.env[key];
@@ -124,5 +128,21 @@ describe("serverEnv — SMSGate", () => {
       SMS_GATEWAY_USERNAME: "kuni",
     });
     await expect(loadServerEnv()).rejects.toThrow(/SMS_GATEWAY_PASSWORD/);
+  });
+});
+
+describe("serverEnv — SMS8", () => {
+  it("exige API key cuando MESSAGE_PROVIDER=sms8", async () => {
+    setEnv({ MESSAGE_PROVIDER: "sms8" });
+    await expect(loadServerEnv()).rejects.toThrow(/SMS8_API_KEY/);
+  });
+
+  it("usa el endpoint oficial por default y acepta un dispositivo opcional", async () => {
+    setEnv({ MESSAGE_PROVIDER: "sms8", SMS8_API_KEY: "sk_demo", SMS8_DEVICE: "1|0" });
+    const { serverEnv } = await loadServerEnv();
+    expect(serverEnv.MESSAGE_PROVIDER).toBe("sms8");
+    expect(serverEnv.SMS8_BASE_URL).toBe("https://app.sms8.io/services");
+    expect(serverEnv.SMS8_DEVICE).toBe("1|0");
+    expect(serverEnv.SMS8_TIMEOUT_MS).toBe(10_000);
   });
 });

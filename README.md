@@ -21,7 +21,7 @@ Este ciclo se desarrolla **antes** que estadísticas o funcionalidades extra (RF
 
 - **Next.js 16** (App Router) + **TypeScript**, Node.js **24 LTS**.
 - **Supabase**: Auth (email/contraseña por unidad), Postgres con **RLS** por unidad, **Cron** (invoca cada minuto un endpoint propio de jobs).
-- **Mensajería**: Twilio/WhatsApp permanece disponible; como alternativa de salida, SMS Gateway for Android envía SMS celular desde una SIM real. Adaptador `mock` disponible para desarrollo sin canal real.
+- **Mensajería**: Twilio/WhatsApp permanece disponible; como alternativas de salida, SMS Gateway for Android permite SMS automático y SMS8 en iPhone permite una demo con confirmación manual. Adaptador `mock` disponible para desarrollo sin canal real.
 - Sin backend adicional (Express/Redis/ORM/agente de IA): Next.js concentra páginas, Server Actions, webhooks y worker; Supabase aporta Auth/Postgres/Cron.
 
 **Flujo técnico:**
@@ -122,7 +122,7 @@ Copiar `.env.example` a `.env.local` y completar las variables documentadas en `
 
 - URL y clave publicable de Supabase: pueden viajar al navegador (`NEXT_PUBLIC_*`).
 - Clave secreta de Supabase, secreto del cron y credenciales del proveedor de WhatsApp: **solo servidor**, nunca como variable pública.
-- Selector compatible `MESSAGE_PROVIDER`: `mock | twilio | meta | smsgate`. Si no se define, se sigue usando `WHATSAPP_PROVIDER` y nada cambia. `mock` no envía mensajes reales. La instalación y operación de SMS están en [la guía de SMSGate](docs/sms-gateway-android.md).
+- Selector compatible `MESSAGE_PROVIDER`: `mock | twilio | meta | smsgate | sms8`. Si no se define, se sigue usando `WHATSAPP_PROVIDER` y nada cambia. `mock` no envía mensajes reales. Consulta la [guía de SMSGate automático](docs/sms-gateway-android.md) o la [guía de SMS8 para demo manual en iPhone](docs/sms8-iphone-demo.md).
 - Zona horaria por defecto `America/Mexico_City`, tiempo de espera de respuesta, tamaño de lote de jobs.
 
 ## 8. Alcance de la demo (ajustes respecto al planteamiento original)

@@ -17,7 +17,7 @@ const serverEnvSchema = z
     // despliegues existentes; MESSAGE_PROVIDER permite sumar SMS sin renombrar
     // variables ya instaladas.
     WHATSAPP_PROVIDER: z.enum(["mock", "twilio", "meta"]).default("mock"),
-    MESSAGE_PROVIDER: z.enum(["mock", "twilio", "meta", "smsgate"]).optional(),
+    MESSAGE_PROVIDER: z.enum(["mock", "twilio", "meta", "smsgate", "sms8"]).optional(),
     TWILIO_ACCOUNT_SID: z.string().optional(),
     TWILIO_AUTH_TOKEN: z.string().optional(),
     // Admite con o sin el prefijo "whatsapp:"; el adaptador lo normaliza.
@@ -49,6 +49,13 @@ const serverEnvSchema = z
     SMS_GATEWAY_SIM_NUMBER: z.coerce.number().int().min(1).max(3).optional(),
     SMS_GATEWAY_TTL_SECONDS: z.coerce.number().int().min(5).max(86_400).default(3600),
     SMS_GATEWAY_TIMEOUT_MS: z.coerce.number().int().min(500).max(30_000).default(10_000),
+    // SMS8.io: para la demo en iPhone, su API encola el texto y el teléfono
+    // muestra el compositor nativo; una persona todavía debe elegir la SIM y
+    // confirmar el envío. La clave sólo vive en servidor.
+    SMS8_BASE_URL: z.string().url().default("https://app.sms8.io/services"),
+    SMS8_API_KEY: z.string().optional(),
+    SMS8_DEVICE: z.string().optional(),
+    SMS8_TIMEOUT_MS: z.coerce.number().int().min(500).max(30_000).default(10_000),
     // URL pública exacta (sin "/" final) que Twilio ve al llamar los
     // webhooks. Debe coincidir con la configurada en el panel de Twilio:
     // la validación de firma recalcula la firma sobre esta URL + los
@@ -118,6 +125,13 @@ const serverEnvSchema = z
         });
       }
     }
+    if (provider === "sms8" && !env.SMS8_API_KEY) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["SMS8_API_KEY"],
+        message: "Falta SMS8_API_KEY para sms8.",
+      });
+    }
   });
 
 function loadServerEnv() {
@@ -143,6 +157,10 @@ function loadServerEnv() {
     SMS_GATEWAY_SIM_NUMBER: process.env.SMS_GATEWAY_SIM_NUMBER,
     SMS_GATEWAY_TTL_SECONDS: process.env.SMS_GATEWAY_TTL_SECONDS,
     SMS_GATEWAY_TIMEOUT_MS: process.env.SMS_GATEWAY_TIMEOUT_MS,
+    SMS8_BASE_URL: process.env.SMS8_BASE_URL,
+    SMS8_API_KEY: process.env.SMS8_API_KEY,
+    SMS8_DEVICE: process.env.SMS8_DEVICE,
+    SMS8_TIMEOUT_MS: process.env.SMS8_TIMEOUT_MS,
     APP_PUBLIC_URL: process.env.APP_PUBLIC_URL,
     CRON_SECRET: process.env.CRON_SECRET,
     ML_ENDPOINT_URL: process.env.ML_ENDPOINT_URL,

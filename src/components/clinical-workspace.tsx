@@ -12,7 +12,7 @@ import { StatisticsView } from "@/components/statistics-view";
 import { PatientCreateForm } from "@/components/patient-create-form";
 import type { PatientEditData } from "@/contracts/patient-registration";
 import type { MedicationOption } from "@/contracts/clinical";
-import { AlertActions, ComplicationPanel, MeasurementCorrection, MedicationClassification, PrescriptionAdjustment } from "@/components/clinical-actions";
+import { AlertActions, ComplicationPanel, MeasurementCorrection, MedicationClassification, MedicationResponseCorrection, PrescriptionAdjustment } from "@/components/clinical-actions";
 import type { DashboardData, DashboardPatient } from "@/lib/domain/dashboard";
 import {
   availableDiagnoses,
@@ -571,6 +571,46 @@ export function PatientProfile({
                 {!patient.prescriptions.length ? (
                   <p className="text-sm text-slate-500">
                     Sin recetas activas disponibles.
+                  </p>
+                ) : null}
+              </div>
+            </section>
+            <section className="clinical-panel p-5 lg:col-span-3">
+              <h2 className="text-base font-extrabold text-slate-900">
+                Tomas de medicamento recientes
+              </h2>
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                {patient.interactions.filter((interaction) => interaction.kind === "medication").slice(0, 6).map((interaction) => (
+                  <article
+                    className="rounded-2xl border border-slate-100 bg-white p-4"
+                    key={interaction.id}
+                  >
+                    <strong className="text-sm text-slate-900">
+                      {interaction.medicationName ?? "Medicamento"}
+                    </strong>
+                    <p className="mt-1 text-sm text-slate-600">
+                      {interaction.doseText}
+                    </p>
+                    <p className="mt-2 text-xs text-slate-500">
+                      Programada: {dateTime(interaction.scheduledAt, data.timezone)}
+                      {" · "}
+                      {interaction.medicationTaken == null
+                        ? "Sin respuesta registrada"
+                        : interaction.medicationTaken
+                          ? "Confirmó que sí la tomó"
+                          : "Confirmó que no la tomó"}
+                    </p>
+                    {interaction.response ? (
+                      <MedicationResponseCorrection
+                        interaction={interaction as typeof interaction & { response: NonNullable<typeof interaction.response> }}
+                        patientId={patient.id}
+                      />
+                    ) : null}
+                  </article>
+                ))}
+                {!patient.interactions.some((interaction) => interaction.kind === "medication") ? (
+                  <p className="text-sm text-slate-500">
+                    Sin recordatorios de medicamento recientes.
                   </p>
                 ) : null}
               </div>

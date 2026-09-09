@@ -38,7 +38,8 @@ describe("dashboard con datos del servidor", () => {
     const current = patient("1", "Paciente actual");
     current.lastResponseAt = "2026-09-07T10:00:00Z";
     current.interactions = [{ id: "new", kind: "appointment", expectsResponse: false, scheduledAt: testNow,
-      deliveredAt: testNow, responseAt: null, timeoutAt: null, deliveryStatus: "delivered", replyCode: "ABCD1234", medicationTaken: null }];
+      deliveredAt: testNow, responseAt: null, timeoutAt: null, deliveryStatus: "delivered", replyCode: "ABCD1234", medicationTaken: null,
+      medicationName: null, doseText: null, response: null }];
     const html = render(dashboard([current]));
     expect(html).toContain("Aviso informativo; no requiere respuesta");
     expect(html).toContain(dateTime(current.lastResponseAt, "America/Mexico_City"));

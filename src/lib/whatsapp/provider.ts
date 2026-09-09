@@ -18,10 +18,10 @@ import { serverEnv } from "@/lib/env/server";
  *   es responsable de esa decisión; el proveedor no la valida.
  *
  * `dbProviderValue` es el valor que se persiste en `bot_interactions.provider`
- * / `webhook_events.provider` (incluye 'smsgate' desde la migración 0010).
+ * / `webhook_events.provider` (incluye SMSGate/SMS8 desde 0010/0011).
  */
 export interface WhatsAppProvider {
-  readonly dbProviderValue: "twilio" | "meta" | "demo" | "smsgate";
+  readonly dbProviderValue: "twilio" | "meta" | "demo" | "smsgate" | "sms8";
   /** SMS no está sujeto a la ventana/plantillas de WhatsApp. */
   readonly channel: "whatsapp" | "sms";
 
@@ -167,6 +167,11 @@ export async function getWhatsAppProvider(): Promise<WhatsAppProvider> {
     case "smsgate": {
       const { createSmsGateProvider } = await import("./smsgate");
       cachedProvider = createSmsGateProvider();
+      return cachedProvider;
+    }
+    case "sms8": {
+      const { createSms8Provider } = await import("./sms8");
+      cachedProvider = createSms8Provider();
       return cachedProvider;
     }
   }

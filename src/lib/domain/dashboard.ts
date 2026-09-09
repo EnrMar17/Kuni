@@ -35,6 +35,15 @@ export type DashboardPrescription = {
 export type DashboardInteraction = {
   id: string; kind: string; scheduledAt: string; deliveredAt: string | null; responseAt: string | null;
   timeoutAt: string | null; deliveryStatus: string; replyCode: string; medicationTaken: boolean | null; expectsResponse: boolean;
+  medicationName: string | null; doseText: string | null;
+  /**
+   * Datos de `medication_responses` necesarios para `correct_medication_response`
+   * (RF20) — solo presentes si ya hay una toma registrada para esta interacción.
+   * `scheduleId` viene de `payload_snapshot` (0002/materialize.ts), no de una
+   * columna propia: es la única forma de recuperar el horario original de la
+   * receta sin ambigüedad, tal como exige la RPC.
+   */
+  response: { id: string; updatedAt: string; scheduleId: string } | null;
 };
 export type DashboardPatient = {
   id: string; fullName: string; clinicalRecord: string; curp: string | null; birthDate: string; age: number;
@@ -176,6 +185,16 @@ function therapeuticClass(value: string | null | undefined): DashboardPrescripti
   return value === "antidiabetic" || value === "antihypertensive" || value === "other" ? value : null;
 }
 
+/** `payload_snapshot` de un `bot_interactions` de tipo 'medication' — ver materialize.ts. */
+function medicationInteractionSnapshot(payload: unknown): { medicationName: string | null; doseText: string | null; scheduleId: string | null } {
+  const p = (payload ?? {}) as Record<string, unknown>;
+  return {
+    medicationName: typeof p.medicationName === "string" ? p.medicationName : null,
+    doseText: typeof p.doseText === "string" ? p.doseText : null,
+    scheduleId: typeof p.scheduleId === "string" ? p.scheduleId : null,
+  };
+}
+
 /** Pure SQL-to-domain adapter, shared by real queries and deterministic tests. */
 export function buildDashboardData(rows: DashboardRows, scope: { unitId: string; roomId: string; timezone: string }, now: Date, hasMorePatients = false): DashboardData {
   const { unitId, roomId, timezone } = scope;
@@ -251,7 +270,7 @@ export function buildDashboardData(rows: DashboardRows, scope: { unitId: string;
     const birth = patient.birth_date.split("-").map(Number);
     const current = today.split("-").map(Number);
     const age = current[0] - birth[0] - (current[1] < birth[1] || (current[1] === birth[1] && current[2] < birth[2]) ? 1 : 0);
-    const responseById = new Map(patientResponses.filter((r) => isPast(r.reported_at, now)).map((r) => [r.interaction_id, r.taken]));
+    const responseByInteractionId = new Map(patientResponses.filter((r) => isPast(r.reported_at, now)).map((r) => [r.interaction_id, r]));
     const lastResponseAt = patientInteractions.filter((r) => r.expects_response && isPast(r.response_at, now) && Date.parse(r.response_at!) >= now.getTime() - 90 * DAY_MS)
       .map((r) => r.response_at!).sort((a, b) => Date.parse(b) - Date.parse(a))[0] ?? null;
     const patientPrescriptions = prescriptions.get(patient.id) ?? [];
@@ -286,9 +305,15 @@ export function buildDashboardData(rows: DashboardRows, scope: { unitId: string;
       appointments: appointmentsByPatient.get(patient.id) ?? [], alerts: patientAlerts,
       complications: (complications.get(patient.id) ?? [])
         .map((item) => ({ id: item.id, code: item.code, diagnosedOn: item.diagnosed_on, notes: item.notes, updatedAt: item.updated_at })),
-      interactions: [...patientInteractions].sort((a, b) => Date.parse(b.scheduled_at) - Date.parse(a.scheduled_at)).slice(0, 20).map((r) => ({ id: r.id, kind: r.kind,
-        scheduledAt: r.scheduled_at, deliveredAt: r.delivered_at, responseAt: r.response_at, timeoutAt: r.timeout_at, deliveryStatus: r.delivery_status,
-        replyCode: r.reply_code, medicationTaken: responseById.get(r.id) ?? null, expectsResponse: r.expects_response })) };
+      interactions: [...patientInteractions].sort((a, b) => Date.parse(b.scheduled_at) - Date.parse(a.scheduled_at)).slice(0, 20).map((r) => {
+        const snapshot = r.kind === "medication" ? medicationInteractionSnapshot(r.payload_snapshot) : { medicationName: null, doseText: null, scheduleId: null };
+        const response = responseByInteractionId.get(r.id);
+        return { id: r.id, kind: r.kind,
+          scheduledAt: r.scheduled_at, deliveredAt: r.delivered_at, responseAt: r.response_at, timeoutAt: r.timeout_at, deliveryStatus: r.delivery_status,
+          replyCode: r.reply_code, medicationTaken: response?.taken ?? null, expectsResponse: r.expects_response,
+          medicationName: snapshot.medicationName, doseText: snapshot.doseText,
+          response: response && snapshot.scheduleId ? { id: response.id, updatedAt: response.updated_at, scheduleId: snapshot.scheduleId } : null };
+      }) };
   }).sort((a, b) => riskOrder[a.risk.level] - riskOrder[b.risk.level] || a.fullName.localeCompare(b.fullName, "es"));
   const fasting = patients.flatMap((p) => p.measurements).filter((m) => m.kind === "glucose" && m.context === "fasting" && m.glucoseMgDl != null && Date.parse(m.observedAt) >= now.getTime() - 30 * DAY_MS);
   return { generatedAt: now.toISOString(), timezone, hasMorePatients, patients, appointments, alerts,

@@ -15,6 +15,8 @@ const eslintConfig = defineConfig([
     // Local assistant scratch files are not application source or versioned.
     ".codex/**",
     ".claude/**",
+    // Python virtualenv de ml-service: no es JS/TS, ESLint no debería ni mirarlo.
+    "ml-service/.venv/**",
   ]),
 ]);
 

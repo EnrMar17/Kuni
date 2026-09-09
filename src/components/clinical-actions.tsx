@@ -9,12 +9,14 @@ import {
   markUrgent,
   resolveAlert,
   correctMeasurement,
+  correctMedicationResponse,
   adjustPrescription,
   setMedicationTherapeuticClass,
 } from "@/actions/clinical";
 import type {
   DashboardAlert,
   DashboardComplication,
+  DashboardInteraction,
   DashboardMeasurement,
   DashboardPrescription,
 } from "@/lib/domain/dashboard";
@@ -22,7 +24,7 @@ import type {
 function ActionMessage({ message }: { message: string | null }) {
   if (!message) return null;
   const isSuccess =
-    /^(La alerta se actualizó|Se registró la urgencia clínica|Complicación registrada|Complicación retirada|Medición corregida|Ajuste de receta registrado)\.?$/i.test(
+    /^(La alerta se actualizó|Se registró la urgencia clínica|Complicación registrada|Complicación retirada|Medición corregida|Toma de medicamento corregida|Ajuste de receta registrado)\.?$/i.test(
       message.trim(),
     );
   return (
@@ -526,6 +528,97 @@ export function MeasurementCorrection({
           value={value}
         />
       </label>
+      <label className="mt-2 block text-xs font-bold text-slate-700" htmlFor={reasonId}>
+        Motivo
+        <textarea
+          aria-describedby={showReasonHint ? reasonErrorId : undefined}
+          aria-invalid={showReasonHint || undefined}
+          className="mt-1 w-full min-w-0 rounded-lg border border-slate-300 px-2 py-1"
+          disabled={isPending}
+          id={reasonId}
+          onChange={(event) => {
+            setReason(event.target.value);
+            if (event.target.value.trim()) setShowReasonHint(false);
+          }}
+          rows={2}
+          value={reason}
+        />
+      </label>
+      {showReasonHint ? (
+        <span className="field-error" id={reasonErrorId} role="alert">
+          Describe el motivo de la corrección.
+        </span>
+      ) : null}
+      <button
+        className="mt-2 text-sm font-bold text-indigo-800 underline-offset-2 hover:underline disabled:no-underline"
+        disabled={isPending}
+        onClick={save}
+        type="button"
+      >
+        {isPending ? "Guardando…" : "Guardar corrección"}
+      </button>
+      <ActionMessage message={message} />
+    </div>
+  );
+}
+
+/**
+ * Corrige una toma de medicamento ya registrada (RF20). Solo se renderiza
+ * cuando `interaction.response` viene poblado (ver dashboard.ts): sin una
+ * fila de `medication_responses` que la RPC pueda identificar sin ambigüedad
+ * (`scheduleId` + `scheduledAt`), no hay nada que corregir todavía.
+ */
+export function MedicationResponseCorrection({
+  patientId,
+  interaction,
+}: {
+  patientId: string;
+  interaction: DashboardInteraction & { response: NonNullable<DashboardInteraction["response"]> };
+}) {
+  const router = useRouter();
+  const reasonId = useId();
+  const reasonErrorId = useId();
+  const [isPending, startTransition] = useTransition();
+  const [taken, setTaken] = useState(interaction.medicationTaken ?? false);
+  const [reason, setReason] = useState("");
+  const [message, setMessage] = useState<string | null>(null);
+  const [showReasonHint, setShowReasonHint] = useState(false);
+
+  const save = () => {
+    if (!reason.trim()) {
+      setShowReasonHint(true);
+      return;
+    }
+    startTransition(async () => {
+      const result = await correctMedicationResponse({
+        patientId,
+        responseId: interaction.response.id,
+        expectedUpdatedAt: interaction.response.updatedAt,
+        scheduleId: interaction.response.scheduleId,
+        scheduledAt: interaction.scheduledAt,
+        taken,
+        reason,
+      });
+      if (result.error) return setMessage(result.error.message);
+      setShowReasonHint(false);
+      setMessage("Toma de medicamento corregida.");
+      router.refresh();
+    });
+  };
+
+  return (
+    <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
+      <p className="text-xs font-bold text-slate-700">¿Se tomó el medicamento?</p>
+      <div className="mt-1 flex gap-4">
+        <label className="flex items-center gap-1.5 text-sm text-slate-700">
+          <input checked={taken} disabled={isPending} name={`taken-${interaction.id}`} onChange={() => setTaken(true)} type="radio" />
+          Sí
+        </label>
+        <label className="flex items-center gap-1.5 text-sm text-slate-700">
+          <input checked={!taken} disabled={isPending} name={`taken-${interaction.id}`} onChange={() => setTaken(false)} type="radio" />
+          No
+        </label>
+      </div>
       <label className="mt-2 block text-xs font-bold text-slate-700" htmlFor={reasonId}>
         Motivo
         <textarea
