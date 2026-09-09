@@ -32,6 +32,15 @@ export const patientDetailSchema = patientSummarySchema.extend({
   consentGranted: z.boolean(),
 });
 
+// Fase de tratamiento clínica (spec "Perfil del paciente" sección 3): a
+// criterio 100% médico, sin disparador automático que la cambie. Vive en
+// `patients` (una por variable), no por diagnóstico específico, porque
+// aplica al paciente completo sin importar el subtipo de diabetes.
+export const diabetesTreatmentPhaseSchema = z.enum([
+  "estable_oral", "ajuste_insulina", "insulina_estable_hba1c",
+]);
+export const hypertensionTreatmentPhaseSchema = z.enum(["controlada", "en_ajuste"]);
+
 export const createPatientInputSchema = z.object({
   roomId: z.uuid(),
   fullName: z.string().trim().min(3),
@@ -44,6 +53,8 @@ export const createPatientInputSchema = z.object({
   initialRisk: riskLevelSchema,
   initialRiskReason: z.string().trim().min(1),
   consentGranted: z.boolean(),
+  diabetesTreatmentPhase: diabetesTreatmentPhaseSchema.nullable(),
+  hypertensionTreatmentPhase: hypertensionTreatmentPhaseSchema.nullable(),
 });
 
 export const prescriptionVersionInputSchema = z.object({
@@ -225,10 +236,22 @@ export const initialMonitoringPlanSchema = z.discriminatedUnion("kind", [
     criticalGlucoseMinMgDl: z.null(), criticalGlucoseMaxMgDl: z.null(),
   }).strict(),
 ]);
+// Hasta un plan de presión y hasta DOS de glucosa (ayuno + postprandial),
+// siempre que sus `measurementContext` sean distintos entre sí — así se
+// modelan ambos sin agregar un tercer `kind` nuevo a monitoring_plans.
 export const initialCareSchema = z.object({
   prescription: initialPrescriptionSchema.nullable(),
-  plans: z.array(initialMonitoringPlanSchema).max(2)
-    .refine(plans => new Set(plans.map(p => p.kind)).size === plans.length, "Un solo plan inicial por variable."),
+  plans: z.array(initialMonitoringPlanSchema).max(3)
+    .refine(
+      (plans) => plans.filter((p) => p.kind === "blood_pressure").length <= 1,
+      "Como mucho un plan inicial de presión.",
+    )
+    .refine((plans) => {
+      const glucosePlans = plans.filter((p) => p.kind === "glucose");
+      if (glucosePlans.length <= 1) return true;
+      const contexts = new Set(glucosePlans.map((p) => p.measurementContext));
+      return glucosePlans.length <= 2 && contexts.size === glucosePlans.length;
+    }, "Los dos planes de glucosa deben tener un contexto distinto (ayuno vs. postprandial)."),
 }).strict();
 
 export type InitialPrescription = z.infer<typeof initialPrescriptionSchema>;

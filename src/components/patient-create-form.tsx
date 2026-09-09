@@ -19,6 +19,13 @@ type PatientDraft = {
   whatsappE164: string;
   bloodType: string;
   diagnoses: string[];
+  // Fecha de diagnóstico por código ("" = sin capturar). Solo se envían las
+  // llaves de `diagnoses` que sigan marcadas al guardar.
+  diagnosedOn: Record<string, string>;
+  // "" (sin capturar) se traduce a null al enviar; nunca a un valor por
+  // defecto — la fase queda 100% a criterio médico (spec sección 3).
+  diabetesTreatmentPhase: string;
+  hypertensionTreatmentPhase: string;
   initialRisk: string;
   initialRiskReason: string;
   consentGranted: boolean;
@@ -34,14 +41,24 @@ type PatientDraft = {
   prescriptionInstructions: string;
   prescriptionEndsAt: string;
   prescriptionSchedules: ScheduleRow[];
-  glucosePlanEnabled: boolean;
-  glucoseLocalTime: string;
-  glucoseWeekdays: string[];
-  glucoseContext: string;
-  glucoseMin: string;
-  glucoseMax: string;
-  glucoseCriticalMin: string;
-  glucoseCriticalMax: string;
+  // Glucosa en ayuno y postprandial son dos planes independientes (spec
+  // sección 6) — la postprandial siempre usa measurementContext="after_meal",
+  // sin selector propio.
+  glucoseFastingPlanEnabled: boolean;
+  glucoseFastingLocalTime: string;
+  glucoseFastingWeekdays: string[];
+  glucoseFastingContext: string;
+  glucoseFastingMin: string;
+  glucoseFastingMax: string;
+  glucoseFastingCriticalMin: string;
+  glucoseFastingCriticalMax: string;
+  glucosePostprandialPlanEnabled: boolean;
+  glucosePostprandialLocalTime: string;
+  glucosePostprandialWeekdays: string[];
+  glucosePostprandialMin: string;
+  glucosePostprandialMax: string;
+  glucosePostprandialCriticalMin: string;
+  glucosePostprandialCriticalMax: string;
   bpPlanEnabled: boolean;
   bpLocalTime: string;
   bpWeekdays: string[];
@@ -72,6 +89,19 @@ const diagnoses = [
   ["other", "Otro diagnóstico"],
 ] as const;
 
+const diabetesDiagnosisCodes = ["diabetes_type_1", "diabetes_type_2", "diabetes_gestational", "diabetes_other"];
+
+const diabetesTreatmentPhases = [
+  ["estable_oral", "Estable con tratamiento oral"],
+  ["ajuste_insulina", "En ajuste de insulina"],
+  ["insulina_estable_hba1c", "Insulina estable, HbA1c controlada"],
+] as const;
+
+const hypertensionTreatmentPhases = [
+  ["controlada", "Controlada"],
+  ["en_ajuste", "En ajuste"],
+] as const;
+
 // React Hook Form invokes this validator on blur/submission, not during render.
 function validateBirthDate(value: string) {
   return (
@@ -80,7 +110,7 @@ function validateBirthDate(value: string) {
   );
 }
 
-export function PatientCreateForm({ initial, medications = [] }: { initial?: PatientEditData; medications?: MedicationOption[] }) {
+export function PatientCreateForm({ initial, medications = [], doctorName }: { initial?: PatientEditData; medications?: MedicationOption[]; doctorName: string }) {
   const router = useRouter();
   const patientId = useRef(initial?.patientId);
   const saving = useRef(false);
@@ -100,24 +130,36 @@ export function PatientCreateForm({ initial, medications = [] }: { initial?: Pat
       initialRisk: "unknown",
       bloodType: "",
       diagnoses: [],
+      diagnosedOn: {},
+      diabetesTreatmentPhase: "",
+      hypertensionTreatmentPhase: "",
       consentGranted: false,
       consentMethod: "in_person",
       prescriptionEnabled: false, prescriptionMedicationId: "", prescriptionDoseText: "", prescriptionInstructions: "",
       prescriptionEndsAt: "", prescriptionSchedules: [{ weekday: "1", localTime: "08:00" }],
-      glucosePlanEnabled: false, glucoseLocalTime: "07:00", glucoseWeekdays: [], glucoseContext: "fasting",
-      glucoseMin: "", glucoseMax: "", glucoseCriticalMin: "", glucoseCriticalMax: "",
+      glucoseFastingPlanEnabled: false, glucoseFastingLocalTime: "07:00", glucoseFastingWeekdays: [], glucoseFastingContext: "fasting",
+      glucoseFastingMin: "", glucoseFastingMax: "", glucoseFastingCriticalMin: "", glucoseFastingCriticalMax: "",
+      glucosePostprandialPlanEnabled: false, glucosePostprandialLocalTime: "13:00", glucosePostprandialWeekdays: [],
+      glucosePostprandialMin: "", glucosePostprandialMax: "", glucosePostprandialCriticalMin: "", glucosePostprandialCriticalMax: "",
       bpPlanEnabled: false, bpLocalTime: "09:00", bpWeekdays: [],
       systolicMin: "", systolicMax: "", diastolicMin: "", diastolicMax: "",
       systolicCriticalMin: "", systolicCriticalMax: "", diastolicCriticalMin: "", diastolicCriticalMax: "",
       ...(initial ? { ...initial.input, curp: initial.input.curp ?? "", bloodType: initial.input.bloodType ?? "",
+        diabetesTreatmentPhase: initial.input.diabetesTreatmentPhase ?? "",
+        hypertensionTreatmentPhase: initial.input.hypertensionTreatmentPhase ?? "",
         consentGranted: initial.consentGranted } : {}),
     },
   });
   const consent = useWatch({ control, name: "consentGranted" });
   const consentChanged = initial ? consent !== initial.consentGranted : consent;
   const prescriptionEnabled = useWatch({ control, name: "prescriptionEnabled" });
-  const glucosePlanEnabled = useWatch({ control, name: "glucosePlanEnabled" });
+  const glucoseFastingPlanEnabled = useWatch({ control, name: "glucoseFastingPlanEnabled" });
+  const glucosePostprandialPlanEnabled = useWatch({ control, name: "glucosePostprandialPlanEnabled" });
   const bpPlanEnabled = useWatch({ control, name: "bpPlanEnabled" });
+  const watchedDiagnoses = useWatch({ control, name: "diagnoses" });
+  const hasDiabetesDiagnosis = watchedDiagnoses?.some((code) => diabetesDiagnosisCodes.includes(code)) ?? false;
+  const hasHypertensionDiagnosis = watchedDiagnoses?.includes("hypertension") ?? false;
+  const isComorbid = hasDiabetesDiagnosis && hasHypertensionDiagnosis;
   const { fields: scheduleFields, append: appendSchedule, remove: removeSchedule } = useFieldArray({ control, name: "prescriptionSchedules" });
   const medicationFieldId = useId();
 
@@ -127,13 +169,22 @@ export function PatientCreateForm({ initial, medications = [] }: { initial?: Pat
   }, [saveError]);
 
   function buildInitialCare(draft: PatientDraft): InitialCare | null {
-    if (initial || (!draft.prescriptionEnabled && !draft.glucosePlanEnabled && !draft.bpPlanEnabled)) return null;
+    if (initial || (!draft.prescriptionEnabled && !draft.glucoseFastingPlanEnabled
+      && !draft.glucosePostprandialPlanEnabled && !draft.bpPlanEnabled)) return null;
     const plans: InitialCare["plans"] = [];
-    if (draft.glucosePlanEnabled) {
-      plans.push({ kind: "glucose", localTime: draft.glucoseLocalTime, weekdays: draft.glucoseWeekdays.map(Number),
-        measurementContext: (draft.glucoseContext || null) as InitialCare["plans"][number]["measurementContext"],
-        glucoseMinMgDl: numberOrNull(draft.glucoseMin), glucoseMaxMgDl: numberOrNull(draft.glucoseMax),
-        criticalGlucoseMinMgDl: numberOrNull(draft.glucoseCriticalMin), criticalGlucoseMaxMgDl: numberOrNull(draft.glucoseCriticalMax),
+    if (draft.glucoseFastingPlanEnabled) {
+      plans.push({ kind: "glucose", localTime: draft.glucoseFastingLocalTime, weekdays: draft.glucoseFastingWeekdays.map(Number),
+        measurementContext: (draft.glucoseFastingContext || null) as InitialCare["plans"][number]["measurementContext"],
+        glucoseMinMgDl: numberOrNull(draft.glucoseFastingMin), glucoseMaxMgDl: numberOrNull(draft.glucoseFastingMax),
+        criticalGlucoseMinMgDl: numberOrNull(draft.glucoseFastingCriticalMin), criticalGlucoseMaxMgDl: numberOrNull(draft.glucoseFastingCriticalMax),
+        systolicMinMmHg: null, systolicMaxMmHg: null, diastolicMinMmHg: null, diastolicMaxMmHg: null,
+        criticalSystolicMinMmHg: null, criticalSystolicMaxMmHg: null, criticalDiastolicMinMmHg: null, criticalDiastolicMaxMmHg: null });
+    }
+    if (draft.glucosePostprandialPlanEnabled) {
+      plans.push({ kind: "glucose", localTime: draft.glucosePostprandialLocalTime, weekdays: draft.glucosePostprandialWeekdays.map(Number),
+        measurementContext: "after_meal",
+        glucoseMinMgDl: numberOrNull(draft.glucosePostprandialMin), glucoseMaxMgDl: numberOrNull(draft.glucosePostprandialMax),
+        criticalGlucoseMinMgDl: numberOrNull(draft.glucosePostprandialCriticalMin), criticalGlucoseMaxMgDl: numberOrNull(draft.glucosePostprandialCriticalMax),
         systolicMinMmHg: null, systolicMaxMmHg: null, diastolicMinMmHg: null, diastolicMaxMmHg: null,
         criticalSystolicMinMmHg: null, criticalSystolicMaxMmHg: null, criticalDiastolicMinMmHg: null, criticalDiastolicMaxMmHg: null });
     }
@@ -159,12 +210,18 @@ export function PatientCreateForm({ initial, medications = [] }: { initial?: Pat
     if (saving.current) return;
     setSaveError(null);
     patientId.current ??= crypto.randomUUID();
+    const diagnosedOn = Object.fromEntries(
+      Object.entries(draft.diagnosedOn).filter(([code, value]) => draft.diagnoses.includes(code) && value),
+    );
     const parsed = savePatientSchema.safeParse({ patientId: patientId.current, revision: initial?.revision ?? null,
       reason: initial ? draft.reason : "Alta de paciente", initialCare: buildInitialCare(draft), input: {
         fullName: draft.fullName, birthDate: draft.birthDate, sex: draft.sex, clinicalRecord: draft.clinicalRecord,
         curp: draft.curp?.trim().toUpperCase() || null, whatsappE164: draft.whatsappE164,
-        bloodType: draft.bloodType || null, diagnoses: draft.diagnoses, initialRisk: draft.initialRisk,
-        initialRiskReason: draft.initialRiskReason, consent: consentChanged ? {
+        bloodType: draft.bloodType || null, diagnoses: draft.diagnoses, diagnosedOn, initialRisk: draft.initialRisk,
+        initialRiskReason: draft.initialRiskReason,
+        diabetesTreatmentPhase: hasDiabetesDiagnosis ? (draft.diabetesTreatmentPhase || null) : null,
+        hypertensionTreatmentPhase: hasHypertensionDiagnosis ? (draft.hypertensionTreatmentPhase || null) : null,
+        consent: consentChanged ? {
           event: draft.consentGranted ? "granted" : "revoked", noticeVersion: draft.noticeVersion,
           method: draft.consentMethod, evidenceNote: draft.evidenceNote,
         } : null,
@@ -208,9 +265,10 @@ export function PatientCreateForm({ initial, medications = [] }: { initial?: Pat
     }
   }
   function error(name: keyof PatientDraft) {
-    return errors[name] ? (
+    const message = errors[name]?.message as string | undefined;
+    return message ? (
       <span id={`${name}-error`} className="field-error" role="alert">
-        {errors[name]?.message}
+        {message}
       </span>
     ) : null;
   }
@@ -328,6 +386,10 @@ export function PatientCreateForm({ initial, medications = [] }: { initial?: Pat
               <option value="unknown">Desconocido</option>
             </select>
           </label>
+          <div>
+            <span className="field-hint block">Médico tratante</span>
+            <p className="mt-1 text-sm font-semibold text-slate-700">{doctorName}</p>
+          </div>
         </div>
       </section>
       <section className="form-section">
@@ -348,21 +410,39 @@ export function PatientCreateForm({ initial, medications = [] }: { initial?: Pat
           </legend>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {diagnoses.map(([code, label]) => (
-              <label className="diagnosis-option" key={code}>
-                <input
-                  type="checkbox"
-                  value={code}
-                  {...register("diagnoses", {
-                    validate: (values) =>
-                      values.length > 0 ||
-                      "Selecciona al menos un diagnóstico.",
-                  })}
-                />
-                <span>{label}</span>
-              </label>
+              <div key={code}>
+                <label className="diagnosis-option">
+                  <input
+                    type="checkbox"
+                    value={code}
+                    {...register("diagnoses", {
+                      validate: (values) =>
+                        values.length > 0 ||
+                        "Selecciona al menos un diagnóstico.",
+                    })}
+                  />
+                  <span>{label}</span>
+                </label>
+                {watchedDiagnoses?.includes(code) ? (
+                  <label className="mt-1.5 block pl-1 text-xs font-semibold text-slate-600">
+                    Fecha de diagnóstico <span className="field-hint">Opcional</span>
+                    <input
+                      className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-1 text-sm font-normal"
+                      max={new Date().toISOString().slice(0, 10)}
+                      type="date"
+                      {...register(`diagnosedOn.${code}` as const)}
+                    />
+                  </label>
+                ) : null}
+              </div>
             ))}
           </div>
           {error("diagnoses")}
+          {isComorbid ? (
+            <p className="mt-3 inline-flex rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-800">
+              Comorbilidad: diabetes + hipertensión
+            </p>
+          ) : null}
         </fieldset>
         <div className="form-fields">
           <label>
@@ -389,9 +469,44 @@ export function PatientCreateForm({ initial, medications = [] }: { initial?: Pat
           </label>
         </div>
       </section>
+      {(hasDiabetesDiagnosis || hasHypertensionDiagnosis) ? (
+        <section className="form-section">
+          <div className="form-section-heading">
+            <span className="section-number">03</span>
+            <div>
+              <h2>Fase de tratamiento</h2>
+              <p>A criterio médico; no hay ningún cálculo automático que la reclasifique.</p>
+            </div>
+          </div>
+          <div className="form-fields">
+            {hasDiabetesDiagnosis ? (
+              <label>
+                Fase de tratamiento — diabetes
+                <select {...register("diabetesTreatmentPhase")}>
+                  <option value="">Sin definir</option>
+                  {diabetesTreatmentPhases.map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+            {hasHypertensionDiagnosis ? (
+              <label>
+                Fase de tratamiento — hipertensión
+                <select {...register("hypertensionTreatmentPhase")}>
+                  <option value="">Sin definir</option>
+                  {hypertensionTreatmentPhases.map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
       <section className="form-section">
         <div className="form-section-heading">
-          <span className="section-number">03</span>
+          <span className="section-number">04</span>
           <div>
             <h2>Consentimiento de contacto</h2>
             <p>
@@ -450,7 +565,7 @@ export function PatientCreateForm({ initial, medications = [] }: { initial?: Pat
       {!initial ? (
         <section className="form-section">
           <div className="form-section-heading">
-            <span className="section-number">04</span>
+            <span className="section-number">05</span>
             <div>
               <h2>Receta y monitoreo iniciales</h2>
               <p>Opcional. Se guarda en la misma operación que el alta; se puede omitir y configurar después.</p>
@@ -516,21 +631,20 @@ export function PatientCreateForm({ initial, medications = [] }: { initial?: Pat
             </div>
           ) : null}
           <label className="diagnosis-option mt-4">
-            <input type="checkbox" {...register("glucosePlanEnabled")} />
-            <span>Agregar plan de monitoreo de glucosa</span>
+            <input type="checkbox" {...register("glucoseFastingPlanEnabled")} />
+            <span>Agregar plan de monitoreo de glucosa en ayuno</span>
           </label>
-          {glucosePlanEnabled ? (
+          {glucoseFastingPlanEnabled ? (
             <div className="form-fields mt-3 clinical-page-content">
               <label>
                 Hora
-                <input type="time" {...register("glucoseLocalTime")} />
+                <input type="time" {...register("glucoseFastingLocalTime")} />
               </label>
               <label>
                 Contexto
-                <select {...register("glucoseContext")}>
+                <select {...register("glucoseFastingContext")}>
                   <option value="fasting">Ayuno</option>
                   <option value="before_meal">Antes de comer</option>
-                  <option value="after_meal">Después de comer</option>
                   <option value="random">Aleatorio</option>
                   <option value="unspecified">Sin especificar</option>
                 </select>
@@ -540,16 +654,43 @@ export function PatientCreateForm({ initial, medications = [] }: { initial?: Pat
                 <div className="flex flex-wrap gap-3">
                   {weekdayLabels.map(([value, label]) => (
                     <label className="diagnosis-option" key={value}>
-                      <input type="checkbox" value={value} {...register("glucoseWeekdays")} />
+                      <input type="checkbox" value={value} {...register("glucoseFastingWeekdays")} />
                       <span>{label}</span>
                     </label>
                   ))}
                 </div>
               </fieldset>
-              <label>Objetivo mínimo (mg/dL) <span className="field-hint">Opcional</span><input type="number" {...register("glucoseMin")} /></label>
-              <label>Objetivo máximo (mg/dL) <span className="field-hint">Opcional</span><input type="number" {...register("glucoseMax")} /></label>
-              <label>Crítico mínimo (mg/dL) <span className="field-hint">Opcional</span><input type="number" {...register("glucoseCriticalMin")} /></label>
-              <label>Crítico máximo (mg/dL) <span className="field-hint">Opcional</span><input type="number" {...register("glucoseCriticalMax")} /></label>
+              <label>Objetivo mínimo (mg/dL) <span className="field-hint">Opcional</span><input type="number" {...register("glucoseFastingMin")} /></label>
+              <label>Objetivo máximo (mg/dL) <span className="field-hint">Opcional</span><input type="number" {...register("glucoseFastingMax")} /></label>
+              <label>Crítico mínimo (mg/dL) <span className="field-hint">Opcional</span><input type="number" {...register("glucoseFastingCriticalMin")} /></label>
+              <label>Crítico máximo (mg/dL) <span className="field-hint">Opcional</span><input type="number" {...register("glucoseFastingCriticalMax")} /></label>
+            </div>
+          ) : null}
+          <label className="diagnosis-option mt-4">
+            <input type="checkbox" {...register("glucosePostprandialPlanEnabled")} />
+            <span>Agregar plan de monitoreo de glucosa postprandial</span>
+          </label>
+          {glucosePostprandialPlanEnabled ? (
+            <div className="form-fields mt-3 clinical-page-content">
+              <label>
+                Hora <span className="field-hint">Ej. 2h después del desayuno</span>
+                <input type="time" {...register("glucosePostprandialLocalTime")} />
+              </label>
+              <fieldset className="sm:col-span-2">
+                <legend className="mb-2 text-sm font-bold text-slate-700">Días</legend>
+                <div className="flex flex-wrap gap-3">
+                  {weekdayLabels.map(([value, label]) => (
+                    <label className="diagnosis-option" key={value}>
+                      <input type="checkbox" value={value} {...register("glucosePostprandialWeekdays")} />
+                      <span>{label}</span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+              <label>Objetivo mínimo (mg/dL) <span className="field-hint">Opcional</span><input type="number" {...register("glucosePostprandialMin")} /></label>
+              <label>Objetivo máximo (mg/dL) <span className="field-hint">Opcional</span><input type="number" {...register("glucosePostprandialMax")} /></label>
+              <label>Crítico mínimo (mg/dL) <span className="field-hint">Opcional</span><input type="number" {...register("glucosePostprandialCriticalMin")} /></label>
+              <label>Crítico máximo (mg/dL) <span className="field-hint">Opcional</span><input type="number" {...register("glucosePostprandialCriticalMax")} /></label>
             </div>
           ) : null}
           <label className="diagnosis-option mt-4">

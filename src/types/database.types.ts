@@ -1288,8 +1288,10 @@ export type Database = {
           consulting_room_id: string
           created_at: string
           curp: string | null
+          diabetes_treatment_phase: string | null
           followup_interval_days: number | null
           full_name: string
+          hypertension_treatment_phase: string | null
           id: string
           initial_risk: string
           initial_risk_reason: string | null
@@ -1310,8 +1312,10 @@ export type Database = {
           consulting_room_id: string
           created_at?: string
           curp?: string | null
+          diabetes_treatment_phase?: string | null
           followup_interval_days?: number | null
           full_name: string
+          hypertension_treatment_phase?: string | null
           id?: string
           initial_risk?: string
           initial_risk_reason?: string | null
@@ -1332,8 +1336,10 @@ export type Database = {
           consulting_room_id?: string
           created_at?: string
           curp?: string | null
+          diabetes_treatment_phase?: string | null
           followup_interval_days?: number | null
           full_name?: string
+          hypertension_treatment_phase?: string | null
           id?: string
           initial_risk?: string
           initial_risk_reason?: string | null

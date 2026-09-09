@@ -24,22 +24,26 @@ export async function getPatientRegistration(patientId: string): Promise<Patient
   if (!z.uuid().safeParse(patientId).success) return null;
   const client = await createClient();
   const { data: patient, error } = await client.from("patients")
-    .select("id,full_name,birth_date,sex,record_number,curp,whatsapp_e164,blood_type,initial_risk,initial_risk_reason,updated_at")
+    .select("id,full_name,birth_date,sex,record_number,curp,whatsapp_e164,blood_type,initial_risk,initial_risk_reason,updated_at,diabetes_treatment_phase,hypertension_treatment_phase")
     .eq("id", patientId).eq("unit_id", context.unitId)
     .eq("consulting_room_id", context.consultingRoom.id).eq("active", true).maybeSingle();
   if (error) throw new AppError("INTERNAL", "No se pudo cargar el expediente.");
   if (!patient) return null;
-  const diagnoses = await client.from("patient_diagnoses").select("id,condition_code,updated_at", { count: "exact" })
+  const diagnoses = await client.from("patient_diagnoses").select("id,condition_code,diagnosed_on,updated_at", { count: "exact" })
     .eq("unit_id", context.unitId).eq("patient_id", patientId).eq("active", true).order("id");
   const consent = await client.from("consent_events").select("id,event")
     .eq("unit_id", context.unitId).eq("patient_id", patientId).order("sequence_no", { ascending: false }).limit(1).maybeSingle();
   if (diagnoses.error || !diagnoses.data || diagnoses.count !== diagnoses.data.length || consent.error)
     throw new AppError("INTERNAL", "No se pudo cargar el expediente completo.");
+  const diagnosedOn: Record<string, string> = {};
+  for (const row of diagnoses.data) if (row.diagnosed_on) diagnosedOn[row.condition_code] = row.diagnosed_on;
   // Legacy records may have no diagnosis or assessment yet; keep the form editable.
   const input = patientRegistrationSchema.omit({ fullName: true, diagnoses: true, initialRiskReason: true, clinicalRecord: true }).parse({
     birthDate: patient.birth_date, sex: patient.sex,
     curp: patient.curp, whatsappE164: patient.whatsapp_e164, bloodType: patient.blood_type,
-    initialRisk: patient.initial_risk, consent: null,
+    initialRisk: patient.initial_risk, consent: null, diagnosedOn,
+    diabetesTreatmentPhase: patient.diabetes_treatment_phase,
+    hypertensionTreatmentPhase: patient.hypertension_treatment_phase,
   });
   return {
     patientId, input: { ...input, fullName: patient.full_name, clinicalRecord: patient.record_number ?? "",

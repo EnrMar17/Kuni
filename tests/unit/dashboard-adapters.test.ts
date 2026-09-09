@@ -7,7 +7,8 @@ const patient = (overrides: Partial<Row<"patients">> = {}): Row<"patients"> => (
   id: "patient-a", unit_id: "unit-a", consulting_room_id: "room-a", full_name: "Paciente de prueba", birth_date: "1980-09-09",
   sex: "unknown", curp: null, record_number: "EXP-1", affiliation_number: null, whatsapp_e164: "+525500001111", blood_type: null,
   initial_risk: "unknown", initial_risk_reason: null, followup_interval_days: null, bot_response_timeout_minutes: 60,
-  risk_rule_config: {}, active: true, attributed_doctor_id: null, created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z", ...overrides,
+  risk_rule_config: {}, active: true, attributed_doctor_id: null, created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z",
+  diabetes_treatment_phase: null, hypertension_treatment_phase: null, ...overrides,
 });
 const interaction = (overrides: Partial<Row<"bot_interactions">> = {}): Row<"bot_interactions"> => ({
   id: "interaction-a", unit_id: "unit-a", patient_id: "patient-a", kind: "medication", prescription_id: "rx-a", monitoring_plan_id: null,

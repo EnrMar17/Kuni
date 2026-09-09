@@ -14,7 +14,8 @@ const updatedAt = "2026-09-08T12:00:00.123456+00:00";
 const value = (): SavePatientInput => ({ patientId: id(1), revision: null, reason: "Alta de paciente", initialCare: null,
   input: { fullName: "Paciente de prueba", birthDate: "1980-01-01", sex: "unknown", clinicalRecord: "A1", curp: null,
     whatsappE164: "+525500000001", bloodType: null, initialRisk: "unknown", initialRiskReason: "Sin valorar",
-    diagnoses: ["hypertension"], consent: null } });
+    diagnoses: ["hypertension"], diagnosedOn: {}, diabetesTreatmentPhase: null, hypertensionTreatmentPhase: null,
+    consent: null } });
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.context.mockResolvedValue({ unitId: id(2), consultingRoom: { id: id(3), doctorId: id(4) } });
@@ -86,8 +87,9 @@ describe("patient edit query", () => {
     const results = {
       patients: { data: options.missing ? null : { id: id(1), full_name: data.fullName, birth_date: data.birthDate, sex: data.sex,
         record_number: data.clinicalRecord, curp: null, whatsapp_e164: data.whatsappE164, blood_type: null,
-        initial_risk: data.initialRisk, initial_risk_reason: data.initialRiskReason, updated_at: updatedAt }, error: null },
-      patient_diagnoses: { data: [{ id: id(5), condition_code: "hypertension", updated_at: updatedAt }], count: options.count ?? 1, error: options.error ?? null },
+        initial_risk: data.initialRisk, initial_risk_reason: data.initialRiskReason, updated_at: updatedAt,
+        diabetes_treatment_phase: null, hypertension_treatment_phase: null }, error: null },
+      patient_diagnoses: { data: [{ id: id(5), condition_code: "hypertension", diagnosed_on: null, updated_at: updatedAt }], count: options.count ?? 1, error: options.error ?? null },
       consent_events: { data: { id: id(6), event: "granted" }, error: null },
     };
     const builders = Object.fromEntries(Object.entries(results).map(([table, result]) => {

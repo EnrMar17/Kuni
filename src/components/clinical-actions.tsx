@@ -885,6 +885,18 @@ const therapeuticClasses = [
 
 type TherapeuticClass = (typeof therapeuticClasses)[number]["value"];
 
+// Sugerencia por nombre — NUNCA se guarda sola; solo precarga el <select>
+// para que el médico la confirme o la cambie antes de guardar (spec "Perfil
+// del paciente" sección 5: "categoría automática, inferida del nombre").
+// Lista corta y a propósito conservadora: ante duda, no sugiere nada.
+const antidiabeticKeywords = /metformina|glibenclamida|glimepirida|sitagliptina|linagliptina|insulina|empagliflozina|dapagliflozina|pioglitazona/i;
+const antihypertensiveKeywords = /losartán|losartan|enalapril|captopril|amlodipino|hidroclorotiazida|telmisartán|telmisartan|valsartán|valsartan|nifedipino|metoprolol|carvedilol/i;
+function suggestTherapeuticClass(medicationName: string): TherapeuticClass | "" {
+  if (antidiabeticKeywords.test(medicationName)) return "antidiabetic";
+  if (antihypertensiveKeywords.test(medicationName)) return "antihypertensive";
+  return "";
+}
+
 export function MedicationClassification({
   patientId,
   prescription,
@@ -894,8 +906,9 @@ export function MedicationClassification({
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const suggestion = prescription.therapeuticClass ? "" : suggestTherapeuticClass(prescription.medicationName);
   const [therapeuticClass, setTherapeuticClass] = useState<TherapeuticClass | "">(
-    prescription.therapeuticClass ?? "",
+    prescription.therapeuticClass ?? suggestion,
   );
   const [message, setMessage] = useState<string | null>(null);
 
@@ -961,6 +974,11 @@ export function MedicationClassification({
           </option>
         ))}
       </select>
+      {suggestion && therapeuticClass === suggestion ? (
+        <p className="mt-1.5 text-[11px] font-medium italic text-slate-500">
+          Sugerido automáticamente por el nombre del medicamento — no es una clasificación validada, confírmala antes de guardar.
+        </p>
+      ) : null}
       {therapeuticClass ? (
         <p className="mt-2 text-xs text-sky-900">
           {

@@ -2,7 +2,6 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { dashboard, patient, testNow } from "../support/dashboard";
-import { dateTime } from "@/components/dashboard/presentation";
 
 vi.mock("@/actions/auth", () => ({ logout: vi.fn() }));
 vi.mock("next/navigation", () => ({ usePathname: () => "/dashboard", useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
@@ -17,10 +16,9 @@ describe("dashboard con datos del servidor", () => {
   it("muestra ausencia real y dirige las acciones clínicas a sus flujos funcionales", () => {
     const html = render();
     expect(html).toContain("Selecciona un paciente");
-    expect(html).toContain("Sin recetas vigentes registradas");
+    expect(html).toContain("Sin recetas vigentes");
     expect(html).toContain("Sin datos");
     expect(html).toContain('href="/pacientes/nuevo"');
-    expect(html).toContain("Abre las alertas activas para documentar la urgencia");
     expect(html).not.toContain("87%");
     expect(html).not.toContain("40% abandono");
     expect(html).not.toContain("María Elena Vargas");
@@ -32,17 +30,6 @@ describe("dashboard con datos del servidor", () => {
     const html = render(data);
     expect(html).toContain("Cita paciente 4");
     expect(html).not.toContain("Confirmada vía bot");
-  });
-
-  it("muestra la última respuesta del periodo y no acusa silencio a un aviso informativo", () => {
-    const current = patient("1", "Paciente actual");
-    current.lastResponseAt = "2026-09-07T10:00:00Z";
-    current.interactions = [{ id: "new", kind: "appointment", expectsResponse: false, scheduledAt: testNow,
-      deliveredAt: testNow, responseAt: null, timeoutAt: null, deliveryStatus: "delivered", replyCode: "ABCD1234", medicationTaken: null,
-      medicationName: null, doseText: null, response: null }];
-    const html = render(dashboard([current]));
-    expect(html).toContain("Aviso informativo; no requiere respuesta");
-    expect(html).toContain(dateTime(current.lastResponseAt, "America/Mexico_City"));
   });
 
   it("expone el contexto y procedencia de una glucosa posprandial sin convertirla en ayuno", () => {

@@ -50,6 +50,11 @@ export type DashboardPatient = {
   sex: string; bloodType: string | null; whatsappE164: string; diagnoses: string[];
   /** `condition_code` crudo (DDL), sin etiquetas de UI — lo necesita el vector de features del modelo (RF29). */
   diagnosisCodes: string[];
+  /** Fecha de diagnóstico por código, cuando el médico la capturó (spec "Perfil del paciente" sección 2). */
+  diagnosedOn: Record<string, string>;
+  /** `null` = sin definir; a criterio 100% médico, sin disparador automático (spec sección 3). */
+  diabetesTreatmentPhase: string | null;
+  hypertensionTreatmentPhase: string | null;
   /**
    * Códigos vigentes de `patient_complications` (RF28). `null` = ninguna fila para
    * este paciente = expediente SIN REVISAR — nunca equivale a `["E119"]`
@@ -288,6 +293,10 @@ export function buildDashboardData(rows: DashboardRows, scope: { unitId: string;
       curp: patient.curp, birthDate: patient.birth_date, age, sex: patient.sex, bloodType: patient.blood_type, whatsappE164: patient.whatsapp_e164,
       diagnoses: (diagnoses.get(patient.id) ?? []).map((r) => r.description || diagnosisLabels[r.condition_code] || r.condition_code),
       diagnosisCodes: (diagnoses.get(patient.id) ?? []).map((r) => r.condition_code),
+      diagnosedOn: Object.fromEntries((diagnoses.get(patient.id) ?? [])
+        .filter((r) => r.diagnosed_on).map((r) => [r.condition_code, r.diagnosed_on as string])),
+      diabetesTreatmentPhase: patient.diabetes_treatment_phase,
+      hypertensionTreatmentPhase: patient.hypertension_treatment_phase,
       // Sin `.get()` -> undefined -> null: "expediente sin revisar", nunca `[]` (eso confundiría con "revisado, sin nada que reportar").
       complicationCodes: complications.get(patient.id)?.map((r) => r.code) ?? null,
       consentGranted: consent.get(patient.id) ?? false, initialRiskReason: patient.initial_risk_reason, risk, adherence: computeAdherence(input),

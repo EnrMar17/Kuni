@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState, type ReactNode } from "react";
 
 import {
@@ -32,6 +33,17 @@ const riskClass = {
   unknown: "border-slate-200 bg-slate-100 text-slate-600",
 } as const;
 
+const diabetesDiagnosisCodes = ["diabetes_type_1", "diabetes_type_2", "diabetes_gestational", "diabetes_other"];
+const diabetesTreatmentPhaseLabels: Record<string, string> = {
+  estable_oral: "Estable con tratamiento oral",
+  ajuste_insulina: "En ajuste de insulina",
+  insulina_estable_hba1c: "Insulina estable, HbA1c controlada",
+};
+const hypertensionTreatmentPhaseLabels: Record<string, string> = {
+  controlada: "Controlada",
+  en_ajuste: "En ajuste",
+};
+
 function PageHeader({
   title,
   description,
@@ -57,6 +69,7 @@ function PageHeader({
 }
 
 function PatientsView({ data }: { data: DashboardData }) {
+  const router = useRouter();
   const [query, setQuery] = useState("");
   const [priority, setPriority] = useState<
     "all" | "high" | "medium" | "low" | "unknown"
@@ -187,8 +200,12 @@ function PatientsView({ data }: { data: DashboardData }) {
             <tbody className="divide-y divide-slate-100">
               {visible.map((patient, index) => (
                 <tr
-                  className="transition hover:bg-sky-50/40 motion-safe:animate-[kuni-rise_360ms_ease-out_both]"
+                  className="cursor-pointer transition hover:bg-sky-50/40 motion-safe:animate-[kuni-rise_360ms_ease-out_both]"
                   key={patient.id}
+                  onClick={(event) => {
+                    if ((event.target as HTMLElement).closest("a")) return;
+                    router.push(`/pacientes/${patient.id}`);
+                  }}
                   style={{ animationDelay: `${index * 35}ms` }}
                 >
                   <td className="px-4 py-4 sm:px-5">
@@ -299,14 +316,14 @@ function PatientsView({ data }: { data: DashboardData }) {
   );
 }
 
-function NewPatientView({ initial, medications }: { initial?: PatientEditData; medications: MedicationOption[] }) {
+function NewPatientView({ initial, medications, doctorName }: { initial?: PatientEditData; medications: MedicationOption[]; doctorName: string }) {
   return (
     <>
       <PageHeader
         title={initial ? "Editar expediente" : "Alta de paciente"}
         description="Datos personales, valoración y consentimiento del paciente."
       />
-      <PatientCreateForm initial={initial} medications={medications} />
+      <PatientCreateForm doctorName={doctorName} initial={initial} medications={medications} />
     </>
   );
 }
@@ -420,7 +437,7 @@ export function ClinicalWorkspace({
     mode === "patients" ? (
       <PatientsView data={data} />
     ) : mode === "new-patient" ? (
-      <NewPatientView initial={patientEdit} medications={medications} />
+      <NewPatientView doctorName={context.doctorName} initial={patientEdit} medications={medications} />
     ) : mode === "appointments" ? (
       <AppointmentsView data={data} />
     ) : mode === "statistics" ? (
@@ -455,6 +472,8 @@ export function PatientProfile({
   canWrite?: boolean;
   testMessageChannels?: ("sms" | "whatsapp")[];
 }) {
+  const isComorbid = patient.diagnosisCodes.some((code) => diabetesDiagnosisCodes.includes(code))
+    && patient.diagnosisCodes.includes("hypertension");
   return (
     <main id="contenido-principal" className="min-h-screen bg-[radial-gradient(circle_at_12%_2%,#eaf6ff_0,transparent_31%),radial-gradient(circle_at_94%_18%,#e7edf3_0,transparent_28%),#e8ebf2] p-3 text-slate-800 md:p-6 lg:p-8">
       <div className="mx-auto w-full max-w-[1480px] rounded-[36px] border border-white/80 bg-[#f7f8fc]/90 p-4 shadow-2xl shadow-slate-900/10 md:p-8">
@@ -478,13 +497,44 @@ export function PatientProfile({
                 Resumen clínico
               </h2>
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                <Detail
-                  label="Diagnósticos"
-                  value={
-                    patient.diagnoses.join(" · ") ||
-                    "Sin diagnóstico registrado"
-                  }
-                />
+                <div>
+                  <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">
+                    Diagnósticos
+                  </dt>
+                  {patient.diagnoses.length ? (
+                    <dd className="mt-1 space-y-0.5 text-sm font-medium leading-relaxed text-slate-700">
+                      {patient.diagnoses.map((label, index) => {
+                        const code = patient.diagnosisCodes[index];
+                        const date = patient.diagnosedOn[code];
+                        return (
+                          <p key={code}>
+                            {label}
+                            {date ? <span className="ml-1.5 text-xs font-normal text-slate-400">· {date}</span> : null}
+                          </p>
+                        );
+                      })}
+                      {isComorbid ? (
+                        <span className="mt-1 inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-[11px] font-bold text-amber-800">
+                          Comorbilidad: diabetes + hipertensión
+                        </span>
+                      ) : null}
+                    </dd>
+                  ) : (
+                    <dd className="mt-1 text-sm font-medium text-slate-700">Sin diagnóstico registrado</dd>
+                  )}
+                </div>
+                {patient.diabetesTreatmentPhase ? (
+                  <Detail
+                    label="Fase de tratamiento — diabetes"
+                    value={diabetesTreatmentPhaseLabels[patient.diabetesTreatmentPhase] ?? patient.diabetesTreatmentPhase}
+                  />
+                ) : null}
+                {patient.hypertensionTreatmentPhase ? (
+                  <Detail
+                    label="Fase de tratamiento — hipertensión"
+                    value={hypertensionTreatmentPhaseLabels[patient.hypertensionTreatmentPhase] ?? patient.hypertensionTreatmentPhase}
+                  />
+                ) : null}
                 {patient.latestGlucose ? <MeasurementCorrection measurement={patient.latestGlucose} patientId={patient.id} /> : null}
                 {patient.latestBloodPressure ? <MeasurementCorrection measurement={patient.latestBloodPressure} patientId={patient.id} /> : null}
                 <Detail

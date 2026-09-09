@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useMemo, useState } from "react";
 
 import { ClinicalHeader } from "@/components/clinical-header";
 import type { DashboardData, DashboardPatient } from "@/lib/domain/dashboard";
@@ -206,8 +205,6 @@ export function ClinicalDashboard({
   unitName: string;
   data: DashboardData;
 }) {
-  const router = useRouter();
-  const [refreshing, startRefresh] = useTransition();
   const [selectedId, setSelectedId] = useState<string | null>(
     data.patients[0]?.id ?? null,
   );
@@ -263,13 +260,6 @@ export function ClinicalDashboard({
     status: "Programada",
     tone: "sky",
   }));
-  const recentInteraction = selectedPatient?.interactions[0] ?? null;
-  const interactionNames: Record<string, string> = {
-    medication: "Confirmación de medicamento",
-    measurement: "Solicitud de medición",
-    appointment: "Recordatorio de cita",
-    nonresponse_summary: "Resumen de seguimiento",
-  };
   const openWhatsApp = () => {
     if (
       selectedPatient?.consentGranted &&
@@ -359,7 +349,7 @@ export function ClinicalDashboard({
         </div>
       </section>
 
-      <div className="grid grid-cols-1 gap-7 lg:grid-cols-12">
+      <div className="grid grid-cols-1 items-start gap-7 lg:grid-cols-12">
         <div className="flex flex-col gap-7 lg:col-span-8">
           <section
             id="metricas"
@@ -473,12 +463,17 @@ export function ClinicalDashboard({
             <section
               id="pacientes"
               aria-label="Pacientes del consultorio"
-              className="dashboard-shadow-soft rounded-3xl border border-slate-100 bg-white p-5 md:col-span-5"
+              className="dashboard-shadow-soft flex h-full flex-col rounded-3xl border border-slate-100 bg-white p-5 md:col-span-5"
             >
               <div className="mb-1 flex items-center justify-between">
-                <h2 className="text-base font-bold text-slate-900">
-                  Pacientes del consultorio
-                </h2>
+                <div className="flex items-center gap-2.5">
+                  <span className="grid size-8 shrink-0 place-items-center rounded-full bg-sky-50 text-sky-600">
+                    <Icon name="users" className="size-4" />
+                  </span>
+                  <h2 className="text-base font-bold text-slate-900">
+                    Pacientes del consultorio
+                  </h2>
+                </div>
                 <SectionArrow
                   label="Ver pacientes cargados"
                   onClick={selectCensus}
@@ -490,21 +485,25 @@ export function ClinicalDashboard({
                   ? " · Lista parcial; hay más pacientes"
                   : ""}
               </p>
-              <div className="flex flex-col gap-2.5">
+              <div className="table-scroll flex max-h-[320px] flex-col gap-2 overflow-y-auto pr-1">
                 {filteredPatients.length ? (
                   filteredPatients.map((patient) => {
                     const active = patient.id === selected.id;
                     return (
                       <button
                         aria-pressed={active}
-                        className={`flex w-full items-center justify-between rounded-2xl border p-3 text-left transition ${active ? "border-sky-200 bg-sky-50/50" : "border-slate-100 bg-slate-50/60 hover:bg-slate-100/80"}`}
+                        className={`group/patient relative flex w-full items-center justify-between overflow-hidden rounded-2xl border p-3 text-left transition duration-200 motion-safe:hover:-translate-y-0.5 ${active ? "border-sky-200 bg-sky-50/60 shadow-sm" : "border-slate-100 bg-slate-50/60 hover:border-sky-100 hover:bg-sky-50/40"}`}
                         key={patient.id}
                         onClick={() => setSelectedId(patient.id)}
                         type="button"
                       >
-                        <span className="flex min-w-0 items-center gap-3">
+                        <span
+                          aria-hidden="true"
+                          className={`absolute inset-y-0 left-0 w-1 rounded-r-full transition-opacity duration-200 ${active ? "bg-[#0a4470] opacity-100" : "opacity-0"}`}
+                        />
+                        <span className="flex min-w-0 items-center gap-3 pl-1.5">
                           <span
-                            className={`grid size-10 shrink-0 place-items-center rounded-full text-xs font-bold ${toneStyles[patient.tone]}`}
+                            className={`grid size-10 shrink-0 place-items-center rounded-full text-xs font-bold ring-2 ring-white transition-transform duration-200 motion-safe:group-hover/patient:scale-105 ${toneStyles[patient.tone]}`}
                           >
                             {patient.initials}
                           </span>
@@ -529,7 +528,7 @@ export function ClinicalDashboard({
                             </span>
                           </span>
                         </span>
-                        <span className="grid size-7 shrink-0 place-items-center rounded-full border border-slate-200/50 bg-white text-slate-400">
+                        <span className="grid size-7 shrink-0 place-items-center rounded-full border border-slate-200/50 bg-white text-slate-400 transition-transform duration-200 motion-safe:group-hover/patient:translate-x-0.5 motion-safe:group-hover/patient:text-[#0a4470]">
                           <Icon name="arrow" className="size-3" />
                         </span>
                       </button>
@@ -926,107 +925,6 @@ export function ClinicalDashboard({
                     ))}
                 </div>
               </section>
-              <section
-                id="interacciones"
-                className="mt-3.5 border-t border-slate-100 pt-3"
-              >
-                <div className="mb-2 flex justify-between">
-                  <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                    Interacción reciente WhatsApp
-                  </h3>
-                  <span className="font-mono-data text-[10px] text-slate-400">
-                    {dateTime(
-                      recentInteraction?.scheduledAt ?? null,
-                      data.timezone,
-                    )}
-                  </span>
-                </div>
-                <div className="flex flex-col gap-2 text-xs">
-                  <p className="max-w-[85%] self-start rounded-2xl rounded-tl-sm border border-slate-200/60 bg-slate-100 px-3 py-2 text-slate-800">
-                    {recentInteraction
-                      ? `${interactionNames[recentInteraction.kind] ?? "Interacción"} · ${recentInteraction.replyCode}`
-                      : "Sin interacciones registradas."}
-                  </p>
-                  <p className="max-w-[88%] self-end rounded-2xl rounded-tr-sm border border-emerald-200/80 bg-emerald-50 px-3 py-2 text-slate-800">
-                    {recentInteraction && !recentInteraction.expectsResponse
-                      ? "Aviso informativo; no requiere respuesta"
-                      : recentInteraction?.medicationTaken === true
-                        ? "Toma confirmada"
-                        : recentInteraction?.medicationTaken === false
-                          ? "El paciente reportó que no tomó la dosis"
-                          : recentInteraction?.responseAt
-                            ? "Respuesta registrada"
-                            : "Sin respuesta registrada"}
-                  </p>
-                  <p className="flex items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-2.5 py-1.5 text-[10px] font-bold text-[#e2525c]">
-                    <Icon name="alert" className="size-3.5 shrink-0" />
-                    {selectedPatient?.alerts.length
-                      ? selectedPatient.alerts
-                          .map(
-                            (alert) =>
-                              `${alert.title} · ${dateTime(alert.createdAt, data.timezone)}`,
-                          )
-                          .join("; ")
-                      : "Sin alertas activas registradas"}{" "}
-                    · No respuestas pendientes:{" "}
-                    {selectedPatient?.nonresponse.pending ?? 0} · Históricas:{" "}
-                    {selectedPatient?.nonresponse.historical ?? 0}
-                  </p>
-                </div>
-              </section>
-              <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-4 text-xs font-medium text-slate-600">
-                <span className="flex items-center gap-1.5">
-                  <Icon name="calendar" className="size-4 text-sky-500" />
-                  {selected.time}
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <Icon name="clock" className="size-4 text-emerald-500" />
-                  Última respuesta: {selected.time}
-                </span>
-              </div>
-            </div>
-            <div className="mt-6">
-              <button
-                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#001d39] py-3.5 text-sm font-bold text-white shadow-lg shadow-slate-900/10 hover:bg-slate-900"
-                onClick={openWhatsApp}
-                disabled={!selectedPatient?.consentGranted}
-                title={
-                  selectedPatient?.consentGranted
-                    ? "Abre WhatsApp para contacto manual"
-                    : "Se requiere paciente y consentimiento vigente"
-                }
-                type="button"
-              >
-                <Icon name="chat" className="size-4 text-emerald-400" />
-                Abrir WhatsApp
-              </button>
-              <div className="mt-2.5 grid grid-cols-2 gap-2">
-                <button
-                  className="rounded-xl bg-rose-500 px-2 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-rose-600"
-                  onClick={() => router.push("/alertas")}
-                  title="Abre las alertas activas para documentar la urgencia"
-                  type="button"
-                >
-                  Citar a urgencias
-                </button>
-                <button
-                  className="rounded-xl border border-sky-200 bg-sky-50 px-2 py-2.5 text-xs font-bold text-sky-700 shadow-sm transition hover:bg-sky-100"
-                  onClick={() => selectedPatient && router.push(`/pacientes/${selectedPatient.id}`)}
-                  title="Abre la ficha del paciente para ajustar el tratamiento"
-                  type="button"
-                >
-                  Ajustar dosis
-                </button>
-              </div>
-              <button
-                className="mx-auto mt-3 flex items-center gap-1 text-[11px] font-semibold text-slate-400 transition hover:text-emerald-700"
-                onClick={() => startRefresh(() => router.refresh())}
-                disabled={refreshing}
-                type="button"
-              >
-                <Icon name="chat" className="size-3.5 text-emerald-600" />
-                {refreshing ? "Actualizando…" : "Actualizar datos"}
-              </button>
               <p className="mt-2 text-center text-[11px] font-medium text-slate-400">
                 {unitName} ·{" "}
                 <Link href="/consultorios" title="Cambiar consultorio">
