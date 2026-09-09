@@ -1,18 +1,126 @@
-.statistics-visuals { margin: 24px 0; }
-.statistics-view-switch { display: flex; flex-wrap: wrap; gap: 20px; border-bottom: 1px solid #a5cfe8; margin-bottom: 16px; }
-.statistics-view-switch button { padding: 12px 0; border: 0; border-bottom: 3px solid transparent; background: transparent; color: #526b7d; font-size: 13px; cursor: pointer; }
-.statistics-view-switch button[aria-pressed="true"] { border-bottom-color: #0a4470; color: #001d39; font-weight: 700; }
-.statistics-chart-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: #c9dfed; border: 1px solid #c9dfed; }
-.statistics-plot { min-width: 0; background: white; padding: 20px; }
-.statistics-plot h2 { font-size: 15px; font-weight: 750; color: #001d39; }
-.statistics-plot > p { font-size: 12px; color: #526b7d; margin-top: 4px; }
-.statistics-canvas { height: 250px; min-width: 0; margin: 18px 0 12px; }
-.statistics-empty { display: grid; height: 100%; place-content: center; font-size: 13px; color: #526b7d; }
-.statistics-plot summary { cursor: pointer; font-size: 12px; color: #0a4470; font-weight: 600; }
-.statistics-values { max-height: 230px; overflow: auto; margin-top: 8px; }
+.statistics-visuals { margin: 28px 0; }
+
+/* Selector de vista: pastilla segmentada (mismo lenguaje que el resto de
+   controles de la app: fondo slate claro, activo en blanco con sombra),
+   en vez de las pestañas subrayadas de antes. */
+.statistics-view-switch {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 4px;
+  margin-bottom: 18px;
+  background: #eef2f6;
+  border-radius: 14px;
+}
+.statistics-view-switch button {
+  padding: 8px 16px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #52627a;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background 160ms, color 160ms, box-shadow 160ms;
+}
+@media (hover: hover) {
+  .statistics-view-switch button:not([aria-pressed="true"]):hover { background: rgb(255 255 255 / .6); color: #0a4470; }
+}
+.statistics-view-switch button[aria-pressed="true"] {
+  background: #fff;
+  color: #001d39;
+  box-shadow: 0 2px 6px -2px rgb(10 68 112 / .28);
+}
+
+.statistics-scope {
+  padding: 12px 16px;
+  margin-bottom: 18px;
+  border: 1px solid #cfe6f9;
+  border-radius: 14px;
+  background: var(--kuni-sky-tint, #eaf6ff);
+  color: #0a4470;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* Cuadrícula de tarjetas: espaciadas de verdad (gap), cada una con su
+   propio borde/sombra redondeada — igual que .clinical-panel en el resto
+   de la app, en vez del fondo-de-1px que simulaba líneas divisorias. */
+.statistics-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+.statistics-plot {
+  min-width: 0;
+  background: linear-gradient(145deg, #fff, #f8fafc);
+  border: 1px solid rgb(226 232 240 / .85);
+  border-radius: 20px;
+  padding: 22px;
+  box-shadow: 0 14px 30px -24px rgb(15 23 42 / .35), inset 0 1px 0 rgb(255 255 255 / .9);
+  transition: transform 220ms cubic-bezier(.2,.75,.25,1), box-shadow 220ms cubic-bezier(.2,.75,.25,1);
+}
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .statistics-plot:hover { transform: translateY(-2px); box-shadow: 0 18px 34px -22px rgb(10 68 112 / .3), inset 0 1px 0 rgb(255 255 255 / .9); }
+}
+.statistics-plot h2 { font-size: 14px; font-weight: 800; color: #001d39; letter-spacing: -.01em; }
+.statistics-plot > p { font-size: 12px; color: #64748b; margin-top: 3px; }
+.statistics-canvas { height: 250px; min-width: 0; margin: 18px 0 10px; }
+
+.statistics-empty {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #94a3b8;
+}
+.statistics-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: var(--kuni-sky-tint, #eaf6ff);
+  color: #51c2ff;
+  font-size: 20px;
+}
+.statistics-empty p { font-size: 13px; font-weight: 600; color: #64748b; }
+
+/* "Ver valores": mismo patrón de disclosure con flechita que el resto de
+   la app (.details-panel-chevron en globals.css), a escala de tarjeta. */
+.statistics-values-toggle summary {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: fit-content;
+  cursor: pointer;
+  list-style: none;
+  font-size: 12px;
+  font-weight: 700;
+  color: #0a4470;
+}
+.statistics-values-toggle summary::-webkit-details-marker { display: none; }
+.statistics-values-toggle summary::marker { content: ""; }
+.statistics-plot-chevron { width: 13px; height: 13px; flex-shrink: 0; transition: transform 200ms ease; }
+.statistics-values-toggle[open] .statistics-plot-chevron { transform: rotate(180deg); }
+.statistics-values {
+  max-height: 220px;
+  overflow: auto;
+  margin-top: 10px;
+  border: 1px solid #eef2f8;
+  border-radius: 12px;
+}
 .statistics-values table { width: 100%; font-size: 12px; border-collapse: collapse; }
-.statistics-values :is(th,td) { padding: 8px; border-bottom: 1px solid #e1edf4; text-align: right; }
-.statistics-values th { text-align: left; font-weight: 500; }
-.statistics-scope { padding: 12px; margin-bottom: 12px; background: #fff4d9; color: #714b0b; font-size: 13px; }
-@media(max-width:760px) { .statistics-chart-grid { grid-template-columns: 1fr; } .statistics-plot { padding: 16px; } }
+.statistics-values thead { display: none; }
+.statistics-values :is(th, td) { padding: 8px 12px; border-bottom: 1px solid #eef2f8; text-align: right; }
+.statistics-values tr:last-child :is(th, td) { border-bottom: 0; }
+.statistics-values th { text-align: left; font-weight: 600; color: #334155; background: #f8fafc; }
+.statistics-values td { font-family: var(--font-mono), monospace; color: #475569; }
+
+@media (max-width: 760px) {
+  .statistics-chart-grid { grid-template-columns: 1fr; gap: 16px; }
+  .statistics-plot { padding: 18px; }
+}
 @media print { .statistics-visuals { display: none; } }

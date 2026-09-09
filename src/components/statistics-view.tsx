@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { StatisticsCharts } from "@/components/statistics-charts";
+import { Icon, type AppointmentIconName } from "@/components/appointments/icons";
 import type { DashboardData } from "@/lib/domain/dashboard";
 import type { ClinicalTopBarContext } from "@/components/clinical-header";
 import { dateTime, percent, riskLabels } from "@/components/dashboard/presentation";
@@ -111,30 +112,55 @@ export function StatisticsView({
       >
         {(
           [
-            ["Pacientes activos", data.metrics.activePatients, "Censo actual"],
-            ["Prioridad alta", data.metrics.highRiskPatients, "Evaluación actual"],
-            [
-              "Adherencia confirmada",
-              percent(data.metrics.adherence.confirmedAdherencePct),
-              "Tomas de los últimos 30 días",
-            ],
-            [
-              "Cobertura de respuestas",
-              percent(data.metrics.adherence.responseCoveragePct),
-              "Tomas de los últimos 30 días",
-            ],
+            {
+              title: "Pacientes activos",
+              value: data.metrics.activePatients,
+              detail: "Censo actual",
+              icon: "users",
+              accent: "!border-t-[#0a4470]",
+              tint: "bg-[#eaf6ff] text-[#0a4470]",
+            },
+            {
+              title: "Prioridad alta",
+              value: data.metrics.highRiskPatients,
+              detail: "Evaluación actual",
+              icon: "alert",
+              accent: "!border-t-[#001d39]",
+              tint: "bg-[#e7edf3] text-[#001d39]",
+            },
+            {
+              title: "Adherencia confirmada",
+              value: percent(data.metrics.adherence.confirmedAdherencePct),
+              detail: "Tomas de los últimos 30 días",
+              icon: "check",
+              accent: "!border-t-[#1c7fb0]",
+              tint: "bg-sky-50 text-[#1c7fb0]",
+            },
+            {
+              title: "Cobertura de respuestas",
+              value: percent(data.metrics.adherence.responseCoveragePct),
+              detail: "Tomas de los últimos 30 días",
+              icon: "phone",
+              accent: "!border-t-sky-300",
+              tint: "bg-sky-50 text-sky-600",
+            },
           ] as const
-        ).map(([title, value, detail], i) => (
+        ).map(({ title, value, detail, icon, accent, tint }, i) => (
           <article
             key={title}
-            className="clinical-panel border-t-4 !border-t-sky-200 p-5 motion-safe:animate-[kuni-rise_360ms_ease-out_both]"
+            className={`clinical-panel border-t-4 p-5 motion-safe:animate-[kuni-rise_360ms_ease-out_both] ${accent}`}
             style={{ animationDelay: i * 45 + "ms" }}
           >
-            <h2 className="text-xs font-bold text-slate-600">{title}</h2>
-            <p className="my-4 font-mono-data text-3xl font-extrabold text-[#001d39]">
+            <div className="flex items-start justify-between gap-3">
+              <h2 className="text-xs font-bold text-slate-600">{title}</h2>
+              <span aria-hidden="true" className={`grid size-9 shrink-0 place-items-center rounded-xl ${tint}`}>
+                <Icon className="size-4" name={icon as AppointmentIconName} />
+              </span>
+            </div>
+            <p className="mt-4 font-mono-data text-3xl font-extrabold text-[#001d39]">
               {value}
             </p>
-            <p className="text-xs text-slate-500">{detail}</p>
+            <p className="mt-1 text-xs text-slate-500">{detail}</p>
           </article>
         ))}
       </section>
