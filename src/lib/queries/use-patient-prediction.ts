@@ -6,8 +6,8 @@ import type { PatientPrediction } from "@/lib/ml/predict-patient";
 
 export const patientPredictionQueryKey = ["patient-prediction"] as const;
 
-function patientPredictionKey(roomId: string, patientId: string, dashboardVersion: string) {
-  return [...patientPredictionQueryKey, roomId, patientId, dashboardVersion] as const;
+function patientPredictionKey(roomId: string, patientId: string) {
+  return [...patientPredictionQueryKey, roomId, patientId] as const;
 }
 async function fetchPatientPrediction(patientId: string): Promise<PatientPrediction> {
   const response = await fetch(`/api/patients/${encodeURIComponent(patientId)}/prediction`, {
@@ -20,18 +20,21 @@ async function fetchPatientPrediction(patientId: string): Promise<PatientPredict
   return response.json() as Promise<PatientPrediction>;
 }
 
-/** La versión del dashboard evita reutilizar una predicción después de que
- * cambian las mediciones, tratamientos o complicaciones del paciente. */
+/**
+ * Caché estable por paciente y consultorio. Las mutaciones clínicas invalidan
+ * el prefijo `patientPredictionQueryKey`; navegar o regenerar el timestamp del
+ * dashboard por sí solo no vuelve a ejecutar el modelo.
+ */
 export function usePatientPrediction(
   roomId: string | undefined,
   patientId: string,
-  dashboardVersion: string | undefined,
+  enabled: boolean,
 ) {
   return useQuery({
-    queryKey: patientPredictionKey(roomId ?? "sin-consultorio", patientId, dashboardVersion ?? "sin-snapshot"),
+    queryKey: patientPredictionKey(roomId ?? "sin-consultorio", patientId),
     queryFn: () => fetchPatientPrediction(patientId),
-    enabled: Boolean(roomId && dashboardVersion),
-    staleTime: 5 * 60_000,
+    enabled: enabled && Boolean(roomId),
+    staleTime: 30 * 60_000,
     refetchOnMount: false,
   });
 }

@@ -265,6 +265,7 @@ export function ClinicalDashboard({
   >("all");
   const [order, setOrder] = useState<"risk" | "name">("risk");
   const [days, setDays] = useState(30);
+  const [appointmentRange, setAppointmentRange] = useState<7 | 15 | 90>(90);
   const selectedPatient =
     data.patients.find((patient) => patient.id === selectedId) ?? null;
   const selected = presentPatient(selectedPatient, data.timezone);
@@ -300,7 +301,7 @@ export function ClinicalDashboard({
       ][index % 3],
     }),
   );
-  const appointments = data.appointments.map((appointment) => ({
+  const allAppointments = data.appointments.map((appointment) => ({
     ...appointment,
     initials: initials(appointment.patientName),
     name: appointment.patientName,
@@ -309,6 +310,22 @@ export function ClinicalDashboard({
     status: "Programada",
     tone: "sky",
   }));
+  const generatedAt = Date.parse(data.generatedAt);
+  const appointmentsWithin = (range: number) =>
+    allAppointments.filter((appointment) => {
+      const difference = Date.parse(appointment.startsAt) - generatedAt;
+      return difference >= 0 && difference <= range * 86_400_000;
+    });
+  const appointmentCounts = {
+    7: appointmentsWithin(7).length,
+    15: appointmentsWithin(15).length,
+    90: allAppointments.length,
+  };
+  const appointments =
+    appointmentRange === 90
+      ? allAppointments
+      : appointmentsWithin(appointmentRange);
+  const hasManyAppointments = appointments.length > 6;
   const openWhatsApp = () => {
     if (
       selectedPatient?.consentGranted &&
@@ -668,67 +685,118 @@ export function ClinicalDashboard({
 
           <section
             id="citas"
-            className="dashboard-accent-panel dashboard-shadow-soft flex flex-col gap-4 rounded-3xl border p-5"
+            className="dashboard-shadow-soft overflow-hidden rounded-3xl border border-[#b8dceb] bg-white"
           >
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5">
-                <span className="dashboard-section-icon grid size-8 place-items-center rounded-full bg-[#1c7fb0] text-white shadow-sm shadow-sky-900/20">
-                  <Icon name="calendar" />
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#dce9f2] bg-[linear-gradient(90deg,#f5f9fc_0%,#ffffff_50%,#f5f9fc_100%)] p-4 sm:p-5">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="dashboard-section-icon grid size-11 shrink-0 place-items-center rounded-2xl bg-[linear-gradient(135deg,#001d39,#0a4470)] text-white shadow-md shadow-sky-950/15">
+                  <Icon name="calendar" className="size-5" />
                 </span>
-                <div>
-                  <h2 className="text-base font-bold text-slate-900">
-                    Próximas citas
-                  </h2>
-                  <p className="text-xs font-medium text-slate-400">
-                    Registradas por el equipo de salud
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-lg font-extrabold tracking-tight text-[#001d39]">
+                      Próximas citas
+                    </h2>
+                    <span className="font-mono-data rounded-full border border-[#b8dceb] bg-[#eaf4fa] px-2.5 py-0.5 text-[10px] font-bold text-[#0a4470]">
+                      {data.appointments.length} en 90 días
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-xs font-medium text-slate-500">
+                    Agenda clínica · orden cronológico
                   </p>
                 </div>
               </div>
-              <span className="font-mono-data rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-500">
-                {data.appointments.length} citas en los próximos 90 días
-              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <div
+                  aria-label="Periodo de próximas citas"
+                  className="inline-flex max-w-full overflow-x-auto rounded-xl border border-slate-200 bg-slate-100 p-1"
+                  role="group"
+                >
+                  {([
+                    [7, "Esta semana"],
+                    [15, "15 días"],
+                    [90, "Todos"],
+                  ] as const).map(([range, label]) => (
+                    <button
+                      aria-pressed={appointmentRange === range}
+                      className={`whitespace-nowrap rounded-lg px-2.5 py-1.5 text-[10px] font-bold transition ${appointmentRange === range ? "bg-white text-[#0a4470] shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+                      key={range}
+                      onClick={() => setAppointmentRange(range)}
+                      type="button"
+                    >
+                      {label} ({appointmentCounts[range]})
+                    </button>
+                  ))}
+                </div>
+                <Link
+                  className="inline-flex items-center rounded-xl bg-[#0a4470] px-3 py-2 text-[10px] font-bold text-white shadow-sm transition hover:bg-[#001d39] hover:shadow-md"
+                  href="/citas"
+                >
+                  Ver agenda →
+                </Link>
+              </div>
             </div>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            <div
+              aria-label={`${appointments.length} próximas citas`}
+              className={`table-scroll m-3 grid grid-cols-1 gap-2.5 overflow-y-auto overscroll-contain pr-1 sm:m-4 sm:grid-cols-2 xl:grid-cols-3 ${hasManyAppointments ? "max-h-[304px]" : ""}`}
+              role="list"
+            >
               {appointments.length === 0 ? (
-                <p className="text-xs text-slate-500">
-                  Sin citas programadas en este periodo.
-                </p>
+                <div className="rounded-2xl border border-dashed border-sky-200 bg-[#f7fafc] px-4 py-7 text-center sm:col-span-2 xl:col-span-3">
+                  <span className="mx-auto grid size-9 place-items-center rounded-xl bg-[#eaf4fa] text-[#0a4470]">
+                    <Icon name="calendar" className="size-4" />
+                  </span>
+                  <p className="mt-2 text-xs font-bold text-slate-600">
+                    Sin citas en este periodo
+                  </p>
+                  <p className="mt-0.5 text-[10px] text-slate-400">
+                    Selecciona otro rango para consultar la agenda.
+                  </p>
+                </div>
               ) : null}
               {appointments.map((appointment) => (
                 <article
-                  className="flex flex-col justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50/60 p-3.5"
+                  className="group relative flex min-w-0 items-center gap-2.5 overflow-hidden rounded-2xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm transition duration-200 hover:border-[#51a9d5] hover:shadow-md"
                   key={appointment.id}
+                  role="listitem"
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2.5">
+                  <span
+                    aria-hidden="true"
+                    className="absolute inset-y-2 left-0 w-0.5 rounded-r-full bg-[#51a9d5] opacity-70"
+                  />
+                  <span
+                    className={`grid size-9 shrink-0 place-items-center rounded-xl border text-[10px] font-extrabold transition-transform motion-safe:group-hover:scale-105 ${appointment.tone === "rose" ? "border-rose-200 bg-rose-50 text-rose-700" : appointment.tone === "amber" ? "border-amber-200 bg-amber-50 text-amber-700" : "border-sky-200 bg-sky-50 text-sky-700"}`}
+                  >
+                    {appointment.initials}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex min-w-0 items-center justify-between gap-2">
+                      <h3 className="truncate text-xs font-bold leading-tight text-slate-900 transition-colors group-hover:text-[#0a4470]">
+                        {appointment.name}
+                      </h3>
                       <span
-                        className={`grid size-9 shrink-0 place-items-center rounded-full text-xs font-bold ${appointment.tone === "rose" ? "bg-rose-100 text-rose-700" : appointment.tone === "amber" ? "bg-amber-100 text-amber-700" : "bg-sky-100 text-sky-700"}`}
+                        className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 text-[8px] font-extrabold uppercase tracking-wide ${appointment.status === "Pendiente" ? "border-amber-200 bg-amber-50 text-amber-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}
                       >
-                        {appointment.initials}
+                        <span className="size-1 rounded-full bg-current" />
+                        {appointment.status}
                       </span>
-                      <div>
-                        <h3 className="text-xs font-bold leading-tight text-slate-900">
-                          {appointment.name}
-                        </h3>
-                        <p className="mt-0.5 text-[10px] font-medium text-slate-500">
-                          {appointment.reason}
-                        </p>
-                      </div>
                     </div>
-                    <span
-                      className={`rounded-full border px-2 py-0.5 text-[9px] font-bold ${appointment.status === "Pendiente" ? "border-amber-200 bg-amber-50 text-amber-600" : "border-emerald-200 bg-emerald-50 text-emerald-600"}`}
-                    >
-                      {appointment.status}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between border-t border-slate-200/60 pt-2 text-[10px]">
-                    <strong className="font-mono-data flex items-center gap-1 text-[11px] text-slate-700">
-                      <Icon name="clock" className="size-3.5 text-sky-600" />
-                      {appointment.time}
-                    </strong>
-                    <span className="rounded-md border border-slate-200/60 bg-white px-2 py-0.5 font-semibold text-slate-500">
-                      {appointment.channel}
-                    </span>
+                    <p className="mt-1 truncate rounded-md bg-slate-50 px-2 py-1 text-[10px] font-medium text-slate-600">
+                      {appointment.reason}
+                    </p>
+                    <div className="mt-1.5 flex min-w-0 items-center justify-between gap-2 text-[10px]">
+                      <strong className="font-mono-data flex min-w-0 items-center gap-1 truncate text-[10px] text-[#0a4470]">
+                        <Icon name="clock" className="size-3 shrink-0 text-sky-600" />
+                        <span className="truncate">{appointment.time}</span>
+                      </strong>
+                      <Link
+                        aria-label={`Ver ficha clínica de ${appointment.name}`}
+                        className="shrink-0 rounded-md bg-[#eaf4fa] px-1.5 py-0.5 text-[9px] font-bold text-[#0a4470] transition hover:bg-[#0a4470] hover:text-white"
+                        href={`/pacientes/${appointment.patientId}`}
+                      >
+                        Ficha →
+                      </Link>
+                    </div>
                   </div>
                 </article>
               ))}

@@ -29,35 +29,36 @@ function DataSignal({ label, complete }: { label: string; complete: boolean }) {
 }
 
 function ModelInputs({ vector }: { vector: MlFeatureVector }) {
+  const decimal = (value: number) => value.toLocaleString("es-MX", { maximumFractionDigits: 2 });
   const rows = [
-    ["Edad", vector.age_at_wx, "age_at_wx"],
-    ["Diabetes", vector.diabetes_dx ? "Sí" : "No", "diabetes_dx"],
-    ["Hipertensión", vector.hypertension_dx ? "Sí" : "No", "hypertension_dx"],
-    ["Comorbilidad DM + HTA", vector.comorbido_dm_has ? "Sí" : "No", "comorbido_dm_has"],
-    ["Promedio sistólico", vector.fn_ta_systolic_mean == null ? "Sin dato" : `${vector.fn_ta_systolic_mean} mmHg`, "fn_ta_systolic_mean"],
-    ["Promedio diastólico", vector.fn_ta_diastolic_mean == null ? "Sin dato" : `${vector.fn_ta_diastolic_mean} mmHg`, "fn_ta_diastolic_mean"],
-    ["Tendencia sistólica", `${vector.tendencia_sistolica} mmHg/día`, "tendencia_sistolica"],
-    ["Tendencia diastólica", `${vector.tendencia_diastolica} mmHg/día`, "tendencia_diastolica"],
-    ["Presión empeorando", vector.pa_empeorando ? "Sí" : "No", "pa_empeorando"],
-    ["Promedio glucosa en ayuno", vector.in_glucose_mean == null ? "Sin dato" : `${vector.in_glucose_mean} mg/dL`, "in_glucose_mean"],
-    ["Tendencia de glucosa", `${vector.tendencia_glucosa} mg/dL/día`, "tendencia_glucosa"],
-    ["Glucosa empeorando", vector.glucosa_empeorando ? "Sí" : "No", "glucosa_empeorando"],
-    ["Adherencia antidiabéticos", `${Math.round(vector.adherencia_antidiabeticos * 100)}%`, "adherencia_antidiabeticos"],
-    ["Adherencia antihipertensivos", `${Math.round(vector.adherencia_antihipertensivos * 100)}%`, "adherencia_antihipertensivos"],
-    ["Complicaciones registradas", vector.num_complicaciones_dm, "num_complicaciones_dm"],
-    ["Tiene complicación", vector.tiene_complicacion_dm ? "Sí" : "No", "tiene_complicacion_dm"],
-    ["Complicación grave", vector.complicacion_grave_dm ? "Sí" : "No", "complicacion_grave_dm"],
+    ["Edad al momento del análisis", vector.age_at_wx, "Edad clínica calculada al corte"],
+    ["Diagnóstico de diabetes mellitus", vector.diabetes_dx ? "Sí" : "No", "Diagnóstico registrado en el expediente"],
+    ["Diagnóstico de hipertensión arterial", vector.hypertension_dx ? "Sí" : "No", "Diagnóstico registrado en el expediente"],
+    ["Comorbilidad cardiometabólica", vector.comorbido_dm_has ? "Sí" : "No", "Diabetes mellitus e hipertensión arterial"],
+    ["Presión arterial sistólica promedio", vector.fn_ta_systolic_mean == null ? "Sin dato" : `${decimal(vector.fn_ta_systolic_mean)} mmHg`, "Promedio de mediciones recientes"],
+    ["Presión arterial diastólica promedio", vector.fn_ta_diastolic_mean == null ? "Sin dato" : `${decimal(vector.fn_ta_diastolic_mean)} mmHg`, "Promedio de mediciones recientes"],
+    ["Tendencia de presión sistólica", `${decimal(vector.tendencia_sistolica)} mmHg/día`, "Cambio diario estimado"],
+    ["Tendencia de presión diastólica", `${decimal(vector.tendencia_diastolica)} mmHg/día`, "Cambio diario estimado"],
+    ["Deterioro de presión arterial", vector.pa_empeorando ? "Sí" : "No", "Indicador de evolución desfavorable"],
+    ["Glucosa en ayuno promedio", vector.in_glucose_mean == null ? "Sin dato" : `${decimal(vector.in_glucose_mean)} mg/dL`, "Promedio de mediciones recientes"],
+    ["Tendencia de glucosa en ayuno", `${decimal(vector.tendencia_glucosa)} mg/dL/día`, "Cambio diario estimado"],
+    ["Deterioro del control glucémico", vector.glucosa_empeorando ? "Sí" : "No", "Indicador de evolución desfavorable"],
+    ["Adherencia a antidiabéticos", `${Math.round(vector.adherencia_antidiabeticos * 100)}%`, "Confirmaciones del tratamiento antidiabético"],
+    ["Adherencia a antihipertensivos", `${Math.round(vector.adherencia_antihipertensivos * 100)}%`, "Confirmaciones del tratamiento antihipertensivo"],
+    ["Número de complicaciones diabéticas", vector.num_complicaciones_dm, "Complicaciones activas registradas"],
+    ["Presencia de complicación diabética", vector.tiene_complicacion_dm ? "Sí" : "No", "Al menos una complicación registrada"],
+    ["Complicación diabética grave", vector.complicacion_grave_dm ? "Sí" : "No", "Complicación de alta relevancia clínica"],
   ] as const;
 
   return (
     <details className="mt-4 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
       <summary className="cursor-pointer text-sm font-bold text-slate-800">Ver las 17 variables enviadas al modelo</summary>
       <dl className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        {rows.map(([label, value, code]) => (
-          <div className="rounded-lg border border-slate-200 bg-white px-3 py-2" key={code}>
+        {rows.map(([label, value, description]) => (
+          <div className="rounded-lg border border-slate-200 bg-white px-3 py-2" key={label}>
             <dt className="text-[11px] font-bold text-slate-500">{label}</dt>
             <dd className="mt-0.5 text-sm font-extrabold text-slate-900">{value}</dd>
-            <code className="mt-1 block break-all text-[9px] text-slate-400">{code}</code>
+            <p className="mt-1 text-[9px] font-medium leading-relaxed text-slate-400">{description}</p>
           </div>
         ))}
       </dl>

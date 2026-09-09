@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { KuniDateInput } from "@/components/kuni-date-input";
 import { useRouter } from "next/navigation";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import { savePatient } from "@/actions/patients";
 import { dashboardQueryKey } from "@/lib/queries/dashboard-keys";
 import { patientRegistrationQueryKey } from "@/lib/queries/patient-registration-keys";
+import { patientPredictionQueryKey } from "@/lib/queries/use-patient-prediction";
 import { savePatientSchema, type PatientEditData } from "@/contracts/patient-registration";
 import type { InitialCare, MedicationOption } from "@/contracts/clinical";
 import "./patient-create-form.css";
@@ -128,6 +129,7 @@ export function PatientCreateForm({ initial, medications = [] }: { initial?: Pat
     control,
     setError,
     setFocus,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<PatientDraft>({
     mode: "onTouched",
@@ -163,11 +165,25 @@ export function PatientCreateForm({ initial, medications = [] }: { initial?: Pat
   const glucosePostprandialPlanEnabled = useWatch({ control, name: "glucosePostprandialPlanEnabled" });
   const bpPlanEnabled = useWatch({ control, name: "bpPlanEnabled" });
   const watchedDiagnoses = useWatch({ control, name: "diagnoses" });
+  const selectedMedicationId = useWatch({ control, name: "prescriptionMedicationId" });
   const hasDiabetesDiagnosis = watchedDiagnoses?.some((code) => diabetesDiagnosisCodes.includes(code)) ?? false;
   const hasHypertensionDiagnosis = watchedDiagnoses?.includes("hypertension") ?? false;
   const isComorbid = hasDiabetesDiagnosis && hasHypertensionDiagnosis;
   const { fields: scheduleFields, append: appendSchedule, remove: removeSchedule } = useFieldArray({ control, name: "prescriptionSchedules" });
   const medicationFieldId = useId();
+  const [medicationQuery, setMedicationQuery] = useState("");
+  const [medicationPickerOpen, setMedicationPickerOpen] = useState(false);
+  const selectedMedication = medications.find((medication) => medication.id === selectedMedicationId);
+  const selectedMedicationLabel = selectedMedication
+    ? `${selectedMedication.name}${selectedMedication.strength ? ` · ${selectedMedication.strength}` : ""}`
+    : "";
+  const filteredMedications = useMemo(() => {
+    const normalized = medicationQuery.trim().toLocaleLowerCase("es-MX");
+    if (!normalized) return medications;
+    return medications.filter((medication) =>
+      `${medication.name} ${medication.strength ?? ""}`.toLocaleLowerCase("es-MX").includes(normalized),
+    );
+  }, [medicationQuery, medications]);
 
   useEffect(() => {
     if (!saveError) return;
@@ -264,6 +280,7 @@ export function PatientCreateForm({ initial, medications = [] }: { initial?: Pat
       }
       queryClient.invalidateQueries({ queryKey: dashboardQueryKey });
       queryClient.invalidateQueries({ queryKey: patientRegistrationQueryKey });
+      queryClient.invalidateQueries({ queryKey: patientPredictionQueryKey });
       router.push(`/pacientes/${result.data.id}`);
       router.refresh();
     } catch {
@@ -593,20 +610,69 @@ export function PatientCreateForm({ initial, medications = [] }: { initial?: Pat
             </label>
             {prescriptionEnabled ? (
               <div className="care-module-body form-fields clinical-page-content">
-                <label htmlFor={medicationFieldId}>
-                  Medicamento
-                  <select id={medicationFieldId} {...register("prescriptionMedicationId", {
-                    validate: value => (!prescriptionEnabled || Boolean(value)) || "Selecciona un medicamento.",
-                  })} {...a11y("prescriptionMedicationId")}>
-                    <option value="">Selecciona…</option>
-                    {medications.map(medication => (
-                      <option key={medication.id} value={medication.id}>
-                        {medication.name}{medication.strength ? ` (${medication.strength})` : ""}
-                      </option>
-                    ))}
-                  </select>
+                <div className="medication-search-field">
+                  <label htmlFor={medicationFieldId}>Medicamento</label>
+                  <input
+                    type="hidden"
+                    {...register("prescriptionMedicationId", {
+                      validate: value => (!prescriptionEnabled || Boolean(value)) || "Selecciona un medicamento.",
+                    })}
+                  />
+                  <div
+                    className="medication-combobox"
+                    onBlur={(event) => {
+                      if (!event.currentTarget.contains(event.relatedTarget)) setMedicationPickerOpen(false);
+                    }}
+                  >
+                    <span aria-hidden="true" className="medication-search-icon">⌕</span>
+                    <input
+                      aria-autocomplete="list"
+                      aria-controls={`${medicationFieldId}-options`}
+                      aria-expanded={medicationPickerOpen}
+                      autoComplete="off"
+                      id={medicationFieldId}
+                      onChange={(event) => {
+                        setMedicationQuery(event.target.value);
+                        setMedicationPickerOpen(true);
+                        if (selectedMedicationId) setValue("prescriptionMedicationId", "", { shouldDirty: true });
+                      }}
+                      onFocus={() => {
+                        setMedicationQuery("");
+                        setMedicationPickerOpen(true);
+                      }}
+                      placeholder="Buscar por nombre o concentración…"
+                      role="combobox"
+                      type="search"
+                      value={medicationPickerOpen ? medicationQuery : selectedMedicationLabel}
+                      {...a11y("prescriptionMedicationId")}
+                    />
+                    {medicationPickerOpen ? (
+                      <div className="medication-options" id={`${medicationFieldId}-options`} role="listbox">
+                        {filteredMedications.length ? filteredMedications.map((medication) => (
+                          <button
+                            aria-selected={medication.id === selectedMedicationId}
+                            className="medication-option"
+                            key={medication.id}
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => {
+                              setValue("prescriptionMedicationId", medication.id, { shouldDirty: true, shouldValidate: true });
+                              setMedicationQuery("");
+                              setMedicationPickerOpen(false);
+                            }}
+                            role="option"
+                            type="button"
+                          >
+                            <span>{medication.name}</span>
+                            {medication.strength ? <small>{medication.strength}</small> : null}
+                          </button>
+                        )) : (
+                          <p className="medication-empty">No encontramos medicamentos con esa búsqueda.</p>
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
                   {error("prescriptionMedicationId")}
-                </label>
+                </div>
                 <label>
                   Dosis
                   <input {...register("prescriptionDoseText", {

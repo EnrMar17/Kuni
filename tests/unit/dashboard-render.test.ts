@@ -26,11 +26,14 @@ describe("dashboard con datos del servidor", () => {
     expect(html).not.toContain("María Elena Vargas");
   });
 
-  it("incluye todas las citas aunque haya más de tres", () => {
+  it("incluye todas las citas y compacta la agenda cuando hay más de seis", () => {
     const data = dashboard([patient("1", "Paciente actual")]);
-    data.appointments = [1, 2, 3, 4].map((id) => ({ id: String(id), patientId: "1", patientName: `Cita paciente ${id}`, reason: "Control", startsAt: testNow, status: "scheduled", urgency: "routine" }));
+    data.appointments = [1, 2, 3, 4, 5, 6, 7].map((id) => ({ id: String(id), patientId: "1", patientName: `Cita paciente ${id}`, reason: "Control", startsAt: testNow, status: "scheduled", urgency: "routine" }));
     const html = render(data);
-    expect(html).toContain("Cita paciente 4");
+    expect(html).toContain("Cita paciente 7");
+    expect(html).toContain("max-h-[304px]");
+    expect(html).toContain("Esta semana (7)");
+    expect(html).toContain('href="/citas"');
     expect(html).not.toContain("Confirmada vía bot");
   });
 

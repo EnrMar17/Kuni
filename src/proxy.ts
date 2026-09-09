@@ -19,7 +19,13 @@ export const config = {
      *   esas requests a /login las rompería.
      * - api/health — healthcheck público para monitoreo; debe responder
      *   200 siempre, nunca un redirect a una página HTML.
+     * - sw.js — archivo estático sin HTML ni sesión. El navegador lo vuelve
+     *   a pedir en cada revisión de actualización, y pasarlo por el proxy
+     *   costaría una validación de JWT contra Supabase cada vez, además de
+     *   sellarlo con una CSP con nonce por request que no le aporta nada.
+     *   Las cabeceras de seguridad de next.config.ts sí se le siguen
+     *   aplicando.
      */
-    "/((?!_next/static|_next/image|api/webhooks|api/jobs|api/health|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    "/((?!_next/static|_next/image|api/webhooks|api/jobs|api/health|sw\\.js|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };

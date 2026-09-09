@@ -1,6 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
 
+import { InstallAppButton } from "@/components/install-app-button";
+
 /**
  * Pantalla de bienvenida — primer contacto antes de pedir credenciales.
  * Solo marca y una acción; el login real (formulario, errores, redirectTo)
@@ -116,6 +118,8 @@ export function SplashScreen() {
             />
           </svg>
         </Link>
+        {/* Solo se pinta si el navegador confirma que Kuni es instalable. */}
+        <InstallAppButton />
       </div>
     </main>
   );

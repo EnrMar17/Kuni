@@ -6,7 +6,18 @@ import { serverEnv } from "@/lib/env/server";
 
 // Login debe poder mostrar también errores de membresía de una sesión válida.
 function isPublicPath(pathname: string): boolean {
-  return pathname === "/" || pathname === "/login";
+  // El service worker y el manifiesto los pide el navegador SIN cookies de
+  // sesión: si el proxy los redirigiera a /login llegarían como HTML y el
+  // registro del SW fallaría (la instalación de la PWA depende de ambos).
+  // /offline es la pantalla que sirve el SW cuando no hay red y no muestra
+  // ningún dato clínico.
+  const publicPwaPaths = ["/sw.js", "/manifest.webmanifest", "/offline"];
+  return (
+    pathname === "/" ||
+    pathname === "/login" ||
+    publicPwaPaths.includes(pathname) ||
+    pathname.startsWith("/icons/")
+  );
 }
 
 /**
@@ -43,6 +54,11 @@ function buildContentSecurityPolicy(nonce: string): string {
     "img-src": ["'self'", "data:"],
     "font-src": ["'self'"],
     "connect-src": ["'self'", ...supabaseConnectOrigins(), ...(isDev ? ["ws://localhost:*"] : [])],
+    // El SW hereda de script-src si no se declara, y ahí vive 'strict-dynamic',
+    // que bloquearía su registro. manifest-src no cae en default-src en todos
+    // los navegadores, así que también va explícito.
+    "worker-src": ["'self'"],
+    "manifest-src": ["'self'"],
     "form-action": ["'self'"],
     "frame-ancestors": ["'none'"],
     "base-uri": ["'self'"],

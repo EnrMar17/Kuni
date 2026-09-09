@@ -85,6 +85,67 @@
 .patient-form .form-fields [aria-invalid="true"] { border-color: #c74862; background: #fff8fa; }
 .patient-form .form-fields textarea { resize: vertical; }
 
+.patient-form .medication-search-field {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 6px;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.5;
+}
+.patient-form .medication-combobox { position: relative; }
+.patient-form .medication-combobox > input[type="search"] { padding-left: 34px; }
+.patient-form .medication-search-icon {
+  position: absolute;
+  z-index: 2;
+  top: 9px;
+  left: 12px;
+  color: var(--kuni-navy);
+  font-size: 18px;
+  line-height: 1;
+  pointer-events: none;
+}
+.patient-form .medication-options {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 6px);
+  right: 0;
+  left: 0;
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid #9fcde3;
+  border-radius: 12px;
+  background: white;
+  padding: 5px;
+  box-shadow: 0 18px 35px -18px rgb(0 29 57 / 45%);
+}
+.patient-form .medication-option {
+  display: flex;
+  width: 100%;
+  min-height: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 0;
+  border-radius: 8px;
+  background: white;
+  padding: 9px 10px;
+  color: var(--kuni-navy-dark);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: left;
+  box-shadow: none;
+  cursor: pointer;
+}
+.patient-form .medication-option small { color: #64748b; font-size: 11px; font-weight: 600; }
+.patient-form .medication-option:hover,
+.patient-form .medication-option[aria-selected="true"] { background: var(--kuni-sky-tint); color: var(--kuni-navy); transform: none; }
+.patient-form .medication-option:focus-visible { outline: 2px solid var(--kuni-sky); outline-offset: -2px; }
+.patient-form .medication-empty { padding: 14px 10px; color: #64748b; font-size: 12px; font-weight: 500; text-align: center; }
+
 .patient-form .field-hint { font-size: 11px; line-height: 1.4; }
 .patient-form .field-error { font-size: 12px; line-height: 1.5; }
 .patient-form input[readonly] { background: var(--kuni-navy-tint); color: #52677b; }

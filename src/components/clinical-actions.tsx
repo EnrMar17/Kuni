@@ -2,9 +2,10 @@
 import { KuniDateInput } from "@/components/kuni-date-input";
 
 import { useEffect, useId, useRef, useState, useTransition } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 
 import { dashboardQueryKey } from "@/lib/queries/dashboard-keys";
+import { patientPredictionQueryKey } from "@/lib/queries/use-patient-prediction";
 import {
   addPatientComplication,
   deactivatePatientComplication,
@@ -47,6 +48,11 @@ function ActionMessage({ message }: { message: string | null }) {
       {message}
     </p>
   );
+}
+
+function invalidateClinicalQueries(queryClient: QueryClient) {
+  void queryClient.invalidateQueries({ queryKey: dashboardQueryKey });
+  void queryClient.invalidateQueries({ queryKey: patientPredictionQueryKey });
 }
 
 function useDismissOnEscape(active: boolean, onDismiss: () => void) {
@@ -212,7 +218,7 @@ export function AlertActions({ alert }: { alert: DashboardAlert }) {
       setReason("");
       setShowReasonHint(false);
       setMessage("La alerta se actualizó.");
-      queryClient.invalidateQueries({ queryKey: dashboardQueryKey });
+      invalidateClinicalQueries(queryClient);
     });
   };
 
@@ -231,7 +237,7 @@ export function AlertActions({ alert }: { alert: DashboardAlert }) {
       setReason("");
       setShowReasonHint(false);
       setMessage("Se registró la urgencia clínica.");
-      queryClient.invalidateQueries({ queryKey: dashboardQueryKey });
+      invalidateClinicalQueries(queryClient);
     });
   };
 
@@ -417,7 +423,7 @@ export function ComplicationPanel({
       if (result.error) return setMessage(result.error.message);
       setDiagnosedOn("");
       setMessage("Estado de complicaciones registrado.");
-      queryClient.invalidateQueries({ queryKey: dashboardQueryKey });
+      invalidateClinicalQueries(queryClient);
     });
 
   const remove = () => {
@@ -438,7 +444,7 @@ export function ComplicationPanel({
       setReason("");
       setShowReasonHint(false);
       setMessage("Registro de complicación retirado.");
-      queryClient.invalidateQueries({ queryKey: dashboardQueryKey });
+      invalidateClinicalQueries(queryClient);
     });
   };
 
@@ -755,7 +761,7 @@ export function MeasurementCorrection({
       if (result.error) return setMessage(result.error.message);
       setShowReasonHint(false);
       setMessage("Medición corregida.");
-      queryClient.invalidateQueries({ queryKey: dashboardQueryKey });
+      invalidateClinicalQueries(queryClient);
     });
   };
 
@@ -855,7 +861,7 @@ export function MedicationResponseCorrection({
       if (result.error) return setMessage(result.error.message);
       setShowReasonHint(false);
       setMessage("Toma de medicamento corregida.");
-      queryClient.invalidateQueries({ queryKey: dashboardQueryKey });
+      invalidateClinicalQueries(queryClient);
     });
   };
 
@@ -952,7 +958,7 @@ export function PrescriptionAdjustment({
       if (result.error) return setMessage(result.error.message);
       setShowReasonHint(false);
       setMessage("Ajuste de receta registrado.");
-      queryClient.invalidateQueries({ queryKey: dashboardQueryKey });
+      invalidateClinicalQueries(queryClient);
     });
   };
 
@@ -1071,7 +1077,7 @@ export function MedicationClassification({
       });
       if (result.error) return setMessage(result.error.message);
       setMessage("Clasificación guardada y registrada en la auditoría.");
-      queryClient.invalidateQueries({ queryKey: dashboardQueryKey });
+      invalidateClinicalQueries(queryClient);
     });
   };
 

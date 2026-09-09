@@ -22,7 +22,7 @@ export function PatientProfileView({
   const prediction = usePatientPrediction(
     session?.room?.id,
     patientId,
-    patient ? dashboard.data?.generatedAt : undefined,
+    Boolean(patient),
   );
 
   if (!session?.room) {
