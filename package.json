@@ -13,6 +13,7 @@
     "verify": "node scripts/verify.mjs"
   },
   "dependencies": {
+    "animate.css": "^4.1.1",
     "@fontsource-variable/jetbrains-mono": "^5.3.0",
     "@fontsource-variable/plus-jakarta-sans": "^5.3.0",
     "@hookform/resolvers": "^5.9.1",

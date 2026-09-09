@@ -1,6 +1,10 @@
 @import "@fontsource-variable/jetbrains-mono";
 @import "@fontsource-variable/plus-jakarta-sans";
 @import "tailwindcss";
+/* Librería de animaciones CSS puras (sin JS) — utilidades .animate__* de
+   apoyo para transiciones/entradas en toda la app, además de las
+   animaciones propias "kuni-*" ya existentes. */
+@import "animate.css";
 
 :root {
   --background: #f4f7f6;
@@ -122,6 +126,66 @@ a {
   .skeleton-bone {
     animation: kuni-shimmer 1.7s linear infinite;
   }
+
+  .splash-mark {
+    animation:
+      kuni-rise 520ms cubic-bezier(.2,.75,.25,1) both,
+      kuni-float 4.5s ease-in-out 520ms infinite;
+  }
+
+  .splash-cta {
+    animation:
+      kuni-rise 520ms cubic-bezier(.2,.75,.25,1) 160ms both,
+      kuni-glow 2.6s ease-in-out 900ms infinite;
+  }
+
+  .splash-butterfly {
+    animation-name: kuni-flight-a;
+    animation-duration: var(--butterfly-duration, 22s);
+    animation-delay: var(--butterfly-delay, 0s);
+    animation-timing-function: ease-in-out;
+    animation-iteration-count: infinite;
+  }
+  .splash-flight-a { animation-name: kuni-flight-a; }
+  .splash-flight-b { animation-name: kuni-flight-b; }
+  .splash-flight-c { animation-name: kuni-flight-c; }
+
+  .splash-wing {
+    animation-name: kuni-wing-flap;
+    animation-duration: var(--butterfly-flap, 300ms);
+    animation-timing-function: ease-in-out;
+    animation-iteration-count: infinite;
+  }
+
+  .splash-glow-a { animation: kuni-drift 14s ease-in-out infinite; }
+  .splash-glow-b { animation: kuni-drift 18s ease-in-out infinite reverse; }
+}
+
+/* Excepción explícita y deliberada: el vuelo de las mariposas es puro
+   adorno de bienvenida (no comunica estado ni guía al usuario), así que
+   se mantiene animado incluso con "reducir movimiento" activo en el
+   sistema — a diferencia de TODO lo demás en este archivo, que sí se
+   apaga (ver el bloque de arriba). Especificidad de clase + !important
+   para ganarle al `*` !important del bloque de reduced-motion. */
+@media (prefers-reduced-motion: reduce) {
+  .splash-wing {
+    animation-name: kuni-wing-flap !important;
+    animation-duration: var(--butterfly-flap, 300ms) !important;
+    animation-iteration-count: infinite !important;
+    animation-timing-function: ease-in-out !important;
+  }
+  .splash-butterfly {
+    animation-name: kuni-flight-a !important;
+    animation-duration: var(--butterfly-duration, 22s) !important;
+    animation-delay: var(--butterfly-delay, 0s) !important;
+    animation-iteration-count: infinite !important;
+    animation-timing-function: ease-in-out !important;
+  }
+  .splash-flight-a { animation-name: kuni-flight-a !important; }
+  .splash-flight-b { animation-name: kuni-flight-b !important; }
+  .splash-flight-c { animation-name: kuni-flight-c !important; }
+  .splash-glow-a { animation: kuni-drift 14s ease-in-out infinite !important; }
+  .splash-glow-b { animation: kuni-drift 18s ease-in-out infinite reverse !important; }
 }
 
 .clinical-panel {
@@ -166,6 +230,112 @@ a {
 @keyframes kuni-rise {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* Bienvenida (splash): flotación suave del logo y pulso del CTA — ambas se
+   apagan junto con el resto de las animaciones bajo prefers-reduced-motion
+   (ver el bloque al final del archivo). */
+@keyframes kuni-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+@keyframes kuni-glow {
+  0%, 100% { box-shadow: 0 10px 25px -8px rgb(15 23 42 / .35), 0 0 0 0 rgb(81 194 255 / .45); }
+  50% { box-shadow: 0 10px 25px -8px rgb(15 23 42 / .35), 0 0 0 9px rgb(81 194 255 / 0); }
+}
+
+/* Bienvenida, login y consultorios comparten el mismo fondo de marca
+   (tonos del isotipo: cielo/marino) — .splash-shell trae además las
+   mariposas, .login-shell y .consultorios-shell reutilizan solo el
+   degradado. */
+.splash-shell,
+.login-shell,
+.consultorios-shell {
+  background:
+    radial-gradient(120% 90% at 12% 8%, rgb(81 194 255 / .22), transparent 55%),
+    radial-gradient(110% 85% at 92% 96%, rgb(10 68 112 / .16), transparent 55%),
+    #e8ebf2;
+}
+
+.splash-glow {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(60px);
+  pointer-events: none;
+  z-index: 0;
+}
+.splash-glow-a {
+  top: -8%;
+  left: -6%;
+  width: 46vw;
+  height: 46vw;
+  max-width: 480px;
+  max-height: 480px;
+  background: rgb(142 215 251 / .5);
+}
+.splash-glow-b {
+  bottom: -12%;
+  right: -8%;
+  width: 40vw;
+  height: 40vw;
+  max-width: 420px;
+  max-height: 420px;
+  background: rgb(10 68 112 / .22);
+}
+
+@keyframes kuni-drift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(3%, 4%) scale(1.06); }
+}
+
+.splash-scene {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.splash-butterfly {
+  position: absolute;
+  aspect-ratio: 40 / 32;
+  height: auto;
+  filter: drop-shadow(0 3px 5px rgb(10 30 50 / .18));
+}
+.splash-butterfly-svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.splash-wing { transform-box: fill-box; transform-origin: 100% 50%; }
+.splash-wing-left { transform-origin: 100% 50%; }
+.splash-wing-right { transform-origin: 0% 50%; }
+
+@keyframes kuni-wing-flap {
+  0%, 100% { transform: scaleX(1); }
+  50% { transform: scaleX(.45); }
+}
+
+/* Cada trayectoria es un lazo suelto que regresa cerca de su origen, para
+   que el loop "infinite" no salte al repetirse. */
+@keyframes kuni-flight-a {
+  0%   { transform: translate(0, 0) rotate(-6deg) scale(1); }
+  20%  { transform: translate(16vw, -9vh) rotate(10deg) scale(1.08); }
+  45%  { transform: translate(27vw, 3vh) rotate(-6deg) scale(.94); }
+  70%  { transform: translate(15vw, 13vh) rotate(9deg) scale(1.05); }
+  90%  { transform: translate(3vw, 4vh) rotate(-2deg) scale(1); }
+  100% { transform: translate(0, 0) rotate(-6deg) scale(1); }
+}
+@keyframes kuni-flight-b {
+  0%   { transform: translate(0, 0) rotate(4deg) scale(1); }
+  22%  { transform: translate(-13vw, -11vh) rotate(-10deg) scale(1.06); }
+  50%  { transform: translate(8vw, -18vh) rotate(7deg) scale(.95); }
+  78%  { transform: translate(-6vw, -6vh) rotate(-6deg) scale(1.04); }
+  100% { transform: translate(0, 0) rotate(4deg) scale(1); }
+}
+@keyframes kuni-flight-c {
+  0%   { transform: translate(0, 0) rotate(-3deg) scale(1); }
+  25%  { transform: translate(-19vw, 10vh) rotate(-12deg) scale(1.07); }
+  55%  { transform: translate(-9vw, -13vh) rotate(9deg) scale(.93); }
+  80%  { transform: translate(-3vw, 5vh) rotate(-5deg) scale(1.03); }
+  100% { transform: translate(0, 0) rotate(-3deg) scale(1); }
 }
 
 /* Shared clinical navigation: the same proportions on every destination. */
@@ -362,6 +532,11 @@ a {
   .skeleton-bone {
     background-image: none;
   }
+
+  /* Las mariposas de la bienvenida son la única excepción: su override
+     está más arriba, justo después del primer bloque "no-preference"
+     (ver el comentario ahí) — siguen volando aunque todo lo demás en
+     esta regla las hubiera congelado. */
 }
 
 @media (max-width: 640px) {

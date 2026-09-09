@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import { redirect } from "next/navigation";
 
 import { LoginForm } from "@/components/login-form";
@@ -35,9 +36,16 @@ export default async function LoginPage({ searchParams }: {
   if (destination) redirect(destination);
 
   return (
-    <main id="contenido-principal" className="flex min-h-screen items-center justify-center bg-[#e8ebf2] px-5 py-10">
-      <section className="login-card w-full max-w-[460px] rounded-[28px] border border-white bg-white px-6 py-9 sm:px-9 sm:py-11">
-        <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">Bienvenido de nuevo</h1>
+    <main
+      id="contenido-principal"
+      className="login-shell relative flex min-h-screen items-center justify-center overflow-hidden px-5 py-10"
+    >
+      <div aria-hidden="true" className="splash-glow splash-glow-a" />
+      <div aria-hidden="true" className="splash-glow splash-glow-b" />
+      <section className="login-card relative z-10 w-full max-w-[460px] rounded-[28px] border border-white/70 bg-white/95 px-6 py-9 shadow-2xl shadow-[#0a4470]/12 backdrop-blur-sm sm:px-9 sm:py-11">
+        <Image alt="Kuni" className="mx-auto h-auto w-12" height={530} src="/brand/kuni-mark.png" width={640} />
+        <h1 className="mt-5 text-3xl font-extrabold tracking-tight text-[#001d39]">Bienvenido de nuevo</h1>
+        <p className="mt-1.5 text-sm font-medium text-slate-500">Accede al centro de monitoreo remoto.</p>
         <LoginForm redirectTo={redirectTo} initialError={initialError} />
         {params.error === "salida-fallida" ? <form action={logout} className="mt-4"><button className="clinical-button" type="submit">Reintentar cierre de sesión</button></form> : null}
       </section>
