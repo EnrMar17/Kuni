@@ -4,6 +4,7 @@ import type { MlFeatureVector } from "../../domain-core/src/lib/ml/client";
 import { formatInTimeZone } from "date-fns-tz";
 import { PatientHistoryCharts } from "./patient-history-chart";
 import { PatientTrajectoryCharts } from "./patient-trajectory-chart";
+import { PredictionRefreshButton } from "./prediction-refresh-button";
 
 const levelStyle = {
   bajo: "border-emerald-200 bg-emerald-50 text-emerald-800",
@@ -93,11 +94,10 @@ export async function PatientPredictionPanel({ patient, asOf, timezone }: { pati
   // endpoint, timeout, or malformed response into a fabricated prediction.
   if (prediction.status === "unavailable") {
     return (
-      <section aria-labelledby="future-risk-title" className="clinical-panel overflow-hidden p-5 lg:col-span-3 motion-safe:animate-[kuni-rise_360ms_ease-out_both]">
+      <section aria-labelledby="future-risk-title" className="clinical-panel overflow-hidden border-slate-200 p-5 lg:col-span-3 motion-safe:animate-[kuni-rise_360ms_ease-out_both] sm:p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="max-w-2xl">
-            <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-[#1c7fb0]">RF30 · estimación adicional</p>
-            <h2 id="future-risk-title" className="mt-1 text-lg font-extrabold tracking-tight text-slate-900">Riesgo futuro estimado</h2>
+            <h2 id="future-risk-title" className="text-lg font-extrabold tracking-tight text-slate-900">Panel predictivo <span className="text-sky-700">(IA)</span></h2>
             <p className="mt-2 text-sm leading-relaxed text-slate-600">
               Este panel estará disponible cuando el servicio de predicción responda. La prioridad clínica actual sigue usando reglas verificables.
             </p>
@@ -130,20 +130,26 @@ export async function PatientPredictionPanel({ patient, asOf, timezone }: { pati
   const probability = prediction.probability == null ? null : Math.round(prediction.probability * 100);
 
   return (
-    <section aria-labelledby="future-risk-title" className="clinical-panel overflow-hidden p-5 lg:col-span-3 motion-safe:animate-[kuni-rise_360ms_ease-out_both]">
-      <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
-        <div className="max-w-2xl">
-          <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-[#1c7fb0]">RF30 · estimación adicional</p>
-          <h2 id="future-risk-title" className="mt-1 text-lg font-extrabold tracking-tight text-slate-900">Riesgo futuro estimado</h2>
-          <p className="mt-2 text-sm leading-relaxed text-slate-600">
-            Es un apoyo informativo no validado clínicamente. No modifica la prioridad ni genera alertas.
+    <section aria-labelledby="future-risk-title" className="clinical-panel overflow-hidden border-slate-200 p-5 lg:col-span-3 motion-safe:animate-[kuni-rise_360ms_ease-out_both] sm:p-6">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-4">
+        <div>
+          <h2 id="future-risk-title" className="text-lg font-extrabold tracking-tight text-slate-900">Panel predictivo <span className="text-sky-700">(IA)</span></h2>
+          <p className="mt-1 text-xs font-medium text-slate-500">RF30 · estimación adicional que no modifica la prioridad clínica</p>
+        </div>
+        <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-bold text-slate-500">No validado clínicamente</span>
+      </div>
+
+      <div className="mt-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
+          <p className="text-slate-900">
+            {probability != null ? <strong className="font-mono-data text-4xl font-black tracking-tight">{probability}%</strong> : <strong className="text-2xl font-black">Sin porcentaje</strong>}
+            <span className="ml-2 text-sm font-bold text-slate-600">prob. de descompensación</span>
           </p>
+          <span className={`rounded-full border px-3 py-1 text-xs font-extrabold ${levelStyle[prediction.level]}`}>
+            Nivel {levelLabel[prediction.level].toLowerCase()}
+          </span>
         </div>
-        <div className={`min-w-36 rounded-2xl border px-4 py-3 text-center ${levelStyle[prediction.level]}`}>
-          <p className="text-[11px] font-extrabold uppercase tracking-wider">Modelo</p>
-          <p className="mt-1 text-lg font-black">{levelLabel[prediction.level]}</p>
-          {probability != null ? <p className="text-sm font-bold">{probability}%</p> : null}
-        </div>
+        <PredictionRefreshButton />
       </div>
 
       {isCeiling ? (
@@ -156,17 +162,6 @@ export async function PatientPredictionPanel({ patient, asOf, timezone }: { pati
           ) : null}
         </div>
       ) : null}
-
-      <div className="mt-5 border-t border-slate-100 pt-4">
-        <h3 className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Suficiencia de datos enviada al modelo</h3>
-        <ul className="mt-2 grid gap-2 sm:grid-cols-3">
-          <DataSignal complete={prediction.sufficiency.glucosaAyuno} label="Glucosa en ayuno" />
-          <DataSignal complete={prediction.sufficiency.glucosaPostprandial} label="Glucosa postprandial" />
-          <DataSignal complete={prediction.sufficiency.presionArterial} label="Presión arterial" />
-        </ul>
-      </div>
-
-      <ModelInputs vector={vector} />
 
       <PatientHistoryCharts measurements={patient.measurements} asOf={asOf} timezone={timezone} />
 
@@ -185,6 +180,17 @@ export async function PatientPredictionPanel({ patient, asOf, timezone }: { pati
         </div>
       )}
 
+      <div className="mt-5 border-t border-slate-100 pt-4">
+        <h3 className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Cobertura de datos enviada al modelo</h3>
+        <ul className="mt-2 grid gap-2 sm:grid-cols-3">
+          <DataSignal complete={prediction.sufficiency.glucosaAyuno} label="Glucosa en ayuno" />
+          <DataSignal complete={prediction.sufficiency.glucosaPostprandial} label="Glucosa postprandial" />
+          <DataSignal complete={prediction.sufficiency.presionArterial} label="Presión arterial" />
+        </ul>
+      </div>
+
+      <ModelInputs vector={vector} />
+
       {gaps.length ? (
         <details className="mt-4 rounded-xl border border-amber-200 bg-amber-50/70 p-3 text-sm text-amber-950">
           <summary className="cursor-pointer font-bold">{gaps.length} dato{gaps.length === 1 ? " pendiente" : "s pendientes"} en el vector</summary>
@@ -194,10 +200,10 @@ export async function PatientPredictionPanel({ patient, asOf, timezone }: { pati
         </details>
       ) : null}
 
-      <p className="mt-4 text-xs text-slate-500">
-        {prediction.modelVersion ? `Modelo ${prediction.modelVersion}` : "Versión del modelo no informada"}
-        {` · Datos al ${formatInTimeZone(new Date(asOf), timezone, "dd/MM/yyyy HH:mm")} (${timezone})`}
-      </p>
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+        <p>Última predicción: {formatInTimeZone(new Date(asOf), timezone, "dd/MM/yyyy HH:mm")}</p>
+        <p>{prediction.modelVersion ? `Modelo ${prediction.modelVersion}` : "Versión del modelo no informada"}</p>
+      </div>
     </section>
   );
 }

@@ -91,7 +91,7 @@ function HistoricalChart({
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-3">
       <p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">{title}</p>
-      <div className="mt-2 h-52 w-full">
+      <div className="mt-2 h-44 w-full">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data} margin={{ top: 8, right: 10, bottom: 4, left: -12 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -144,7 +144,10 @@ export function PatientHistoryCharts({ measurements, asOf, timezone }: {
 
   return (
     <div className="mt-5 border-t border-slate-100 pt-4">
-      <h3 className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Historia observada de 90 días</h3>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-extrabold text-slate-900">Evolución clínica · 90 días</h3>
+        <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-bold text-blue-700">Área azul = ventana RF29</span>
+      </div>
       <p className="mt-1 text-xs leading-relaxed text-slate-500">
         Son mediciones registradas, no predicciones. El fondo azul marca los últimos 30 días usados para calcular medias y tendencias del vector RF29.
       </p>
