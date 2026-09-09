@@ -12,7 +12,7 @@ import { StatisticsView } from "@/components/statistics-view";
 import { PatientCreateForm } from "@/components/patient-create-form";
 import type { PatientEditData } from "@/contracts/patient-registration";
 import type { MedicationOption } from "@/contracts/clinical";
-import { AlertActions, ComplicationPanel, ManualSmsTestAction, MeasurementCorrection, MedicationClassification, MedicationResponseCorrection, PrescriptionAdjustment } from "@/components/clinical-actions";
+import { AlertActions, ComplicationPanel, ManualMessageTestAction, MeasurementCorrection, MedicationClassification, MedicationResponseCorrection, PrescriptionAdjustment } from "@/components/clinical-actions";
 import type { DashboardData, DashboardPatient } from "@/lib/domain/dashboard";
 import {
   availableDiagnoses,
@@ -446,12 +446,14 @@ export function PatientProfile({
   context,
   predictionPanel,
   canWrite = false,
+  testMessageChannels = [],
 }: {
   data: DashboardData;
   patient: DashboardPatient;
   context: ClinicalTopBarContext;
   predictionPanel?: ReactNode;
   canWrite?: boolean;
+  testMessageChannels?: ("sms" | "whatsapp")[];
 }) {
   return (
     <main id="contenido-principal" className="min-h-screen bg-[radial-gradient(circle_at_12%_2%,#e0e7ff_0,transparent_31%),radial-gradient(circle_at_94%_18%,#dbeafe_0,transparent_28%),#e8ebf2] p-3 text-slate-800 md:p-6 lg:p-8">
@@ -538,13 +540,15 @@ export function PatientProfile({
                   value={dateTime(patient.lastResponseAt, data.timezone)}
                 />
               </dl>
-              {canWrite ? (
-                <ManualSmsTestAction
+              {canWrite ? testMessageChannels.map((channel) => (
+                <ManualMessageTestAction
+                  key={channel}
                   patientId={patient.id}
                   phoneE164={patient.whatsappE164}
                   consentGranted={patient.consentGranted}
+                  channel={channel}
                 />
-              ) : null}
+              )) : null}
             </aside>
             <section className="clinical-panel p-5 lg:col-span-3">
               <h2 className="text-base font-extrabold text-slate-900">

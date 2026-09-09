@@ -66,6 +66,28 @@ describe("adaptador de Twilio — envío", () => {
     });
   });
 
+  it("adapta +52 canónico al identificador +521 que Twilio usa para WhatsApp en México", async () => {
+    mocks.messagesCreate.mockResolvedValue({ sid: "SMmx123" });
+    const provider = createTwilioWhatsAppProvider();
+
+    await provider.sendFreeformMessage({ toE164: "+524436070416", body: "Hola" });
+
+    expect(mocks.messagesCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ to: "whatsapp:+5214436070416" }),
+    );
+  });
+
+  it("no duplica el token mexicano cuando el destinatario ya llega como +521", async () => {
+    mocks.messagesCreate.mockResolvedValue({ sid: "SMmx124" });
+    const provider = createTwilioWhatsAppProvider();
+
+    await provider.sendFreeformMessage({ toE164: "+5214436070416", body: "Hola" });
+
+    expect(mocks.messagesCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ to: "whatsapp:+5214436070416" }),
+    );
+  });
+
   it("normaliza TWILIO_WHATSAPP_FROM aunque ya traiga el prefijo whatsapp: (no lo duplica)", async () => {
     envState.TWILIO_WHATSAPP_FROM = "whatsapp:+14155238886";
     mocks.messagesCreate.mockResolvedValue({ sid: "SMghi789" });
@@ -96,6 +118,7 @@ describe("adaptador de Twilio — mapeo de errores", () => {
     { name: "5xx → provider_unavailable, reintentable", rejection: { status: 503, message: "down" }, expectedCode: "provider_unavailable", expectedRetriable: true },
     { name: "plantilla rechazada (63016) → template_rejected, no reintentable", rejection: { status: 400, code: 63016 }, expectedCode: "template_rejected", expectedRetriable: false },
     { name: "número inválido (21211) → invalid_recipient, no reintentable", rejection: { status: 400, code: 21211 }, expectedCode: "invalid_recipient", expectedRetriable: false },
+    { name: "no unido al Sandbox (63015) → invalid_recipient, no reintentable", rejection: { status: 400, code: 63015 }, expectedCode: "invalid_recipient", expectedRetriable: false },
     { name: "403 → unauthorized, no reintentable", rejection: { status: 403 }, expectedCode: "unauthorized", expectedRetriable: false },
     { name: "sin status/code reconocido → unknown, no reintentable", rejection: { message: "???" }, expectedCode: "unknown", expectedRetriable: false },
   ];

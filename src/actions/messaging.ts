@@ -4,24 +4,24 @@ import { revalidatePath } from "next/cache";
 
 import { ok, toApiError, type ApiResult } from "@/contracts/errors";
 import {
-  manualSmsTestInputSchema,
-  type ManualSmsTestInput,
-  type ManualSmsTestResult,
+  manualMessageTestInputSchema,
+  type ManualMessageTestInput,
+  type ManualMessageTestResult,
 } from "@/contracts/messaging";
 import { requireClinicalWriteContext } from "@/lib/auth/context";
-import { sendManualSmsTest } from "@/lib/jobs/manual-sms-test";
+import { sendManualMessageTest } from "@/lib/jobs/manual-sms-test";
 
-export async function sendManualSmsTestAction(
-  input: ManualSmsTestInput,
-): Promise<ApiResult<ManualSmsTestResult>> {
-  const parsed = manualSmsTestInputSchema.safeParse(input);
+export async function sendManualMessageTestAction(
+  input: ManualMessageTestInput,
+): Promise<ApiResult<ManualMessageTestResult>> {
+  const parsed = manualMessageTestInputSchema.safeParse(input);
   if (!parsed.success) {
     return { data: null, error: { code: "VALIDATION", message: "La solicitud de prueba SMS no es válida." } };
   }
 
   try {
     const context = await requireClinicalWriteContext();
-    const result = await sendManualSmsTest({
+    const result = await sendManualMessageTest({
       ...parsed.data,
       unitId: context.unitId,
       roomId: context.consultingRoom.id,

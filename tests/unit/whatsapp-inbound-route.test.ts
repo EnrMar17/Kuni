@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/env/server", () => ({ serverEnv: { APP_PUBLIC_URL: "https://kuni.example.com" } }));
 vi.mock("@/lib/whatsapp/provider", () => ({
-  getWhatsAppProvider: async () => ({ dbProviderValue: "twilio", verifyWebhookSignature: mocks.verify }),
+  getTwilioWhatsAppProvider: async () => ({ dbProviderValue: "twilio", verifyWebhookSignature: mocks.verify }),
 }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({ from: mocks.from, rpc: mocks.rpc }) }));
 import { POST } from "@/app/api/webhooks/whatsapp/route";

@@ -324,3 +324,13 @@ No se aplicó nada al proyecto Supabase durante esta entrega; todo lo de Twilio/
 - La ficha del paciente incluye confirmación previa con destino y texto fijo. El botón solo sirve para prueba inmediata; no altera el `POST /api/jobs/tick`, que sigue materializando y enviando recordatorios programados.
 - En iPhone, la generación/encolado puede ocurrir automáticamente, pero iOS puede exigir escoger SIM y confirmar físicamente el SMS. La interfaz lo dice de forma explícita.
 - Las pruebas `tests/unit/manual-sms-test.test.ts` cubren éxito, idempotencia, proveedor incorrecto, límite de frecuencia y fallo ambiguo. No realizan envíos reales.
+
+## 2026-09-08 — Botón de WhatsApp para la demo del Sandbox
+
+- Se verificó que los botones anteriores `Abrir WhatsApp` solo abren el chat y no llaman al proveedor ni al job.
+- `0014_manual_message_test.sql` generaliza la prueba manual para `twilio/whatsapp`, manteniendo compatibilidad con `sms8/smsgate`.
+- La ficha conserva el botón del transporte efectivo y, cuando hay credenciales Twilio, añade `Enviar WhatsApp de prueba` como vía independiente. Así SMS8 puede seguir siendo el proveedor del cron durante la demo.
+- WhatsApp falla cerrado si `patient_messaging_state.last_inbound_at` no está entre ahora y las 24 horas previas. Esto evita intentar texto libre fuera de las reglas del canal mientras las plantillas propias siguen sin aprobación.
+- La prueba llama solo al destinatario elegido; no ejecuta `/api/jobs/tick` y no arrastra otras interacciones vencidas.
+- Procedimiento operativo completo: `docs/whatsapp-sandbox-demo.md`.
+- Durante la validación simultánea SMS8 + Sandbox se observó `403` real en `/api/webhooks/whatsapp`: la ruta estaba resolviendo el proveedor global (`sms8`) y por ello fallaba cerrada ante una firma Twilio válida. Se corrigieron webhook entrante y callback de estado para seleccionar explícitamente el adaptador Twilio; el cron conserva SMS8. Después de estabilizar la compilación, las siguientes ejecuciones observadas de `/api/jobs/tick` regresaron `200`.

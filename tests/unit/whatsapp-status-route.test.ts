@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/env/server", () => ({ serverEnv: { APP_PUBLIC_URL: "https://kuni.example.com" } }));
 vi.mock("@/lib/whatsapp/provider", () => ({
-  getWhatsAppProvider: async () => ({
+  getTwilioWhatsAppProvider: async () => ({
     dbProviderValue: "twilio",
     verifyWebhookSignature: mocks.verifyWebhookSignature,
   }),
